@@ -90,10 +90,10 @@ export const AddTransaction = () => {
                 <FormControl>
                     <TextField id="outlined-basic" label="Description" variant="outlined" />
                 </FormControl>
-                
-
             </Paper>
-
+            <Paper sx={{ position: 'fixed', bottom: 0, left: 0, right: 0 }} elevation={5}>
+                <Button style={{width: '100%'}} variant="contained">Add</Button>
+            </Paper>
         </Box>
     )
 }

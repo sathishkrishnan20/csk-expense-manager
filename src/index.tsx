@@ -7,17 +7,16 @@ import '@fontsource/roboto/500.css';
 import '@fontsource/roboto/700.css';
 
 import reportWebVitals from './reportWebVitals';
-import { RouterProvider } from 'react-router-dom';
-import { AppRoutes } from './routes';
-
+import { HashRouter } from "react-router-dom";
+import App from './App';
 
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement
 );
 root.render(
-  <React.StrictMode>
-   <RouterProvider router={AppRoutes} />
-  </React.StrictMode>
+  <HashRouter>
+    <App />
+   </HashRouter>
 );
 
 // If you want to start measuring performance in your app, pass a function

@@ -1,15 +1,8 @@
 import * as React from 'react';
 import Box from '@mui/material/Box';
-import { AppBar, Button, FormControl, FormControlLabel, FormLabel, IconButton, InputLabel, Menu, MenuItem, Paper, Radio, RadioGroup, Select, TextField, Toolbar, Typography } from '@mui/material';
-import { styled } from '@mui/material/styles';
-import { useLocation, useNavigate, useNavigation, useParams } from 'react-router-dom';
-import BackIcon from '@mui/icons-material/ArrowBack';
+import { Button, FormControl, FormControlLabel,  InputLabel, MenuItem, Paper, Radio, RadioGroup, Select, TextField, Toolbar, Typography } from '@mui/material';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AppHeader } from '../../components/AppBar';
-const Div = styled('div')(({ theme }) => ({
-    ...theme.typography.button,
-    padding: theme.spacing(1),
-}));
-
 
 export const AddTransaction = () => {
     const {state: { type }} = useLocation()
@@ -48,6 +41,7 @@ export const AddTransaction = () => {
                         <MenuItem value={10}>Ten</MenuItem>
                         <MenuItem value={20}>Twenty</MenuItem>
                         <MenuItem value={30}>Thirty</MenuItem>
+                        <MenuItem value={30}>Fourty</MenuItem>
                     </Select>
                 </FormControl>
 

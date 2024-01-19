@@ -2,6 +2,7 @@
   "name": "expense-manager",
   "version": "0.1.0",
   "private": true,
+  "homepage": "https://sathishkrishnan20.github.io/csk-expense-manager",
   "dependencies": {
     "@emotion/react": "^11.11.3",
     "@emotion/styled": "^11.11.0",
@@ -33,8 +34,9 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d build"
+    "pregh:deploy": "npm run build",
+    "gh:deploy": "gh-pages -d build",
+    "deploy": "PUBLIC_URL=/ react-scripts build"
   },
   "eslintConfig": {
     "extends": [

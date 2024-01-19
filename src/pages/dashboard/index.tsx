@@ -16,12 +16,15 @@ import { styled } from '@mui/material/styles';
 import { Transactions } from '../transactions';
 import { useNavigate } from 'react-router-dom';
 import { LOCAL_SESSION_KEYS, getItem } from '../../context/storage';
+import { AuthContext } from '../../context/AuthContext';
 const Div = styled('div')(({ theme }) => ({
     ...theme.typography.button,
     padding: theme.spacing(1),
 }));
 
 export const DashBoard = () => {
+    // @ts-ignore
+    const { logout } = React.useContext(AuthContext);
     const [value, setValue] = React.useState(0);
     const [loginLoader, setLoginLoader] = React.useState(true);
     const navigate = useNavigate();
@@ -49,6 +52,9 @@ export const DashBoard = () => {
              },
         }).then(e => console.log(e))
       };
+      const onLogout = () => {
+        logout()
+      }
     return (
        <Box sx={{ pb: 7 }} ref={ref}>
             <CssBaseline />
@@ -57,7 +63,7 @@ export const DashBoard = () => {
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginLeft: 20, marginRight: 20 }}> 
                     <Avatar alt="Sathish Krishnan" src="/static/images/1.jpg" />
                     <Div style={{ }}>{'January'}</Div>
-                    <div onClick={() => {}}>
+                    <div onClick={() => onLogout()}>
                     <Badge style={{marginTop: 8}} badgeContent={4} color="primary">
                         <NotificationIcon style={{}} color='inherit' />
                     </Badge>

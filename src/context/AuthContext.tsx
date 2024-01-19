@@ -1,7 +1,7 @@
 import { TokenResponse } from '@react-oauth/google';
 import React from 'react';
 import { useSetState } from 'react-use';
-import { LOCAL_SESSION_KEYS, setItem } from './storage';
+import { LOCAL_SESSION_KEYS, removeItem, setItem } from './storage';
 
 
 export interface AuthContextState {
@@ -50,9 +50,12 @@ export const ContextProvider = (props: React.PropsWithChildren) => {
   }
 
   const logout = () => {
+    removeItem(LOCAL_SESSION_KEYS.ACCESS_TOKEN)
+    removeItem(LOCAL_SESSION_KEYS.TOKEN_EXPIRY_TIME)
     setLoginPending(false);
     setLoginSuccess(false);
     setLoginError('');
+    
   }
 
   return (

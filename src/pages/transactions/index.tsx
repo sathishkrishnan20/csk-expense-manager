@@ -37,8 +37,8 @@ export const Transactions = ({ shopAppHeader }: TransactionsProps) => {
         <Box sx={{ pb: 7 }} ref={ref}>
             {shopAppHeader ? <AppHeader title='Transactions' onClickBack={() => navigate(-1) }/> : null } 
             <Paper style={{ backgroundColor: 'ActiveBorder'}}>
-            {transactions.map(item => ( 
-                <Paper style={{  padding: 8, marginBottom: 1, borderRadius: 0 }} elevation={3}>
+            {transactions.map((item, index) => ( 
+                <Paper key={"t"+index} style={{  padding: 8, marginBottom: 1, borderRadius: 0 }} elevation={3}>
                     <div>
                         <Typography style={{ color: 'GrayText' }}>{item.date} {item.time}</Typography>
                         

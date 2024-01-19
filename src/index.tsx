@@ -9,13 +9,16 @@ import '@fontsource/roboto/700.css';
 import reportWebVitals from './reportWebVitals';
 import { HashRouter } from "react-router-dom";
 import App from './App';
+import { ContextProvider } from './context/AuthContext';
 
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement
 );
 root.render(
   <HashRouter>
-    <App />
+      <ContextProvider>
+        <App />
+    </ContextProvider>
    </HashRouter>
 );
 

@@ -11,11 +11,13 @@ import ExpenseIcon from '@mui/icons-material/CreditCardOffOutlined'
 import CreditIcon from '@mui/icons-material/AddCardOutlined';
 
 import NotificationIcon from '@mui/icons-material/NotificationsActive';
-import { Avatar, Badge, Button, Chip, CssBaseline, Paper, SpeedDial, SpeedDialAction, SpeedDialIcon, Typography } from '@mui/material';
+import { Avatar, Badge, Chip, CssBaseline, Paper, SpeedDial, SpeedDialAction, SpeedDialIcon, Typography } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { Transactions } from '../transactions';
 import { useNavigate } from 'react-router-dom';
-
+import {  useGoogleLogin } from '@react-oauth/google';
+import { SCOPES } from '../../config';
+import { LOCAL_SESSION_KEYS, getItem } from '../../context/storage';
 const Div = styled('div')(({ theme }) => ({
     ...theme.typography.button,
     padding: theme.spacing(1),
@@ -23,27 +25,45 @@ const Div = styled('div')(({ theme }) => ({
 
 export const DashBoard = () => {
     const [value, setValue] = React.useState(0);
+    const [loginLoader, setLoginLoader] = React.useState(true);
     const navigate = useNavigate();
     const [accountBalance, setAccountBalance] = React.useState(100);
     const [credit, setCredit] = React.useState(100);
     const [debit, setDebit] = React.useState(100);
     const ref = React.useRef<HTMLDivElement>(null);
+    React.useEffect(() => {
+        loadRecentTransactionsData()
+    })
 
     const actions = [
         { icon: <ExpenseIcon style={{color: 'white'}} />, name: 'Debit', fabBackgrundColor: 'red' },
         { icon: <CreditIcon  style={{color: 'white'}} />, name: 'Credit', fabBackgrundColor: 'green' }
-      ];
+    ];
 
+    const loadRecentTransactionsData = () => {
+        const access_token = getItem(LOCAL_SESSION_KEYS.ACCESS_TOKEN)
+        fetch(`https://sheets.googleapis.com/v4/spreadsheets/${'1Nx_M4TQWgrY6Pp9bC48eBnfUA6fU-iaZjHncU5ZD20o'}`, {
+            method: "GET",
+            headers: {
+                "Content-Type": "application/json",
+                //update this token with yours. 
+                Authorization: `Bearer ${access_token}`,
+             },
+        }).then(e => console.log(e))
+      };
     return (
-        <Box sx={{ pb: 7 }} ref={ref}>
+       <Box sx={{ pb: 7 }} ref={ref}>
             <CssBaseline />
+           
             <Paper style={{ padding: 16, backgroundColor: '#FFF6E5' }} elevation={3}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginLeft: 20, marginRight: 20 }}> 
                     <Avatar alt="Sathish Krishnan" src="/static/images/1.jpg" />
                     <Div style={{ }}>{'January'}</Div>
+                    <div onClick={() => {}}>
                     <Badge style={{marginTop: 8}} badgeContent={4} color="primary">
                         <NotificationIcon style={{}} color='inherit' />
                     </Badge>
+                    </div>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginLeft: 20, marginRight: 20 }}> 
                     <div></div>

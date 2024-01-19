@@ -15,8 +15,6 @@ import { Avatar, Badge, Chip, CssBaseline, Paper, SpeedDial, SpeedDialAction, Sp
 import { styled } from '@mui/material/styles';
 import { Transactions } from '../transactions';
 import { useNavigate } from 'react-router-dom';
-import {  useGoogleLogin } from '@react-oauth/google';
-import { SCOPES } from '../../config';
 import { LOCAL_SESSION_KEYS, getItem } from '../../context/storage';
 const Div = styled('div')(({ theme }) => ({
     ...theme.typography.button,

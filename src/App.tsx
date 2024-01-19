@@ -1,14 +1,13 @@
-import React, { useContext } from 'react';
+import React from 'react';
 import { Routes, Route } from "react-router-dom";
 import { DashBoard } from './pages/dashboard';
 import { Transactions } from './pages/transactions';
 import { AddTransaction } from './pages/addTransaction';
 import { createTheme } from '@mui/material';
 import { ThemeProvider } from '@emotion/react';
-import { GoogleOAuthProvider } from '@react-oauth/google';
-import { CLIENT_ID } from './config';
-import { AuthContext } from './context/AuthContext';
-import { Login } from './pages/Login';
+// import { GoogleOAuthProvider } from '@react-oauth/google';
+// import { CLIENT_ID } from './config';
+// import { Login } from './pages/Login';
 const theme = createTheme({
   palette: {
     primary: {
@@ -21,20 +20,19 @@ const theme = createTheme({
 
 function App() {
   // @ts-ignore
-  const { state } = useContext(AuthContext);
-  console.log(state)
+  // const { state } = useContext(AuthContext);
+  // console.log(state)
   return (
   
       <ThemeProvider theme={theme}>
-        <GoogleOAuthProvider clientId={CLIENT_ID}> 
-          {!state.isLoggedIn ? <Routes> <Route path="/" element={<Login />}> </Route> </Routes> : 
-          <Routes>
-            <Route path="/login" element={<Login />} />
+        <div> Hello </div>
+        {/* <GoogleOAuthProvider clientId={CLIENT_ID}>  */}
+          {/* <Routes>
             <Route path="/" element={<DashBoard />} />
             <Route path="/transactions" element={<Transactions shopAppHeader={true} />} />
             <Route path="/add" element={<AddTransaction />} />
-          </Routes> }
-        </GoogleOAuthProvider>
+          </Routes> */}
+        {/* </GoogleOAuthProvider> */}
       </ThemeProvider>
   );
 }

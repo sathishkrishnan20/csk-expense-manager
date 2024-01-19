@@ -84,7 +84,7 @@ export const DashBoard = () => {
                         <Chip style={{ color: '#7F3DFF', backgroundColor: '#EEE5FF'}}  label="See All" />
                     </div>
                 </div>
-                <Transactions />
+                <Transactions shopAppHeader={false} />
             </Paper>
      
             <Paper sx={{ position: 'fixed', bottom: 0, left: 0, right: 0 }} elevation={5}>

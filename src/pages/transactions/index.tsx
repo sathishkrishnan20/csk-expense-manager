@@ -5,6 +5,7 @@ import { styled } from '@mui/material/styles';
 import { ThemeContext } from '@emotion/react';
 import { AppHeader } from '../../components/AppBar';
 import { useNavigate } from 'react-router-dom';
+import { ExpenseSchema } from '../../interface/expenses';
 
 const Div = styled('div')(({ theme }) => ({
     ...theme.typography.button,
@@ -12,9 +13,10 @@ const Div = styled('div')(({ theme }) => ({
 }));
 
 interface TransactionsProps {
-    shopAppHeader: boolean
+    shopAppHeader: boolean;
+    transactions?: ExpenseSchema[]
 }
-export const Transactions = ({ shopAppHeader }: TransactionsProps) => {
+export const Transactions = ({ shopAppHeader, transactions }: TransactionsProps) => {
     const navigate = useNavigate()
     const [value, setValue] = React.useState(0);
     const [accountBalance, setAccountBalance] = React.useState(100);
@@ -22,39 +24,30 @@ export const Transactions = ({ shopAppHeader }: TransactionsProps) => {
     const [debit, setDebit] = React.useState(100);
     const ref = React.useRef<HTMLDivElement>(null);
 
-    const [transactions, setTransactions] = React.useState([
-        { category: 'Entertainment', date: '2023-01-01', time: '12:00 AM', subCategory: 'Movies', amount: 300, payee: 'IMax', paymentMethod: 'Cash', description: 'Payment Done', closingBalance: 300, status: 'cleared', type: 'CREDIT'  },
-        { category: 'Entertainment', date: '2023-01-01',  time: '10:00 AM', subCategory: 'Food', amount: 600, payee: 'Refuel', paymentMethod: 'Cash', description: '', closingBalance: 400 , status: 'uncleared',  type: 'DEBIT' },
-        { category: 'Entertainment', date: '2023-01-01', time: '12:00 AM', subCategory: 'Movies', amount: 300, payee: 'IMax', paymentMethod: 'Cash', description: 'Payment Done', closingBalance: 300, status: 'cleared', type: 'CREDIT'  },
-        { category: 'Entertainment', date: '2023-01-01',  time: '10:00 AM', subCategory: 'Food', amount: 600, payee: 'Refuel', paymentMethod: 'Cash', description: '', closingBalance: 400 , status: 'uncleared',  type: 'DEBIT' },
-        { category: 'Entertainment', date: '2023-01-01', time: '12:00 AM', subCategory: 'Movies', amount: 300, payee: 'IMax', paymentMethod: 'Cash', description: 'Payment Done', closingBalance: 300, status: 'cleared', type: 'CREDIT'  },
-        { category: 'Entertainment', date: '2023-01-01',  time: '10:00 AM', subCategory: 'Food', amount: 600, payee: 'Refuel', paymentMethod: 'Cash', description: '', closingBalance: 400 , status: 'uncleared',  type: 'DEBIT' },
-    
-    ]);
-
-    
+   
+    const getType = (amount?: string) => Number(amount) >= 0 ? 'CREDIT' : 'DEBIT' 
     return (
         <Box sx={{ pb: 7 }} ref={ref}>
             {shopAppHeader ? <AppHeader title='Transactions' onClickBack={() => navigate(-1) }/> : null } 
             <Paper style={{ backgroundColor: 'ActiveBorder'}}>
-            {transactions.map((item, index) => ( 
+            {transactions?.map((item, index) => ( 
                 <Paper key={"t"+index} style={{  padding: 8, marginBottom: 1, borderRadius: 0 }} elevation={3}>
                     <div>
-                        <Typography style={{ color: 'GrayText' }}>{item.date} {item.time}</Typography>
+                        <Typography style={{ color: 'GrayText' }}>{item.Timestamp}</Typography>
                         
                         <div style={{display: 'flex', justifyContent: 'space-between'}}> 
-                            <Typography>{item.payee}</Typography>
-                            <Typography color={item.type === 'CREDIT' ? 'green': 'red'} fontWeight={900}>₹{item.amount}</Typography>
+                            <Typography>{item.Payee}</Typography>
+                            <Typography color={getType(item.Amount) === 'CREDIT' ? 'green': 'red'} fontWeight={900}>₹{getType(item.Amount) === 'CREDIT' ? item.Amount: Number(item.Amount) * - 1 }</Typography>
                         </div>
 
                         <div style={{display: 'flex', justifyContent: 'space-between'}}> 
-                            <Typography>{item.category} : {item.subCategory}</Typography>
-                            <Typography fontWeight={800}>₹{item.closingBalance}</Typography>
+                            <Typography>{item.Category} : {item.SubCategory}</Typography>
+                            <Typography fontWeight={800}>₹{item.ClosingBalance}</Typography>
                         </div>
                         
                         <div style={{display: 'flex', justifyContent: 'space-between'}}> 
-                            <Typography fontWeight={100} fontSize={14}>{item.description}</Typography>
-                            <Typography fontWeight={200}>{item.paymentMethod} - {item.status}</Typography>
+                            <Typography fontWeight={100} fontSize={14}>{item.Description}</Typography>
+                            <Typography fontWeight={200}>{item.PaymentMethod} - {item.Status}</Typography>
                         </div>
                     </div>
                 </Paper>

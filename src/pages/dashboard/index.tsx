@@ -17,6 +17,8 @@ import { Transactions } from '../transactions';
 import { useNavigate } from 'react-router-dom';
 import { LOCAL_SESSION_KEYS, getItem } from '../../context/storage';
 import { AuthContext } from '../../context/AuthContext';
+import { instance } from '../../services/gsheet';
+import { ExpenseSchema } from '../../interface/expenses';
 const Div = styled('div')(({ theme }) => ({
     ...theme.typography.button,
     padding: theme.spacing(1),
@@ -26,8 +28,8 @@ export const DashBoard = () => {
     // @ts-ignore
     const { logout } = React.useContext(AuthContext);
     const [value, setValue] = React.useState(0);
-    const [loginLoader, setLoginLoader] = React.useState(true);
     const navigate = useNavigate();
+    const [recentTransactions, setRecentTransactions] = React.useState<ExpenseSchema[]>([])
     const [accountBalance, setAccountBalance] = React.useState(100);
     const [credit, setCredit] = React.useState(100);
     const [debit, setDebit] = React.useState(100);
@@ -41,16 +43,28 @@ export const DashBoard = () => {
         { icon: <CreditIcon  style={{color: 'white'}} />, name: 'Credit', fabBackgrundColor: 'green' }
     ];
 
-    const loadRecentTransactionsData = () => {
-        const access_token = getItem(LOCAL_SESSION_KEYS.ACCESS_TOKEN)
-        fetch(`https://sheets.googleapis.com/v4/spreadsheets/${'1Nx_M4TQWgrY6Pp9bC48eBnfUA6fU-iaZjHncU5ZD20o'}`, {
-            method: "GET",
-            headers: {
-                "Content-Type": "application/json",
-                //update this token with yours. 
-                Authorization: `Bearer ${access_token}`,
-             },
-        }).then(e => console.log(e))
+    const loadRecentTransactionsData = async () => {
+        const { data }  = await instance.get(`/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/values/Sheet1!A1:J99999?majorDimension=ROWS`)
+        const headers: string[] = data.values[0] as string[]
+        
+        const values = data.values;
+        const transactions = [];
+        let transactionCount = 0;
+        for (let index = values.length - 1; index >= 1; index--) {
+            if (transactionCount >= 10) {
+                break;
+            }
+            const element = values[index];
+            const obj: ExpenseSchema = {}
+            for (let h = 0; h < headers.length; h++) {
+                const header = headers[h] as keyof ExpenseSchema;
+                obj[header] = element[h]
+            }
+
+            transactions.push(obj);
+            transactionCount++
+        }
+        setRecentTransactions(transactions);
       };
       const onLogout = () => {
         logout()
@@ -104,11 +118,11 @@ export const DashBoard = () => {
             <Paper style={{ marginTop: 4}} elevation={0}>
                 <div style={{ display: 'flex',  marginLeft: 6, marginBottom: 4, justifyContent: 'space-between'}}>
                     <Typography fontWeight={800}>  Recent Transactions </Typography>
-                    <div  onClick={()=> navigate('/transactions')}> 
+                    <div onClick={()=> navigate('/transactions')}> 
                         <Chip style={{ color: '#7F3DFF', backgroundColor: '#EEE5FF'}}  label="See All" />
                     </div>
                 </div>
-                <Transactions shopAppHeader={false} />
+                <Transactions shopAppHeader={false} transactions={recentTransactions} />
             </Paper>
      
             <Paper sx={{ position: 'fixed', bottom: 0, left: 0, right: 0 }} elevation={5}>

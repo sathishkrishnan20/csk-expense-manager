@@ -1,6 +1,7 @@
 export enum LOCAL_SESSION_KEYS  {
     ACCESS_TOKEN = 'access_token',
-    TOKEN_EXPIRY_TIME = 'token_expiry_time'
+    TOKEN_EXPIRY_TIME = 'token_expiry_time',
+    SHEET_ID = 'sheet_id'
 }
 export const setItem = (key: LOCAL_SESSION_KEYS, value: string) => {
     sessionStorage.setItem(key, value);    

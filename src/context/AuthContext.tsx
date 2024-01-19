@@ -1,7 +1,7 @@
-import { TokenResponse } from '@react-oauth/google';
 import React from 'react';
 import { useSetState } from 'react-use';
 import { LOCAL_SESSION_KEYS, removeItem, setItem } from './storage';
+import { SHEET_ID } from '../config';
 
 
 export interface AuthContextState {
@@ -42,6 +42,7 @@ export const ContextProvider = (props: React.PropsWithChildren) => {
       setLoginSuccess(true); 
       setItem(LOCAL_SESSION_KEYS.ACCESS_TOKEN, loginResponse.access_token)
       setItem(LOCAL_SESSION_KEYS.TOKEN_EXPIRY_TIME, loginResponse.expiry_time.toString())
+      setItem(LOCAL_SESSION_KEYS.SHEET_ID, SHEET_ID)
     } catch (error) {
       setLoginError('error');
     } finally {

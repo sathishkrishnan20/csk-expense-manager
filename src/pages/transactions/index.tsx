@@ -1,17 +1,11 @@
 import * as React from 'react';
 import Box from '@mui/material/Box';
-import { Paper, ThemeProvider, Typography, colors } from '@mui/material';
-import { styled } from '@mui/material/styles';
-import { ThemeContext } from '@emotion/react';
+import { Paper, Typography } from '@mui/material';
 import { AppHeader } from '../../components/AppBar';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ExpenseSchema } from '../../interface/expenses';
 import { getTransactionsData } from '../../services/gsheet';
 
-const Div = styled('div')(({ theme }) => ({
-    ...theme.typography.button,
-    padding: theme.spacing(1),
-}));
 
 interface TransactionsProps {
     shopAppHeader: boolean;
@@ -20,21 +14,19 @@ interface TransactionsProps {
 export const Transactions = ({ shopAppHeader, transactions: transactionsViaNaviagation }: TransactionsProps) => {
     const navigate = useNavigate()
     const { state } = useLocation()
-    const [value, setValue] = React.useState(0);
     const [transactions, setTransactions] = React.useState<ExpenseSchema[]>([]);
-    const [accountBalance, setAccountBalance] = React.useState(100);
-    const [credit, setCredit] = React.useState(100);
-    const [debit, setDebit] = React.useState(100);
     const ref = React.useRef<HTMLDivElement>(null);
+    
     React.useEffect(() => {
         if (transactionsViaNaviagation?.length) {
             setTransactions(transactionsViaNaviagation)
-        } else if(state?.transactions?.length) {
+
+        } else if (state?.transactions?.length) {
             setTransactions(state.transactions)
         } else {
             loadRecentTransactionsData()
         }
-    }, []) 
+    }, [])
 
     const loadRecentTransactionsData = async () => {
         const {transactions}  = await getTransactionsData()
@@ -46,7 +38,7 @@ export const Transactions = ({ shopAppHeader, transactions: transactionsViaNavia
         <Box sx={{ pb: 7 }} ref={ref}>
             {shopAppHeader ? <AppHeader title='Transactions' onClickBack={() => navigate(-1) }/> : null } 
             <Paper style={{ backgroundColor: 'ActiveBorder'}}>
-            {transactions?.map((item, index) => ( 
+            {(transactions || []).map((item, index) => ( 
                 <Paper key={"t"+index} style={{  padding: 8, marginBottom: 1, borderRadius: 0 }} elevation={3}>
                     <div>
                         <Typography style={{ color: 'GrayText' }}>{item.Timestamp}</Typography>
@@ -67,7 +59,6 @@ export const Transactions = ({ shopAppHeader, transactions: transactionsViaNavia
                         </div>
                     </div>
                 </Paper>
-      
             ))}
          </Paper>   
         </Box>

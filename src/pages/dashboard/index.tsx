@@ -1,21 +1,14 @@
 import * as React from 'react';
 import Box from '@mui/material/Box';
-import BottomNavigation from '@mui/material/BottomNavigation';
-import BottomNavigationAction from '@mui/material/BottomNavigationAction';
-import HomeIcon from '@mui/icons-material/Home';
-import TransactionIcon from '@mui/icons-material/DynamicForm';
-import BudgetIcon from '@mui/icons-material/PieChart'
-import ProfileIcon from '@mui/icons-material/AccountCircle';
 
 import ExpenseIcon from '@mui/icons-material/CreditCardOffOutlined'
 import CreditIcon from '@mui/icons-material/AddCardOutlined';
 
-import NotificationIcon from '@mui/icons-material/NotificationsActive';
-import { Avatar, Badge, Chip, CssBaseline, Paper, SpeedDial, SpeedDialAction, SpeedDialIcon, Typography } from '@mui/material';
+import NotificationIcon from '@mui/icons-material/PowerSettingsNew';
+import { Avatar, Badge, Chip, CssBaseline, Paper, Typography } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { Transactions } from '../transactions';
 import { useNavigate } from 'react-router-dom';
-import { LOCAL_SESSION_KEYS, getItem } from '../../context/storage';
 import { AuthContext } from '../../context/AuthContext';
 import { getTransactionsData } from '../../services/gsheet';
 import { ExpenseSchema } from '../../interface/expenses';
@@ -26,8 +19,7 @@ const Div = styled('div')(({ theme }) => ({
 
 export const DashBoard = () => {
     // @ts-ignore
-    const { logout } = React.useContext(AuthContext);
-    const [value, setValue] = React.useState(0);
+    const { logout, state } = React.useContext(AuthContext);
     const navigate = useNavigate();
     const [transactions, setTransactions] = React.useState<ExpenseSchema[]>([])
     const [accountBalance, setAccountBalance] = React.useState(100);
@@ -38,17 +30,18 @@ export const DashBoard = () => {
         loadRecentTransactionsData()
     }, [])
 
-    const actions = [
-        { icon: <ExpenseIcon style={{color: 'white'}} />, name: 'Debit', fabBackgrundColor: 'red' },
-        { icon: <CreditIcon  style={{color: 'white'}} />, name: 'Credit', fabBackgrundColor: 'green' }
-    ];
-
     const loadRecentTransactionsData = async () => {
-        const {transactions, balance, income, expenses }  = await getTransactionsData()
-        setTransactions(transactions);
-        setCredit(income)
-        setAccountBalance(balance)
-        setDebit(expenses)
+        try { 
+            const {transactions, balance, income, expenses }  = await getTransactionsData()
+            setTransactions(transactions);
+            setCredit(income)
+            setAccountBalance(balance)
+            setDebit(expenses)
+        } catch(error: any) {
+            if (error.response.status === 401) {
+                logout()
+            }
+        }
       };
       const onLogout = () => {
         logout()
@@ -60,11 +53,11 @@ export const DashBoard = () => {
            
             <Paper style={{ padding: 16, backgroundColor: '#FFF6E5' }} elevation={3}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginLeft: 20, marginRight: 20 }}> 
-                    <Avatar alt="Sathish Krishnan" src="/static/images/1.jpg" />
-                    <Div style={{ }}>{'January'}</Div>
+                    <Avatar alt={state?.userInfo?.name} src={state?.userInfo?.picture} />
+                    <Div style={{ }}>{new Date().toLocaleString('default', { month: 'long' })}</Div>
                     <div onClick={() => onLogout()}>
-                    <Badge style={{marginTop: 8}} badgeContent={4} color="primary">
-                        <NotificationIcon style={{}} color='inherit' />
+                    <Badge style={{marginTop: 8}} color="primary">
+                        <NotificationIcon  style={{ fontSize: 30}} color='error' />
                     </Badge>
                     </div>
                 </div>
@@ -107,42 +100,7 @@ export const DashBoard = () => {
                         <Chip style={{ color: '#7F3DFF', backgroundColor: '#EEE5FF'}}  label="See All" />
                     </div>
                 </div>
-                <Transactions shopAppHeader={false} transactions={transactions} />
-            </Paper>
-     
-            <Paper sx={{ position: 'fixed', bottom: 0, left: 0, right: 0 }} elevation={5}>
-                <BottomNavigation
-                  showLabels
-                  onChange={(event, newValue) => {
-                    setValue(newValue);
-                  }}
-                  value={value}>
-                    <BottomNavigationAction label="Home" icon={<HomeIcon />} />
-                    <BottomNavigationAction onClick={()=>  naviageToTransactionsPage()} label="Transactions" icon={<TransactionIcon />} />
-                    <SpeedDial
-                        ariaLabel="Add"
-                        sx={{ marginTop: -100 }}
-                        FabProps={{ style: { 
-                            marginBottom: 20, 
-                            backgroundColor: '#7F3DFF',
-                            width: 60,
-                            height: 60, 
-                            borderRadius: 100, 
-                        }}}
-                        icon={<SpeedDialIcon style={{color: '#FFF', backgroundColor: '#7F3DFF'}} />}>
-                        {actions.map((action) => (
-                          <SpeedDialAction
-                            FabProps={{ style: { backgroundColor: action.fabBackgrundColor}}}
-                            key={action.name}
-                            icon={action.icon}
-                            onClick={() => navigate('/add', { state: { type: action.name.toUpperCase() }})}
-                            tooltipTitle={action.name}
-                          />
-                        ))}
-                    </SpeedDial>
-                    <BottomNavigationAction label="Budget" icon={<BudgetIcon />} />
-                    <BottomNavigationAction label="Profile" icon={<ProfileIcon />} />
-                </BottomNavigation>
+                {transactions?.length ? <Transactions shopAppHeader={false} transactions={transactions.slice(0, 5)} /> : null}
             </Paper>
         </Box>
     )

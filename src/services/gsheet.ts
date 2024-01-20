@@ -12,12 +12,12 @@ interface GetSheetData {
     income: number;
     expenses: number; 
 }
-
 interface MasterResp {
     category: CategorySubCategoryGrouped[]
     payments: PaymentMethodsSchema[]
 }
-    export const instance = axios.create({
+
+    const instance = axios.create({
         baseURL: 'https://sheets.googleapis.com/v4/spreadsheets'
     });
     instance.interceptors.request.use(function (config) {
@@ -29,6 +29,18 @@ interface MasterResp {
         // Do something with request error
         return Promise.reject(error);
     });
+
+    instance.interceptors.response.use(function (response) {
+        // Any status code that lie within the range of 2xx cause this function to trigger
+        // Do something with response data
+        return response;
+      }, function (error) {
+       
+        // Any status codes that falls outside the range of 2xx cause this function to trigger
+        // Do something with response error
+
+        return Promise.reject(error);
+      });
 
     export const getTransactionsData = async (): Promise<GetSheetData> => {
         let balance = 0;
@@ -61,8 +73,7 @@ interface MasterResp {
             return {transactions, balance, income, expenses }
             
         } catch (error) {
-            console.log(error)
-            return { transactions: [], balance, income, expenses }    
+            throw error;
         }
     }
 

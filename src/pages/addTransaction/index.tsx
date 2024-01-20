@@ -76,7 +76,9 @@ export const AddTransaction = () => {
                         <FormControlLabel onChange={() => setTransactionType('CREDIT') }  value="CREDIT" control={<Radio checked={transactionType === 'CREDIT' ? true : false}/>} label="Credit" />
                     </RadioGroup>
                 </FormControl>
-                
+                <FormControl>
+                    <TextField onChange={(text) => setAmountText(text.target.value)} value={amountText} type='number' id="outlined-basic" label="Amount" variant="outlined" />
+                </FormControl>
                 <FormControl>
                     <InputLabel id="category-label">Category</InputLabel>
                     <Select
@@ -109,9 +111,7 @@ export const AddTransaction = () => {
                     </Select>
                 </FormControl>
 
-                <FormControl>
-                    <TextField onChange={(text) => setAmountText(text.target.value)} value={amountText} type='number' id="outlined-basic" label="Amount" variant="outlined" />
-                </FormControl>
+               
                 <FormControl>
                     <TextField onChange={(text) => setPayeeText(text.target.value)} value={payeeText}  id="outlined-basic" label="Payeee" variant="outlined" />
                 </FormControl>

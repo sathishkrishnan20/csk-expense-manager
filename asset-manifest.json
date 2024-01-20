@@ -1,7 +1,7 @@
 {
   "files": {
     "main.css": "/csk-expense-manager/static/css/main.7eaf92b2.css",
-    "main.js": "/csk-expense-manager/static/js/main.dc3f26f0.js",
+    "main.js": "/csk-expense-manager/static/js/main.2727a45a.js",
     "static/js/787.473e7a1b.chunk.js": "/csk-expense-manager/static/js/787.473e7a1b.chunk.js",
     "static/media/roboto-latin-500-normal.woff2": "/csk-expense-manager/static/media/roboto-latin-500-normal.f25d774ecfe0996f8eb5.woff2",
     "static/media/roboto-latin-700-normal.woff2": "/csk-expense-manager/static/media/roboto-latin-700-normal.227c93190fe7f82de3f8.woff2",
@@ -61,11 +61,11 @@
     "static/media/roboto-greek-ext-700-normal.woff": "/csk-expense-manager/static/media/roboto-greek-ext-700-normal.249853776d22a271b2b5.woff",
     "index.html": "/csk-expense-manager/index.html",
     "main.7eaf92b2.css.map": "/csk-expense-manager/static/css/main.7eaf92b2.css.map",
-    "main.dc3f26f0.js.map": "/csk-expense-manager/static/js/main.dc3f26f0.js.map",
+    "main.2727a45a.js.map": "/csk-expense-manager/static/js/main.2727a45a.js.map",
     "787.473e7a1b.chunk.js.map": "/csk-expense-manager/static/js/787.473e7a1b.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.7eaf92b2.css",
-    "static/js/main.dc3f26f0.js"
+    "static/js/main.2727a45a.js"
   ]
 }

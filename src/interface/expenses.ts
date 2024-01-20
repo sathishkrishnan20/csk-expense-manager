@@ -14,18 +14,20 @@ export interface ExpenseSchema {
 
 
 export interface PaymentMethodsSchema {
-    rowId?: string;
+    RowId?: string;
     PaymentMethodName?: string;
+    Timestamp?: string;
 }
 
 export interface CategorySubCategorySchema {
-    rowId?: string;
+    RowId?: string;
     CategoryName?: string;
     SubCategoryName?: string;
+    Timestamp?: string;
 }
 
 export interface SubCategorySchema {
-    rowId: string;
+    RowId: string;
     subCategory: string;
 }
 export interface CategorySubCategoryGrouped {

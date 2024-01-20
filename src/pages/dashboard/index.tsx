@@ -5,13 +5,15 @@ import ExpenseIcon from '@mui/icons-material/CreditCardOffOutlined'
 import CreditIcon from '@mui/icons-material/AddCardOutlined';
 
 import NotificationIcon from '@mui/icons-material/PowerSettingsNew';
-import { Avatar, Badge, Chip, CssBaseline, Paper, Typography } from '@mui/material';
+import { Avatar, Badge, Chip, CssBaseline, LinearProgress, Paper, Skeleton, Typography } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { Transactions } from '../transactions';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
 import { getTransactionsData } from '../../services/gsheet';
 import { ExpenseSchema } from '../../interface/expenses';
+import { TransactionSkeleton } from '../../components/Transactions/skeleton';
+import { TransactionNotFound } from '../../components/Transactions/not_found';
 const Div = styled('div')(({ theme }) => ({
     ...theme.typography.button,
     padding: theme.spacing(1),
@@ -22,9 +24,10 @@ export const DashBoard = () => {
     const { logout, state } = React.useContext(AuthContext);
     const navigate = useNavigate();
     const [transactions, setTransactions] = React.useState<ExpenseSchema[]>([])
-    const [accountBalance, setAccountBalance] = React.useState(100);
-    const [credit, setCredit] = React.useState(100);
-    const [debit, setDebit] = React.useState(100);
+    const [accountBalance, setAccountBalance] = React.useState(0);
+    const [credit, setCredit] = React.useState(0);
+    const [debit, setDebit] = React.useState(0);
+    const [loader, setLoader] = React.useState<boolean>(false);
     const ref = React.useRef<HTMLDivElement>(null);
     React.useEffect(() => {
         loadRecentTransactionsData()
@@ -32,11 +35,13 @@ export const DashBoard = () => {
 
     const loadRecentTransactionsData = async () => {
         try { 
+            setLoader(true)
             const {transactions, balance, income, expenses }  = await getTransactionsData()
             setTransactions(transactions);
             setCredit(income)
             setAccountBalance(balance)
             setDebit(expenses)
+            setLoader(false)
         } catch(error: any) {
             if (error.response.status === 401) {
                 logout()
@@ -47,6 +52,7 @@ export const DashBoard = () => {
         logout()
       }
       const naviageToTransactionsPage = () => navigate('/transactions', { state: { transactions } })
+
     return (
        <Box sx={{ pb: 7 }} ref={ref}>
             <CssBaseline />
@@ -100,7 +106,7 @@ export const DashBoard = () => {
                         <Chip style={{ color: '#7F3DFF', backgroundColor: '#EEE5FF'}}  label="See All" />
                     </div>
                 </div>
-                {transactions?.length ? <Transactions shopAppHeader={false} transactions={transactions.slice(0, 5)} /> : null}
+                {transactions?.length ? <Transactions shopAppHeader={false} transactions={transactions.slice(0, 5)} /> : loader ? <TransactionSkeleton /> : <TransactionNotFound /> }
             </Paper>
         </Box>
     )

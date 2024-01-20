@@ -8,11 +8,17 @@ import TransactionIcon from '@mui/icons-material/DynamicForm';
 import ExpenseIcon from '@mui/icons-material/CreditCardOffOutlined'
 import CreditIcon from '@mui/icons-material/AddCardOutlined';
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 export const AppFooter = () => {
     const navigate = useNavigate();
+    const {pathname} = useLocation()
+    const hideCreditDebitButton = pathname === '/add';
     const [value, setValue] = React.useState(0);
+    const [open, setOpen] = React.useState(false);
+    const handleOpen = () => setOpen(true);
+    const handleClose = () => setOpen(false);
+
     const actions = [
         { icon: <ExpenseIcon style={{color: 'white'}} />, name: 'Debit', fabBackgrundColor: 'red' },
         { icon: <CreditIcon  style={{color: 'white'}} />, name: 'Credit', fabBackgrundColor: 'green' }
@@ -25,8 +31,10 @@ export const AppFooter = () => {
           onChange={(event, newValue) => {
             setValue(newValue);
           }}
+          
           value={value}>
             <BottomNavigationAction onClick={()=> navigate('/')} label="Home" icon={<HomeIcon />} />
+            {hideCreditDebitButton ? null : 
             <SpeedDial
                 ariaLabel="Add"
                 sx={{ marginTop: -100 }}
@@ -37,17 +45,23 @@ export const AppFooter = () => {
                     height: 60, 
                     borderRadius: 100, 
                 }}}
+                onClose={handleClose}
+                onOpen={handleOpen}
+                open={open}
                 icon={<SpeedDialIcon style={{color: '#FFF', backgroundColor: '#7F3DFF'}} />}>
                 {actions.map((action) => (
                   <SpeedDialAction
                     FabProps={{ style: { backgroundColor: action.fabBackgrundColor}}}
                     key={action.name}
                     icon={action.icon}
-                    onClick={() => navigate('/add', { state: { type: action.name.toUpperCase() }})}
+                    onClick={() => {
+                        handleClose()
+                        navigate('/add', { state: { type: action.name.toUpperCase() }})
+                    }}
                     tooltipTitle={action.name}
                   />
                 ))}
-            </SpeedDial>
+            </SpeedDial> }
             <BottomNavigationAction onClick={()=> navigate('transactions')} label="Transactions" icon={<TransactionIcon />} />
             
             {/* <BottomNavigationAction label="Budget" icon={<BudgetIcon />} />

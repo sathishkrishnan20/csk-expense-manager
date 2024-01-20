@@ -3,9 +3,10 @@ import React, { useContext, useEffect } from "react";
 import { AuthContext } from "../../context/AuthContext";
 import { useGoogleLogin } from "@react-oauth/google";
 import { SCOPES } from "../../config";
-import { LOCAL_SESSION_KEYS, getItem } from "../../context/storage";
+import { LOCAL_SESSION_KEYS, getItem, setItem } from "../../context/storage";
 import GoolgeIcon from '@mui/icons-material/Google';
 import axios from "axios";
+import { getOrSearchExpenseManagerFile } from "../../services/gdrive";
 
 
 export const Login =  () => {
@@ -17,6 +18,9 @@ export const Login =  () => {
           const expiryTime = Number(getItem(LOCAL_SESSION_KEYS.TOKEN_EXPIRY_TIME)) 
           if (new Date().getTime() <= expiryTime) {
             const accessToken = getItem(LOCAL_SESSION_KEYS.ACCESS_TOKEN)
+            const sheetId = getItem(LOCAL_SESSION_KEYS.SHEET_ID);
+            if(sheetId)
+            setItem(LOCAL_SESSION_KEYS.SHEET_ID, sheetId)
             login({
                 access_token: accessToken,
                 expiry_time: expiryTime
@@ -28,6 +32,8 @@ export const Login =  () => {
             const expiryTime = new Date();
             expiryTime.setSeconds(expiryTime.getSeconds() + codeResponse.expires_in - 99);
             const { data } = await axios.get(`https://www.googleapis.com/oauth2/v1/userinfo?alt=json&access_token=${codeResponse.access_token}`)
+            setItem(LOCAL_SESSION_KEYS.ACCESS_TOKEN, codeResponse.access_token)
+            await getExpenseManagerFile()
             setUser({
                 id: data.id,
                 name: data.name,
@@ -41,7 +47,9 @@ export const Login =  () => {
         flow: 'implicit',
         scope: SCOPES
       });
-    
+    const getExpenseManagerFile = async () => {
+        await getOrSearchExpenseManagerFile()
+    }
     return (
         <Box sx={{ pb: 7 }} ref={ref}>
             <Paper style={{ display: 'flex', flexDirection: 'column', padding: 16, backgroundColor: '#F5F5F5', height: windowSize.current[1] }} elevation={3}>

@@ -51,6 +51,7 @@ export const AddTransaction = () => {
         })
         resetData()
     }
+    const canBeAdd = !!category && !!subCategory && !!amountText && !!payeeText;
     const resetData = () => {
         setCategory('')
         setSubCategory('')
@@ -61,7 +62,9 @@ export const AddTransaction = () => {
     }
     return (
         <Box sx={{ pb: 7 }} ref={ref}>
-            <AppHeader title='Add Transactions' onClickBack={() => navigate(-1) } onClickRightButton={() => addOrUpdateNewTransactions()} />
+            {canBeAdd ? <AppHeader title='Add Transactions' onClickBack={() => navigate(-1) } onClickRightButton={() => addOrUpdateNewTransactions()} /> 
+                : <AppHeader title='Add Transactions' onClickBack={() => navigate(-1) }/> 
+            }
             <Paper style={{  padding: 8, display: 'flex', flexDirection: 'column', gap: 12}}> 
                 <FormControl>
                     <RadioGroup
@@ -132,8 +135,8 @@ export const AddTransaction = () => {
                     <TextField onChange={(text) => setDescriptionText(text.target.value)} value={descriptionText} id="outlined-basic" label="Description" variant="outlined" />
                 </FormControl>
             </Paper>
-            <Paper sx={{ position: 'fixed', bottom: 0, left: 0, right: 0 }} elevation={5}>
-                <Button onClick={() => addOrUpdateNewTransactions()} style={{width: '100%'}} variant="contained">Add</Button>
+            <Paper sx={{ position: 'fixed', bottom: 60, left: 0, right: 0 }} elevation={5}>
+                <Button disabled={canBeAdd === false} onClick={() => addOrUpdateNewTransactions()} style={{width: '100%'}} variant="contained">Add</Button>
             </Paper>
         </Box>
     )

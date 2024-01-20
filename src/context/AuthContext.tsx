@@ -1,7 +1,6 @@
 import React from 'react';
 import { useSetState } from 'react-use';
 import { LOCAL_SESSION_KEYS, getItem, removeItem, setItem } from './storage';
-import { SHEET_ID } from '../config';
 
 interface UserInfo {
   id: string;
@@ -55,7 +54,6 @@ export const ContextProvider = (props: React.PropsWithChildren) => {
       setLoginSuccess(true); 
       setItem(LOCAL_SESSION_KEYS.ACCESS_TOKEN, loginResponse.access_token)
       setItem(LOCAL_SESSION_KEYS.TOKEN_EXPIRY_TIME, loginResponse.expiry_time.toString())
-      setItem(LOCAL_SESSION_KEYS.SHEET_ID, SHEET_ID)
       const userInfo = getItem(LOCAL_SESSION_KEYS.USER_INFO)
       if (userInfo) {
         setUserInfo(JSON.parse(userInfo))
@@ -73,7 +71,7 @@ export const ContextProvider = (props: React.PropsWithChildren) => {
   }
 
   const logout = () => {
-    removeItem(LOCAL_SESSION_KEYS.ACCESS_TOKEN)
+    // removeItem(LOCAL_SESSION_KEYS.ACCESS_TOKEN)
     removeItem(LOCAL_SESSION_KEYS.TOKEN_EXPIRY_TIME)
     setLoginPending(false);
     setLoginSuccess(false);

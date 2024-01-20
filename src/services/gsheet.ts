@@ -1,11 +1,7 @@
 import axios from "axios";
 import { LOCAL_SESSION_KEYS, getItem } from "../context/storage";
 import { CategorySubCategoryGrouped, CategorySubCategorySchema, ExpenseSchema, PaymentMethodsSchema } from "../interface/expenses";
-
-const CATEGORY_SUBCATEGORY_SHEET_NAME = 'categoryAndSubCategory';
-const PAYMENT_METHOD_SHEET_NAME = 'paymentMethods'
-const TRANSACTION_SHEET_NAME = 'Sheet1'
-const TRANSACTION_COLUMNS_ORDERS: (keyof ExpenseSchema)[] = ['RowId', 'Category', 'SubCategory', 'Payee', 'PaymentMethod', 'Status', 'Description', 'Amount', 'OpeningBalance', 'ClosingBalance', 'Timestamp']
+import { CATEGORY_SUBCATEGORY_TAB_HEADERS, CATEGORY_SUBCATEGORY_TAB_NAME, CATEGORY_SUB_CATEGORY_MASTER_DATA, PAYMENT_METHODS_MASTER_DATA, PAYMENT_METHOD_TAB_HEADERS, PAYMENT_METHOD_TAB_NAME, TRANSACTION_COLUMNS_ORDERS, TRANSACTION_TAB_NAME  } from './constants'
 interface GetSheetData {
     transactions: ExpenseSchema[];
     balance: number;
@@ -47,7 +43,7 @@ interface MasterResp {
         let income = 0;
         let expenses = 0;
         try {
-            const { data }  = await instance.get(`/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/values/${TRANSACTION_SHEET_NAME}!A1:Z1000?majorDimension=ROWS`)
+            const { data }  = await instance.get(`/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/values/${TRANSACTION_TAB_NAME}!A1:Z1000?majorDimension=ROWS`)
             const values = data.values
             const headers: string[] = values[0] as string[]
             const transactions = [];
@@ -81,8 +77,8 @@ interface MasterResp {
         
         try {
             const [paymentMethods, category ]  = await Promise.all([
-                instance.get(`/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/values/${PAYMENT_METHOD_SHEET_NAME}!A1:B99999?majorDimension=ROWS`),
-                instance.get(`/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/values/${CATEGORY_SUBCATEGORY_SHEET_NAME}!A1:C99999?majorDimension=ROWS`)
+                instance.get(`/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/values/${PAYMENT_METHOD_TAB_NAME}!A1:B99999?majorDimension=ROWS`),
+                instance.get(`/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/values/${CATEGORY_SUBCATEGORY_TAB_NAME}!A1:C99999?majorDimension=ROWS`)
             ])
             const paymentMethodsData = paymentMethods.data.values;
             const categoryData = category.data.values
@@ -96,7 +92,7 @@ interface MasterResp {
                 const element = categoryShemad[index];
                 const categoryName = element.CategoryName;
                 const sub = {
-                    rowId: element.rowId,
+                    RowId: element.RowId,
                     subCategory: element.SubCategoryName
                 }
                 if (!map[categoryName]) {
@@ -134,11 +130,47 @@ interface MasterResp {
             const element = TRANSACTION_COLUMNS_ORDERS[index];
             requestInput.push(requestDataWithEx[element] || '')
         }
-         await instance.post(`/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/values/${TRANSACTION_SHEET_NAME}!A:Z:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
+         await instance.post(`/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/values/${TRANSACTION_TAB_NAME}!A:Z:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
             majorDimension: "ROWS",
             values: [ requestInput ]
         })
-            
+    }
+
+    export const addSheetHeaderContents = async (): Promise<any> => {
+        
+        await addSheet(CATEGORY_SUBCATEGORY_TAB_NAME)
+        await addSheet(PAYMENT_METHOD_TAB_NAME)
+        
+        await addHeaders(`${TRANSACTION_TAB_NAME}!A:Z`, [TRANSACTION_COLUMNS_ORDERS])
+        await addHeaders(`${CATEGORY_SUBCATEGORY_TAB_NAME}!A:D`, [CATEGORY_SUBCATEGORY_TAB_HEADERS, ...CATEGORY_SUB_CATEGORY_MASTER_DATA])
+        await addHeaders(`${PAYMENT_METHOD_TAB_NAME}!A:C`, [PAYMENT_METHOD_TAB_HEADERS, ...PAYMENT_METHODS_MASTER_DATA])
+       
+
+        
+    }
+    const addSheet = async (sheetName: string) => {
+        await instance.post(`/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}:batchUpdate`, {
+            requests: [
+                {
+                    'addSheet': {
+                        'properties': {
+                            'title': sheetName,
+                            'tabColor': {
+                                'red': 0.44,
+                                'green': 0.99,
+                                'blue': 0.50
+                            }
+                        }
+                    }
+                }
+            ]
+        })
+    }
+    const addHeaders = async  (sheetNameWithRange: string, rows: string[][]) => {
+        await instance.post(`/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/values/${sheetNameWithRange}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
+            majorDimension: "ROWS",
+            values: rows
+        })
     }
     const getShemaed = <T extends string | number | symbol>(headers: T[], values: any[]): Record<T, string>[] => {
         const transactions = []

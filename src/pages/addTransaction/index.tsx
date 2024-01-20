@@ -9,7 +9,6 @@ import { CategorySubCategoryGrouped, PaymentMethodsSchema, SubCategorySchema } f
 export const AddTransaction = () => {
     const {state: { type }} = useLocation()
     const navigate = useNavigate()
-    console.log(type)
     const [transactionType, setTransactionType] = React.useState(type) 
     const [masterCategorySubCategory, setMasterCategorySubCategory] = React.useState<CategorySubCategoryGrouped[]>([])
     const [masterPaymentMethods, setMasterPaymentMethods] = React.useState<PaymentMethodsSchema[]>([])

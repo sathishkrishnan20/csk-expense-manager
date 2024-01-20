@@ -25,7 +25,6 @@ export const Login =  () => {
     }, [])
     const onSubmit = useGoogleLogin({
         onSuccess: async (codeResponse) => {
-            console.log(codeResponse)
             const expiryTime = new Date();
             expiryTime.setSeconds(expiryTime.getSeconds() + codeResponse.expires_in - 99);
             const { data } = await axios.get(`https://www.googleapis.com/oauth2/v1/userinfo?alt=json&access_token=${codeResponse.access_token}`)

@@ -4,8 +4,9 @@ import { Paper, ThemeProvider, Typography, colors } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { ThemeContext } from '@emotion/react';
 import { AppHeader } from '../../components/AppBar';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ExpenseSchema } from '../../interface/expenses';
+import { getTransactionsData } from '../../services/gsheet';
 
 const Div = styled('div')(({ theme }) => ({
     ...theme.typography.button,
@@ -16,14 +17,29 @@ interface TransactionsProps {
     shopAppHeader: boolean;
     transactions?: ExpenseSchema[]
 }
-export const Transactions = ({ shopAppHeader, transactions }: TransactionsProps) => {
+export const Transactions = ({ shopAppHeader, transactions: transactionsViaNaviagation }: TransactionsProps) => {
     const navigate = useNavigate()
+    const { state } = useLocation()
     const [value, setValue] = React.useState(0);
+    const [transactions, setTransactions] = React.useState<ExpenseSchema[]>([]);
     const [accountBalance, setAccountBalance] = React.useState(100);
     const [credit, setCredit] = React.useState(100);
     const [debit, setDebit] = React.useState(100);
     const ref = React.useRef<HTMLDivElement>(null);
+    React.useEffect(() => {
+        if (transactionsViaNaviagation?.length) {
+            setTransactions(transactionsViaNaviagation)
+        } else if(state?.transactions?.length) {
+            setTransactions(state.transactions)
+        } else {
+            loadRecentTransactionsData()
+        }
+    }, []) 
 
+    const loadRecentTransactionsData = async () => {
+        const {transactions}  = await getTransactionsData()
+        setTransactions(transactions);
+    };
    
     const getType = (amount?: string) => Number(amount) >= 0 ? 'CREDIT' : 'DEBIT' 
     return (

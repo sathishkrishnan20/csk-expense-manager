@@ -5,8 +5,9 @@ import BackIcon from '@mui/icons-material/ArrowBack';
 interface AppHeaderProps {
     title: string;
     onClickBack: () => void
+    onClickRightButton?:  () => void
 }
-export const AppHeader = ({ title, onClickBack }: AppHeaderProps) => ( 
+export const AppHeader = ({ title, onClickBack, onClickRightButton }: AppHeaderProps) => ( 
     <AppBar position="static">
         <Toolbar>
         <IconButton
@@ -22,6 +23,7 @@ export const AppHeader = ({ title, onClickBack }: AppHeaderProps) => (
         <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             {title}
         </Typography>
-        <Button color="inherit">Done</Button>
+        
+        {onClickRightButton && <Button onClick={() => onClickRightButton()} color="inherit">Done</Button>}
         </Toolbar>
     </AppBar>)

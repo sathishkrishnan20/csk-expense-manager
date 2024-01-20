@@ -17,7 +17,7 @@ import { Transactions } from '../transactions';
 import { useNavigate } from 'react-router-dom';
 import { LOCAL_SESSION_KEYS, getItem } from '../../context/storage';
 import { AuthContext } from '../../context/AuthContext';
-import { instance } from '../../services/gsheet';
+import { getTransactionsData } from '../../services/gsheet';
 import { ExpenseSchema } from '../../interface/expenses';
 const Div = styled('div')(({ theme }) => ({
     ...theme.typography.button,
@@ -29,14 +29,14 @@ export const DashBoard = () => {
     const { logout } = React.useContext(AuthContext);
     const [value, setValue] = React.useState(0);
     const navigate = useNavigate();
-    const [recentTransactions, setRecentTransactions] = React.useState<ExpenseSchema[]>([])
+    const [transactions, setTransactions] = React.useState<ExpenseSchema[]>([])
     const [accountBalance, setAccountBalance] = React.useState(100);
     const [credit, setCredit] = React.useState(100);
     const [debit, setDebit] = React.useState(100);
     const ref = React.useRef<HTMLDivElement>(null);
     React.useEffect(() => {
         loadRecentTransactionsData()
-    })
+    }, [])
 
     const actions = [
         { icon: <ExpenseIcon style={{color: 'white'}} />, name: 'Debit', fabBackgrundColor: 'red' },
@@ -44,31 +44,16 @@ export const DashBoard = () => {
     ];
 
     const loadRecentTransactionsData = async () => {
-        const { data }  = await instance.get(`/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/values/Sheet1!A1:J99999?majorDimension=ROWS`)
-        const headers: string[] = data.values[0] as string[]
-        
-        const values = data.values;
-        const transactions = [];
-        let transactionCount = 0;
-        for (let index = values.length - 1; index >= 1; index--) {
-            if (transactionCount >= 10) {
-                break;
-            }
-            const element = values[index];
-            const obj: ExpenseSchema = {}
-            for (let h = 0; h < headers.length; h++) {
-                const header = headers[h] as keyof ExpenseSchema;
-                obj[header] = element[h]
-            }
-
-            transactions.push(obj);
-            transactionCount++
-        }
-        setRecentTransactions(transactions);
+        const {transactions, balance, income, expenses }  = await getTransactionsData()
+        setTransactions(transactions);
+        setCredit(income)
+        setAccountBalance(balance)
+        setDebit(expenses)
       };
       const onLogout = () => {
         logout()
       }
+      const naviageToTransactionsPage = () => navigate('/transactions', { state: { transactions } })
     return (
        <Box sx={{ pb: 7 }} ref={ref}>
             <CssBaseline />
@@ -118,11 +103,11 @@ export const DashBoard = () => {
             <Paper style={{ marginTop: 4}} elevation={0}>
                 <div style={{ display: 'flex',  marginLeft: 6, marginBottom: 4, justifyContent: 'space-between'}}>
                     <Typography fontWeight={800}>  Recent Transactions </Typography>
-                    <div onClick={()=> navigate('/transactions')}> 
+                    <div onClick={()=> naviageToTransactionsPage()}> 
                         <Chip style={{ color: '#7F3DFF', backgroundColor: '#EEE5FF'}}  label="See All" />
                     </div>
                 </div>
-                <Transactions shopAppHeader={false} transactions={recentTransactions} />
+                <Transactions shopAppHeader={false} transactions={transactions} />
             </Paper>
      
             <Paper sx={{ position: 'fixed', bottom: 0, left: 0, right: 0 }} elevation={5}>
@@ -133,7 +118,7 @@ export const DashBoard = () => {
                   }}
                   value={value}>
                     <BottomNavigationAction label="Home" icon={<HomeIcon />} />
-                    <BottomNavigationAction onClick={()=> navigate('/transactions')} label="Transactions" icon={<TransactionIcon />} />
+                    <BottomNavigationAction onClick={()=>  naviageToTransactionsPage()} label="Transactions" icon={<TransactionIcon />} />
                     <SpeedDial
                         ariaLabel="Add"
                         sx={{ marginTop: -100 }}

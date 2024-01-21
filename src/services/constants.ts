@@ -111,9 +111,12 @@ export const CATEGORY_SUB_CATEGORY_MASTER_DATA = [
 ]
 
 export const PAYMENT_METHODS_MASTER_DATA = [
-    ['2', 'Cash', '=now()'],
-    ['3', 'UPI', '=now()'],
-    ['4', 'Credit Card', '=now()'],
-    ['5', 'Debit Card', '=now()'],
-    ['6', 'Net banking', '=now()']
+    ['=row()', 'Cash', '=now()'],
+    ['=row()', 'UPI', '=now()'],
+    ['=row()', 'Credit Card', '=now()'],
+    ['=row()', 'Debit Card', '=now()'],
+    ['=row()', 'Cheque', '=now()'],
+    ['=row()', 'Electronic Transfer', '=now()'],
+    ['=row()', 'Net banking', '=now()']
+    
 ] 

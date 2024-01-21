@@ -139,7 +139,7 @@ export const AddTransaction = () => {
 
                
                 <FormControl>
-                    <TextField onChange={(text) => setPayeeText(text.target.value)} value={payeeText}  id="outlined-basic" label="Payeee" variant="outlined" />
+                    <TextField onChange={(text) => setPayeeText(text.target.value)} value={payeeText}  id="outlined-basic" label={transactionType === 'CREDIT' ? 'Payer' : "Payee"} variant="outlined" />
                 </FormControl>
 
                 <FormControl>

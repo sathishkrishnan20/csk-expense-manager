@@ -64,7 +64,7 @@ export const Transactions = ({ shopAppHeader, transactions: transactionsViaNavia
               
             {(transactions || []).map((item, index) => ( 
                 <Paper key={"t"+index} style={{  padding: 8, marginBottom: 1, borderRadius: 0 }} elevation={3}>
-                    <div>
+                    <div onClick={() => navigate('/add', { state: { type: getType(item.Amount), action: 'EDIT', expenseData: item } })}>
                         <Typography style={{ color: 'GrayText' }}>{item.Timestamp}</Typography>
                         
                         <div style={{display: 'flex', justifyContent: 'space-between'}}> 

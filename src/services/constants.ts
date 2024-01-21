@@ -41,7 +41,7 @@ export const CATEGORY_SUB_CATEGORY_MASTER_DATA = [
     ['=row()', 'Automobile', 'Road Tax', '=now()'],
     ['=row()', 'Automobile', 'Others', '=now()'],
     
-    ['=row()', 'Food', 'Resaurant', '=now()'],
+    ['=row()', 'Food', 'Restaurant', '=now()'],
     ['=row()', 'Food', 'Groceries', '=now()'],
     ['=row()', 'Food', 'Snacks', '=now()'],
     ['=row()', 'Food', 'Others', '=now()'],

@@ -1,14 +1,14 @@
 import * as React from 'react';
 import Box from '@mui/material/Box';
-import { Button, FormControl, FormControlLabel,  InputLabel, MenuItem, Paper, Radio, RadioGroup, Select, TextField } from '@mui/material';
+import { Button, FormControl, FormControlLabel,  InputLabel, MenuItem, Paper, Radio, RadioGroup, Select, Snackbar, TextField } from '@mui/material';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AppHeader } from '../../components/AppBar';
-import { addTransaction, getMasterData } from '../../services/gsheet';
-import { CategorySubCategoryGrouped, PaymentMethodsSchema, SubCategorySchema } from '../../interface/expenses';
+import { addTransaction, getMasterData, updateTransaction } from '../../services/gsheet';
+import { CategorySubCategoryGrouped, ExpenseSchema, PaymentMethodsSchema, SubCategorySchema } from '../../interface/expenses';
 import { INCOME_CATEGORY_NAMES } from '../../config';
 
 export const AddTransaction = () => {
-    const {state: { type }} = useLocation()
+    const {state: { type, action, expenseData }} = useLocation()
     const navigate = useNavigate()
     const [transactionType, setTransactionType] = React.useState(type) 
     const [originalMasterCategorySubCategory, setOriginalMasterCategorySubCategory] = React.useState<CategorySubCategoryGrouped[]>([])
@@ -24,6 +24,9 @@ export const AddTransaction = () => {
     const [amountText, setAmountText] = React.useState('') 
     const [payeeText, setPayeeText] = React.useState('') 
     const [descriptionText, setDescriptionText] = React.useState('') 
+
+    const [snackBarOpen, setSnackBarOpen] = React.useState(false) 
+    const [snackBarMessage, setSnackBarMessage] = React.useState('') 
     const ref = React.useRef<HTMLDivElement>(null);
 
     React.useEffect(() => {
@@ -35,8 +38,23 @@ export const AddTransaction = () => {
        setMasterCategorySubCategory(category);
        setMasterPaymentMethods(payments);
        onChangeTransctionType(transactionType, category)
+       loadDataIfActionIsEdit(category);
+
     }
 
+    const loadDataIfActionIsEdit = (originalCategories: CategorySubCategoryGrouped[]) => {
+        const expenseEditData = expenseData as ExpenseSchema
+        if (action === 'EDIT') {
+            setCategory(expenseEditData.Category)
+            const subCategories = originalCategories.find(e => e.categoryName === expenseEditData.Category);
+            setMasterSubCategory(subCategories?.subCategories || [])
+            setSubCategory(expenseEditData.SubCategory)
+            setAmountText(Math.abs(Number(expenseEditData.Amount)).toString())
+            setPayeeText(expenseEditData.Payee)
+            setPaymentMethod(expenseEditData.PaymentMethod)
+            setDescriptionText(expenseEditData.Description)
+        }  
+    }
     const onChangeCategory = (categoryName: string) => {
         setCategory(categoryName)
         setSubCategory('')
@@ -45,7 +63,7 @@ export const AddTransaction = () => {
     }
 
     const addOrUpdateNewTransactions = async () => {
-        await addTransaction({
+        const object = {
             Category: category,
             SubCategory: subCategory,
             PaymentMethod: paymentMethod,
@@ -53,9 +71,24 @@ export const AddTransaction = () => {
             Payee: payeeText,
             Description: descriptionText,
             Status: 'Cleared',
-
-        })
+        }
+        if (action === 'EDIT') {
+            await updateTransaction({
+                ...object,
+                RowId: expenseData.RowId,
+            })
+            setSnackBarMessage('Updated Successfully')
+            navigate('/')
+        } else {
+            await addTransaction(object)
+            setSnackBarMessage('Added Successfully')
+        }
+        setSnackBarOpen(true)
+        setTimeout(() => {
+            setSnackBarOpen(false)
+        }, 1000)
         resetData()
+        
     }
     const canBeAdd = !!category && !!subCategory && !!amountText && !!payeeText;
     const resetData = () => {
@@ -65,6 +98,7 @@ export const AddTransaction = () => {
         setAmountText('')
         setPayeeText('')
         setDescriptionText('')
+
     }
     const onChangeTransctionType = (type: 'CREDIT' | 'DEBIT', originCategories: CategorySubCategoryGrouped[]) => {
         if (type === 'CREDIT') {
@@ -90,6 +124,14 @@ export const AddTransaction = () => {
             {canBeAdd ? <AppHeader title='Add Transactions' onClickBack={() => navigate(-1) } onClickRightButton={() => addOrUpdateNewTransactions()} /> 
                 : <AppHeader title='Add Transactions' onClickBack={() => navigate(-1) }/> 
             }
+            <Snackbar
+                style={{ marginBottom: 100}}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+                open={snackBarOpen}
+                // onClose={handleClose}
+                message={snackBarMessage || "Successfully Updated"}
+                key={'top' + 'center'}
+            />
             <Paper style={{  padding: 8, display: 'flex', flexDirection: 'column', gap: 12}}> 
                 <FormControl>
                     <RadioGroup
@@ -162,7 +204,7 @@ export const AddTransaction = () => {
                 </FormControl>
             </Paper>
             <Paper sx={{ position: 'fixed', bottom: 60, left: 0, right: 0 }} elevation={5}>
-                <Button disabled={canBeAdd === false} onClick={() => addOrUpdateNewTransactions()} style={{width: '100%'}} variant="contained">Add</Button>
+                <Button disabled={canBeAdd === false} onClick={() => addOrUpdateNewTransactions()} style={{width: '100%'}} variant="contained">{action === 'EDIT' ? 'Update' : 'Add'}</Button>
             </Paper>
         </Box>
     )

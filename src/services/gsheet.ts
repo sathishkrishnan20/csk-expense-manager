@@ -117,7 +117,29 @@ interface MasterResp {
         }
     }
 
-    export const addTransaction = async (requestData: Omit<ExpenseSchema, 'Id' | 'OpeningBalance' | 'ClosingBalance' | 'Timestamp'>): Promise<any> => {
+    export const addTransaction = async (requestData: Omit<ExpenseSchema, 'RowId' | 'OpeningBalance' | 'ClosingBalance' | 'Timestamp'>): Promise<any> => {
+        await instance.post(`/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/values/${TRANSACTION_TAB_NAME}!A:Z:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
+            majorDimension: "ROWS",
+            values: [ getTransactionInput(requestData) ]
+        })
+    }
+
+    export const updateTransaction = async (requestData: Omit<ExpenseSchema, 'OpeningBalance' | 'ClosingBalance' | 'Timestamp'>): Promise<any> => {
+        await instance.post(`/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/values:batchUpdateByDataFilter`, {
+            "valueInputOption": "USER_ENTERED",
+            "data": [
+                {
+                  majorDimension: "ROWS",
+                  values: [ getTransactionInput(requestData) ],
+                  "dataFilter": {
+                    a1Range: `${TRANSACTION_TAB_NAME}!A${requestData.RowId}:Z${requestData.RowId}`
+                  }
+                }
+            ]
+        })
+    }
+
+    const getTransactionInput = (requestData: Omit<ExpenseSchema, 'Id' | 'OpeningBalance' | 'ClosingBalance' | 'Timestamp'>) => {
         const requestInput: string[] = []
         const requestDataWithEx: ExpenseSchema = {
             ...requestData,
@@ -130,10 +152,7 @@ interface MasterResp {
             const element = TRANSACTION_COLUMNS_ORDERS[index];
             requestInput.push(requestDataWithEx[element] || '')
         }
-         await instance.post(`/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/values/${TRANSACTION_TAB_NAME}!A:Z:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
-            majorDimension: "ROWS",
-            values: [ requestInput ]
-        })
+        return requestInput
     }
 
     export const addSheetHeaderContents = async (): Promise<any> => {

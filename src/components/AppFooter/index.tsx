@@ -3,8 +3,8 @@ import { BottomNavigation, BottomNavigationAction, Paper, SpeedDial, SpeedDialAc
 
 import HomeIcon from '@mui/icons-material/Home';
 import TransactionIcon from '@mui/icons-material/DynamicForm';
-// import BudgetIcon from '@mui/icons-material/PieChart'
-// import ProfileIcon from '@mui/icons-material/AccountCircle';
+import BudgetIcon from '@mui/icons-material/PieChart'
+import ProfileIcon from '@mui/icons-material/AccountCircle';
 import ExpenseIcon from '@mui/icons-material/CreditCardOffOutlined'
 import CreditIcon from '@mui/icons-material/AddCardOutlined';
 import React from 'react';
@@ -34,6 +34,8 @@ export const AppFooter = () => {
           
           value={value}>
             <BottomNavigationAction onClick={()=> navigate('/')} label="Home" icon={<HomeIcon />} />
+            <BottomNavigationAction onClick={()=> navigate('transactions')} label="Transactions" icon={<TransactionIcon />} />
+            
             {hideCreditDebitButton ? null : 
             <SpeedDial
                 ariaLabel="Add"
@@ -56,16 +58,16 @@ export const AppFooter = () => {
                     icon={action.icon}
                     onClick={() => {
                         handleClose()
+                        setValue(-1);
                         navigate('/add', { state: { type: action.name.toUpperCase() }})
                     }}
                     tooltipTitle={action.name}
                   />
                 ))}
             </SpeedDial> }
-            <BottomNavigationAction onClick={()=> navigate('transactions')} label="Transactions" icon={<TransactionIcon />} />
             
-            {/* <BottomNavigationAction label="Budget" icon={<BudgetIcon />} />
-            <BottomNavigationAction label="Profile" icon={<ProfileIcon />} /> */}
+           <BottomNavigationAction label="Charts" onClick={() => navigate('charts')} icon={<BudgetIcon />} />
+           <BottomNavigationAction label="Profile" icon={<ProfileIcon />} />
         </BottomNavigation>
     </Paper>
 

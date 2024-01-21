@@ -6,7 +6,7 @@ export const EXPENSE_MANAGER_G_SHEET_NAME = '__ExpenseManager__';
 export const CATEGORY_SUBCATEGORY_TAB_NAME = 'categoryAndSubCategory';
 export const PAYMENT_METHOD_TAB_NAME = 'paymentMethods'
 export const TRANSACTION_TAB_NAME = 'Sheet1'
-export const TRANSACTION_COLUMNS_ORDERS: (keyof ExpenseSchema)[] = ['RowId', 'Category', 'SubCategory', 'Payee', 'PaymentMethod', 'Status', 'Description', 'Amount', 'OpeningBalance', 'ClosingBalance', 'Timestamp']
+export const TRANSACTION_COLUMNS_ORDERS: (keyof ExpenseSchema)[] = ['RowId', 'Category', 'SubCategory', 'Payee', 'PaymentMethod', 'Status', 'Description', 'Amount', 'OpeningBalance', 'ClosingBalance', 'Timestamp', 'TransactionDate']
 
 export const CATEGORY_SUBCATEGORY_TAB_HEADERS: (keyof CategorySubCategorySchema)[] = ['RowId', 'CategoryName', 'SubCategoryName', 'Timestamp']
 export const PAYMENT_METHOD_TAB_HEADERS: (keyof PaymentMethodsSchema)[] = ['RowId', 'PaymentMethodName',  'Timestamp']

@@ -7,6 +7,7 @@ import { ExpenseSchema } from '../../interface/expenses';
 import { getTransactionsData } from '../../services/gsheet';
 import { TransactionNotFound } from '../../components/Transactions/not_found';
 import { AuthContext } from '../../context/AuthContext';
+import dayjs from 'dayjs';
 
 
 interface TransactionsProps {
@@ -65,7 +66,7 @@ export const Transactions = ({ shopAppHeader, transactions: transactionsViaNavia
             {(transactions || []).map((item, index) => ( 
                 <Paper key={"t"+index} style={{  padding: 8, marginBottom: 1, borderRadius: 0 }} elevation={3}>
                     <div onClick={() => navigate('/add', { state: { type: getType(item.Amount), action: 'EDIT', expenseData: item } })}>
-                        <Typography style={{ color: 'GrayText' }}>{item.Timestamp}</Typography>
+                        <Typography style={{ color: 'GrayText' }}>{dayjs(item.TransactionDate).format('MMMM DD, YYYY')}</Typography>
                         
                         <div style={{display: 'flex', justifyContent: 'space-between'}}> 
                             <Typography>{item.Payee}</Typography>

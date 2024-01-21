@@ -10,6 +10,7 @@ export interface ExpenseSchema {
     ClosingBalance?: string;
     Status: string;
     Timestamp: string;
+    TransactionDate: string;
 }
 
 

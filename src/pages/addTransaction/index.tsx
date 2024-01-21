@@ -6,6 +6,8 @@ import { AppHeader } from '../../components/AppBar';
 import { addTransaction, getMasterData, updateTransaction } from '../../services/gsheet';
 import { CategorySubCategoryGrouped, ExpenseSchema, PaymentMethodsSchema, SubCategorySchema } from '../../interface/expenses';
 import { INCOME_CATEGORY_NAMES } from '../../config';
+import { DatePicker } from '@mui/x-date-pickers';
+import dayjs, { Dayjs } from 'dayjs';
 
 export const AddTransaction = () => {
     const {state: { type, action, expenseData }} = useLocation()
@@ -20,6 +22,7 @@ export const AddTransaction = () => {
     const [category, setCategory] = React.useState('') 
     const [subCategory, setSubCategory] = React.useState('') 
     const [paymentMethod, setPaymentMethod] = React.useState('') 
+    const [transactionDate, setTransactionDate] = React.useState(dayjs(new Date()))
 
     const [amountText, setAmountText] = React.useState('') 
     const [payeeText, setPayeeText] = React.useState('') 
@@ -39,7 +42,6 @@ export const AddTransaction = () => {
        setMasterPaymentMethods(payments);
        onChangeTransctionType(transactionType, category)
        loadDataIfActionIsEdit(category);
-
     }
 
     const loadDataIfActionIsEdit = (originalCategories: CategorySubCategoryGrouped[]) => {
@@ -63,7 +65,7 @@ export const AddTransaction = () => {
     }
 
     const addOrUpdateNewTransactions = async () => {
-        const object = {
+        const object: Omit<ExpenseSchema, 'RowId' | 'OpeningBalance' | 'ClosingBalance' | 'Timestamp'> = {
             Category: category,
             SubCategory: subCategory,
             PaymentMethod: paymentMethod,
@@ -71,6 +73,7 @@ export const AddTransaction = () => {
             Payee: payeeText,
             Description: descriptionText,
             Status: 'Cleared',
+            TransactionDate: transactionDate.toISOString(),
         }
         if (action === 'EDIT') {
             await updateTransaction({
@@ -142,6 +145,13 @@ export const AddTransaction = () => {
                         <FormControlLabel onChange={() => onChangeTransctionType('DEBIT', originalMasterCategorySubCategory) } value="DEBIT" control={<Radio checked={transactionType === 'DEBIT' ? true : false} />} label="Expense" />
                         <FormControlLabel onChange={() => onChangeTransctionType('CREDIT', originalMasterCategorySubCategory) }  value="CREDIT" control={<Radio checked={transactionType === 'CREDIT' ? true : false}/>} label="Credit" />
                     </RadioGroup>
+                </FormControl>
+                <FormControl>
+                    <DatePicker
+                        label="Date"
+                        closeOnSelect
+                        value={transactionDate}
+                        onChange={(newValue) => setTransactionDate(newValue as Dayjs)} />
                 </FormControl>
                 <FormControl>
                     <TextField onChange={(text) => setAmountText(text.target.value)} value={amountText} type='number' id="outlined-basic" label="Amount" variant="outlined" />

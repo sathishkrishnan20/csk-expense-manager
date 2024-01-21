@@ -10,7 +10,9 @@ import { CLIENT_ID } from './config';
 import { AuthContext } from './context/AuthContext';
 import { Login } from './pages/Login';
 import { AppFooter } from './components/AppFooter';
-
+import { TransactionCharts } from './pages/charts';
+import { LocalizationProvider } from '@mui/x-date-pickers';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
 
 const theme = createTheme({
   palette: {
@@ -28,6 +30,7 @@ function App() {
   
   return (
      <ThemeProvider theme={theme}>
+      <LocalizationProvider dateAdapter={AdapterDayjs}> 
         <GoogleOAuthProvider clientId={CLIENT_ID}> 
           {!state.isLoggedIn ? <Routes> <Route path="/" element={<Login />}> </Route> </Routes> : 
           <> 
@@ -35,13 +38,14 @@ function App() {
             <Route path="/" element={<DashBoard />} />
             <Route path="/transactions" element={<Transactions shopAppHeader={true} />} />
             <Route path="/add" element={<AddTransaction />} />
-          
+            <Route path="/charts" element={<TransactionCharts shopAppHeader={true}  />} />
           </Routes>
               <AppFooter />
             </> }
           
 
         </GoogleOAuthProvider>
+        </LocalizationProvider>
       </ThemeProvider>
   );
 }

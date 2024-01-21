@@ -67,7 +67,7 @@ export const Login =  () => {
         <Box sx={{ pb: 7 }} ref={ref}>
             <Paper style={{ display: 'flex', flexDirection: 'column', padding: 16, backgroundColor: '#F5F5F5', height: windowSize.current[1] }} elevation={3}>
             <img
-                src={`https://png.pngtree.com/png-vector/20190306/ourlarge/pngtree-dollar-money-in-hand-png-image_771024.jpg`}
+                src={`https://i.ibb.co/Lt6twsn/csk-expense-manage.png`}
                 alt={'Expense Manager'}
                 loading="lazy"
                 style={{ maxHeight:  windowSize.current[1]  }}

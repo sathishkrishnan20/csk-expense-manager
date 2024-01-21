@@ -8,7 +8,7 @@ interface AppHeaderProps {
     onClickRightButton?:  () => void
 }
 export const AppHeader = ({ title, onClickBack, onClickRightButton }: AppHeaderProps) => ( 
-    <AppBar position="static">
+    <AppBar position='sticky'>
         <Toolbar>
         <IconButton
             onClick={onClickBack}

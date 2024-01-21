@@ -1,3 +1,4 @@
+import { INCOME_CATEGORY_NAMES } from "../config";
 import { CategorySubCategorySchema, ExpenseSchema, PaymentMethodsSchema } from "../interface/expenses";
 
 export const EXPENSE_MANAGER_G_SHEET_NAME = '__ExpenseManager__';
@@ -11,6 +12,18 @@ export const CATEGORY_SUBCATEGORY_TAB_HEADERS: (keyof CategorySubCategorySchema)
 export const PAYMENT_METHOD_TAB_HEADERS: (keyof PaymentMethodsSchema)[] = ['RowId', 'PaymentMethodName',  'Timestamp']
 
 export const CATEGORY_SUB_CATEGORY_MASTER_DATA = [
+    ['=row()', INCOME_CATEGORY_NAMES[0], 'Salary', '=now()'],
+    ['=row()', INCOME_CATEGORY_NAMES[0], 'Equities', '=now()'],
+    ['=row()', INCOME_CATEGORY_NAMES[0], 'Personal Savings', '=now()'],
+    ['=row()', INCOME_CATEGORY_NAMES[0], 'Rents and Royalties', '=now()'],
+    ['=row()', INCOME_CATEGORY_NAMES[0], 'Home Equity', '=now()'],
+    ['=row()', INCOME_CATEGORY_NAMES[0], 'Part-time work', '=now()'],
+    ['=row()', INCOME_CATEGORY_NAMES[0], 'Pensions', '=now()'],
+    ['=row()', INCOME_CATEGORY_NAMES[0], 'Annuities', '=now()'],
+    ['=row()', INCOME_CATEGORY_NAMES[0], 'Social Securities', '=now()'],
+    ['=row()', INCOME_CATEGORY_NAMES[0], 'Account Transfer', '=now()'],
+    ['=row()', INCOME_CATEGORY_NAMES[0], 'Others', '=now()'],
+
     ['=row()', 'Entertainment', 'Cinema', '=now()'],
     ['=row()', 'Entertainment', 'Concert', '=now()'],
     ['=row()', 'Entertainment', 'Party', '=now()'],

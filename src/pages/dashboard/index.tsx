@@ -81,14 +81,14 @@ export const DashBoard = () => {
       
             <Paper style={{ padding: 16 }} elevation={1}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20 }}>
-                    <div style={{ display: 'flex', width: '50%', backgroundColor: '#00A86B', padding: 10, borderRadius: 20  }}>
+                    <div onClick={() => navigate('/add', { state: { type: 'CREDIT' }})} style={{ display: 'flex', width: '50%', backgroundColor: '#00A86B', padding: 10, borderRadius: 20  }}>
                         <CreditIcon  style={{ marginLeft: 4, fontSize: 40, color: 'white'}} />
                         <div style={{ marginLeft: 8 }}>
                             <Div style={{ fontSize: 10, padding: 0, color: 'white' }}>{'Income'}</Div>
                             <Div style={{ fontWeight: 900,  fontSize: 14, padding: 0 ,  color: 'white' }}>₹{credit}</Div>
                         </div>
                     </div>
-                    <div style={{ display: 'flex', width: '50%', backgroundColor: '#FD3C4A', padding: 10, borderRadius: 20  }}>
+                    <div onClick={() => navigate('/add', { state: { type: 'DEBIT' }})} style={{ display: 'flex', width: '50%', backgroundColor: '#FD3C4A', padding: 10, borderRadius: 20  }}>
                         <ExpenseIcon  style={{ marginLeft: 4, fontSize: 40, color: 'white'}} />
                         <div style={{ marginLeft: 8 }}>
                             <Div style={{ fontSize: 10, padding: 0, color: 'white' }}>{'Expenses'}</Div>

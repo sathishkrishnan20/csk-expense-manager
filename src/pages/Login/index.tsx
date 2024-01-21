@@ -1,7 +1,7 @@
 import { Box, Button, Paper, Typography } from "@mui/material"
 import React, { useContext, useEffect } from "react";
 import { AuthContext } from "../../context/AuthContext";
-import { useGoogleLogin } from "@react-oauth/google";
+import { GoogleLogin, TokenResponse, useGoogleLogin, useGoogleOneTapLogin } from "@react-oauth/google";
 import { SCOPES } from "../../config";
 import { LOCAL_SESSION_KEYS, getItem, setItem } from "../../context/storage";
 import GoolgeIcon from '@mui/icons-material/Google';
@@ -27,26 +27,39 @@ export const Login =  () => {
             })
           }
     }, [])
+    useGoogleOneTapLogin({
+        auto_select: true,
+        onSuccess: async (_credentialResponse) => {
+          onSubmit()
+        },
+        onError: () => {
+          console.log('Login Failed');
+        }
+    });
     const onSubmit = useGoogleLogin({
         onSuccess: async (codeResponse) => {
-            const expiryTime = new Date();
-            expiryTime.setSeconds(expiryTime.getSeconds() + codeResponse.expires_in - 99);
-            const { data } = await axios.get(`https://www.googleapis.com/oauth2/v1/userinfo?alt=json&access_token=${codeResponse.access_token}`)
-            setItem(LOCAL_SESSION_KEYS.ACCESS_TOKEN, codeResponse.access_token)
-            await getExpenseManagerFile()
-            setUser({
-                id: data.id,
-                name: data.name,
-                picture: data.picture
-            })
-            login({
-                access_token: codeResponse.access_token,
-                expiry_time: expiryTime.getTime()
-            })
+              await onSuccessOfGoogleLogin(codeResponse)  
         },
         flow: 'implicit',
         scope: SCOPES
       });
+
+    const onSuccessOfGoogleLogin = async (codeResponse: Omit<TokenResponse, "error" | "error_description" | "error_uri">) => {
+        const expiryTime = new Date();
+        expiryTime.setSeconds(expiryTime.getSeconds() + codeResponse.expires_in - 99);
+        const { data } = await axios.get(`https://www.googleapis.com/oauth2/v1/userinfo?alt=json&access_token=${codeResponse.access_token}`)
+        setItem(LOCAL_SESSION_KEYS.ACCESS_TOKEN, codeResponse.access_token)
+        await getExpenseManagerFile()
+        setUser({
+            id: data.id,
+            name: data.name,
+            picture: data.picture
+        })
+        login({
+            access_token: codeResponse.access_token,
+            expiry_time: expiryTime.getTime()
+        })
+    }
     const getExpenseManagerFile = async () => {
         await getOrSearchExpenseManagerFile()
     }

@@ -5,11 +5,14 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AppHeader } from '../../components/AppBar';
 import { addTransaction, getMasterData } from '../../services/gsheet';
 import { CategorySubCategoryGrouped, PaymentMethodsSchema, SubCategorySchema } from '../../interface/expenses';
+import { INCOME_CATEGORY_NAMES } from '../../config';
 
 export const AddTransaction = () => {
     const {state: { type }} = useLocation()
     const navigate = useNavigate()
     const [transactionType, setTransactionType] = React.useState(type) 
+    const [originalMasterCategorySubCategory, setOriginalMasterCategorySubCategory] = React.useState<CategorySubCategoryGrouped[]>([])
+    
     const [masterCategorySubCategory, setMasterCategorySubCategory] = React.useState<CategorySubCategoryGrouped[]>([])
     const [masterPaymentMethods, setMasterPaymentMethods] = React.useState<PaymentMethodsSchema[]>([])
     const [masterSubCategory, setMasterSubCategory] = React.useState<SubCategorySchema[]>([])
@@ -28,12 +31,15 @@ export const AddTransaction = () => {
     }, [])
     const loadMasterData = async () => {
        const {category, payments } = await getMasterData()
+       setOriginalMasterCategorySubCategory(category)
        setMasterCategorySubCategory(category);
        setMasterPaymentMethods(payments);
+       onChangeTransctionType(transactionType, category)
     }
 
     const onChangeCategory = (categoryName: string) => {
         setCategory(categoryName)
+        setSubCategory('')
         const subCategories = masterCategorySubCategory.find(e => e.categoryName === categoryName);
         setMasterSubCategory(subCategories?.subCategories || [])
     }
@@ -60,6 +66,25 @@ export const AddTransaction = () => {
         setPayeeText('')
         setDescriptionText('')
     }
+    const onChangeTransctionType = (type: 'CREDIT' | 'DEBIT', originCategories: CategorySubCategoryGrouped[]) => {
+        if (type === 'CREDIT') {
+            const data = originCategories.filter(e =>  INCOME_CATEGORY_NAMES.includes(e.categoryName as string) === true)
+            setMasterCategorySubCategory(data)
+            if (data.length === 1) {
+                setCategory(INCOME_CATEGORY_NAMES[0])
+                setMasterSubCategory(data[0].subCategories || [])
+            } else {
+                setCategory('')
+            }
+            
+        } else {
+            const data = originCategories.filter(e => INCOME_CATEGORY_NAMES.includes(e.categoryName as string) === false)
+            setCategory('')
+            setMasterCategorySubCategory(data)
+        }
+        setSubCategory('')
+        setTransactionType(type)
+    }
     return (
         <Box sx={{ pb: 7 }} ref={ref}>
             {canBeAdd ? <AppHeader title='Add Transactions' onClickBack={() => navigate(-1) } onClickRightButton={() => addOrUpdateNewTransactions()} /> 
@@ -72,8 +97,8 @@ export const AddTransaction = () => {
                         aria-labelledby="demo-row-radio-buttons-group-label"
                         name="row-radio-buttons-group"
                     >
-                        <FormControlLabel onChange={() => setTransactionType('DEBIT') } value="DEBIT" control={<Radio checked={transactionType === 'DEBIT' ? true : false} />} label="Expense" />
-                        <FormControlLabel onChange={() => setTransactionType('CREDIT') }  value="CREDIT" control={<Radio checked={transactionType === 'CREDIT' ? true : false}/>} label="Credit" />
+                        <FormControlLabel onChange={() => onChangeTransctionType('DEBIT', originalMasterCategorySubCategory) } value="DEBIT" control={<Radio checked={transactionType === 'DEBIT' ? true : false} />} label="Expense" />
+                        <FormControlLabel onChange={() => onChangeTransctionType('CREDIT', originalMasterCategorySubCategory) }  value="CREDIT" control={<Radio checked={transactionType === 'CREDIT' ? true : false}/>} label="Credit" />
                     </RadioGroup>
                 </FormControl>
                 <FormControl>
@@ -82,6 +107,7 @@ export const AddTransaction = () => {
                 <FormControl>
                     <InputLabel id="category-label">Category</InputLabel>
                     <Select
+                        disabled={masterCategorySubCategory.length === 1}
                         labelId="category-select-label"
                         id="category-select"
                         value={category}

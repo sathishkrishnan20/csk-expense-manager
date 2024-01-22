@@ -65,6 +65,16 @@ export const AddTransaction = () => {
     }
 
     const addOrUpdateNewTransactions = async () => {
+        if (isNaN(Number(amountText))) {
+            setSnackBarMessage('Please enter the valid amount')
+            setSnackBarOpen(true)
+            setTimeout(() => {
+                setSnackBarOpen(false)
+                setSnackBarMessage('Updated Succesfully')
+            }, 1000)
+            return 
+        }
+
         const object: Omit<ExpenseSchema, 'RowId' | 'OpeningBalance' | 'ClosingBalance' | 'Timestamp'> = {
             Category: category,
             SubCategory: subCategory,

@@ -13,6 +13,7 @@ import { AppFooter } from './components/AppFooter';
 import { TransactionCharts } from './pages/charts';
 import { LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
+import { Profile } from './pages/profile';
 
 const theme = createTheme({
   palette: {
@@ -39,6 +40,9 @@ function App() {
             <Route path="/transactions" element={<Transactions shopAppHeader={true} />} />
             <Route path="/add" element={<AddTransaction />} />
             <Route path="/charts" element={<TransactionCharts shopAppHeader={true}  />} />
+            <Route path="/profile" element={<Profile shopAppHeader={true}  />} />
+            
+            
           </Routes>
               <AppFooter />
             </> }

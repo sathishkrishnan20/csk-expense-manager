@@ -67,7 +67,7 @@ export const AppFooter = () => {
             </SpeedDial> }
             
            <BottomNavigationAction label="Charts" onClick={() => navigate('charts')} icon={<BudgetIcon />} />
-           <BottomNavigationAction label="Profile" icon={<ProfileIcon />} />
+           <BottomNavigationAction label="Profile" onClick={() => navigate('profile')} icon={<ProfileIcon />} />
         </BottomNavigation>
     </Paper>
 

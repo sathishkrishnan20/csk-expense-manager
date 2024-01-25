@@ -44,11 +44,13 @@ export const DashBoard = () => {
             setLoader(false)
         } catch(error: any) {
             if (error.response.status === 401) {
+                navigate('/')
                 logout()
             }
         }
       };
       const onLogout = () => {
+        navigate('/')
         logout()
       }
       const naviageToTransactionsPage = () => navigate('/transactions', { state: { transactions } })

@@ -74,6 +74,7 @@ export const TransactionCharts = ({ shopAppHeader, transactions: transactionsVia
         setLoader(false);
     } catch (error:any) {
         if (error.response.status === 401) {
+            navigate('/')
             logout()
         }
     }

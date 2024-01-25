@@ -23,7 +23,10 @@ export const Profile =  ({shopAppHeader}: TransactionsProps) => {
     const navigate = useNavigate()
 return (
     <Box  sx={{ pb: 7 }} ref={ref}>
-    {shopAppHeader ? <AppHeader title='Profile' onClickBack={() => navigate(-1)} rightButtonAsIconComponent={<div onClick={() => logout()}> <NotificationIcon  style={{ fontSize: 30}}/> </div>} /> : null } 
+    {shopAppHeader ? <AppHeader title='Profile' onClickBack={() => navigate(-1)} rightButtonAsIconComponent={<div onClick={() => {
+        navigate('/')
+        logout()
+    }}> <NotificationIcon  style={{ fontSize: 30}}/> </div>} /> : null } 
         
     <Paper style={{ padding: 16,  }} elevation={0}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginLeft: 20, marginRight: 20, }}> 

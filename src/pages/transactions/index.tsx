@@ -44,6 +44,7 @@ export const Transactions = ({ shopAppHeader, transactions: transactionsViaNavia
         setLoader(false);
     } catch (error:any) {
         if (error.response.status === 401) {
+            navigate('/')
             logout()
         }
     }

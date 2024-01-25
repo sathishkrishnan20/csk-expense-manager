@@ -2,12 +2,12 @@ import { Box, Button, Paper, Typography } from "@mui/material"
 import React, { useContext, useEffect } from "react";
 import { AuthContext } from "../../context/AuthContext";
 import { GoogleLogin, TokenResponse, useGoogleLogin, useGoogleOneTapLogin } from "@react-oauth/google";
-import { SCOPES } from "../../config";
+import { DEMO_EXPENSE_MANAGER_SHEET_ID, EXPENSE_MANAGER_IMAGE_URL, SCOPES } from "../../config";
 import { LOCAL_SESSION_KEYS, getItem, setItem } from "../../context/storage";
 import GoolgeIcon from '@mui/icons-material/Google';
 import axios from "axios";
 import { getOrSearchExpenseManagerFile } from "../../services/gdrive";
-
+import './style.css'
 
 export const Login =  () => {
     const ref = React.useRef<HTMLDivElement>(null);
@@ -44,6 +44,23 @@ export const Login =  () => {
         scope: SCOPES
       });
 
+      const onSubmitDemo = () => {
+        setItem(LOCAL_SESSION_KEYS.SHEET_ID, DEMO_EXPENSE_MANAGER_SHEET_ID);
+        setUser({
+            id: '',
+            name: 'Demo',
+            picture: EXPENSE_MANAGER_IMAGE_URL
+        })
+
+        const time  = new Date()
+        time.setMinutes(time.getMinutes() + 15);
+        
+        login({
+            access_token: '',
+            expiry_time: time.getTime()
+        })
+      }
+
     const onSuccessOfGoogleLogin = async (codeResponse: Omit<TokenResponse, "error" | "error_description" | "error_uri">) => {
         const expiryTime = new Date();
         expiryTime.setSeconds(expiryTime.getSeconds() + codeResponse.expires_in - 99);
@@ -65,18 +82,18 @@ export const Login =  () => {
     }
     return (
         <Box sx={{ pb: 7 }} ref={ref}>
-            <Paper style={{ display: 'flex', flexDirection: 'column', padding: 16, backgroundColor: '#F5F5F5', height: windowSize.current[1] }} elevation={3}>
+            <Paper className="login-container" style={{ height: windowSize.current[1] }} elevation={3}>
             <img
-                src={`https://i.ibb.co/Lt6twsn/csk-expense-manage.png`}
+                src={EXPENSE_MANAGER_IMAGE_URL}
                 alt={'Expense Manager'}
                 loading="lazy"
                 style={{ maxHeight:  windowSize.current[1]  }}
             />
-            
-            <Typography style={{textAlign: 'center', fontWeight: 500, marginTop: 20, marginBottom: 10}} variant={'h5'}>Gain Total Control of your Money</Typography>
-            <div style={{ display: 'block', textAlign: 'center', color: 'GrayText',  }}>Become your own money manager and make every cent count</div>
+            <Typography className="login-text-header" variant={'h5'}>Gain Total Control of your Money</Typography>
+            <div className="login-text-sub-header" style={{ color: 'GrayText',  }}>Become your own money manager and make every cent count</div>
             
             <Button startIcon={<GoolgeIcon />} style={{ marginTop: 20, marginBottom: 20}}  variant="contained"  title="Login" onClick={() => onSubmit()}> Login </Button>
+            <Button style={{  marginBottom: 20}}  variant="contained"  title="Login" onClick={() => onSubmitDemo()}> Demo </Button>
             
             </Paper> 
         </Box>

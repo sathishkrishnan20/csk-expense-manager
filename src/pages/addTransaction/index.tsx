@@ -5,9 +5,10 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AppHeader } from '../../components/AppBar';
 import { addTransaction, getMasterData, updateTransaction } from '../../services/gsheet';
 import { CategorySubCategoryGrouped, ExpenseSchema, PaymentMethodsSchema, SubCategorySchema } from '../../interface/expenses';
-import { INCOME_CATEGORY_NAMES } from '../../config';
+import { DEMO_EXPENSE_MANAGER_SHEET_ID, INCOME_CATEGORY_NAMES } from '../../config';
 import { DatePicker } from '@mui/x-date-pickers';
 import dayjs, { Dayjs } from 'dayjs';
+import { LOCAL_SESSION_KEYS, getItem } from '../../context/storage';
 
 export const AddTransaction = () => {
     const {state: { type, action, expenseData }} = useLocation()
@@ -72,6 +73,15 @@ export const AddTransaction = () => {
                 setSnackBarOpen(false)
                 setSnackBarMessage('Updated Succesfully')
             }, 1000)
+            return 
+        }
+        if (getItem(LOCAL_SESSION_KEYS.SHEET_ID) === DEMO_EXPENSE_MANAGER_SHEET_ID) {
+            setSnackBarMessage('Could not Add a Entry on Demo Login. Please Email to sathishkrish20@gmail.com to Provide a access')
+            setSnackBarOpen(true)
+            setTimeout(() => {
+                setSnackBarOpen(false)
+                setSnackBarMessage('Updated Succesfully')
+            }, 3000)
             return 
         }
 

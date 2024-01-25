@@ -2,6 +2,7 @@ import axios from "axios";
 import { LOCAL_SESSION_KEYS, getItem } from "../context/storage";
 import { CategorySubCategoryGrouped, CategorySubCategorySchema, ExpenseSchema, PaymentMethodsSchema } from "../interface/expenses";
 import { CATEGORY_SUBCATEGORY_TAB_HEADERS, CATEGORY_SUBCATEGORY_TAB_NAME, CATEGORY_SUB_CATEGORY_MASTER_DATA, PAYMENT_METHODS_MASTER_DATA, PAYMENT_METHOD_TAB_HEADERS, PAYMENT_METHOD_TAB_NAME, TRANSACTION_COLUMNS_ORDERS, TRANSACTION_TAB_NAME  } from './constants'
+import { DEMO_EXPENSE_MANAGER_SHEET_ID } from "../config";
 interface GetSheetData {
     transactions: ExpenseSchema[];
     balance: number;
@@ -18,7 +19,15 @@ interface MasterResp {
     });
     instance.interceptors.request.use(function (config) {
         const access_token = getItem(LOCAL_SESSION_KEYS.ACCESS_TOKEN);
-        config.headers['Authorization'] = `Bearer ${access_token}`;
+        if(!access_token && getItem(LOCAL_SESSION_KEYS.SHEET_ID) === DEMO_EXPENSE_MANAGER_SHEET_ID) {
+            config.url = config.url?.includes('?')
+                ? `${config.url}&key=${process.env.REACT_APP_EXPENSE_MANAGER_API}`
+                : `${config.url}?key=${process.env.REACT_APP_EXPENSE_MANAGER_API}`;
+        } else {
+            config.headers['Authorization'] = `Bearer ${access_token}`;
+        }
+        
+         
         // Do something before request is sent
         return config;
     }, function (error) {

@@ -32,6 +32,7 @@ return (
             src={state?.userInfo?.picture}
             alt={state?.userInfo?.name}
             loading="lazy"
+            style={{ maxWidth: 200, maxHeight: 200}}
         />
         <div></div>
      

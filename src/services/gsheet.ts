@@ -60,9 +60,18 @@ interface MasterResp {
                 const element = values[index];
                 // @ts-ignore
                 const obj: ExpenseSchema = {}
+                let isDeleted = false;
                 for (let h = 0; h < headers.length; h++) {
                     const header = headers[h] as keyof ExpenseSchema;
                     obj[header] = element[h]
+                    if (header === 'Status') {
+                       
+                        if (element[h] === 'Deleted') {
+                            isDeleted = true
+                            console.log(element[h])
+                            break;
+                        }
+                    }
                     if (header === 'Amount') {
                         const val =  Number(element[h])
                         balance += val
@@ -72,8 +81,11 @@ interface MasterResp {
                             expenses += val;
                         }
                     }
-                }      
-                transactions.push(obj);
+                }
+
+                if (isDeleted === false) {       
+                    transactions.push(obj);
+                }
             }
             return {transactions, balance, income, expenses }
             

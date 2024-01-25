@@ -80,7 +80,7 @@ export const Transactions = ({ shopAppHeader, transactions: transactionsViaNavia
                         
                         <div style={{display: 'flex', justifyContent: 'space-between'}}> 
                             <Typography fontWeight={100} fontSize={14}>{item.Description}</Typography>
-                            {item.PaymentMethod ? <Typography fontWeight={200}>{item.PaymentMethod} - {item.Status}</Typography>: null }
+                            {item.PaymentMethod ? <Typography fontWeight={200}>{item.PaymentMethod}</Typography>: null }
                         </div>
                     </div>
                 </Paper>

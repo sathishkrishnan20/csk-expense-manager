@@ -1,6 +1,6 @@
 import * as React from 'react';
 import Box from '@mui/material/Box';
-import { Button, FormControl, FormControlLabel,  InputLabel, MenuItem, Paper, Radio, RadioGroup, Select, Snackbar, TextField } from '@mui/material';
+import { Button, Dialog, DialogActions, DialogTitle, FormControl, FormControlLabel,  InputLabel, MenuItem, Paper, Radio, RadioGroup, Select, Snackbar, TextField } from '@mui/material';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AppHeader } from '../../components/AppBar';
 import { addTransaction, getMasterData, updateTransaction } from '../../services/gsheet';
@@ -14,6 +14,7 @@ export const AddTransaction = () => {
     const {state: { type, action, expenseData }} = useLocation()
     const navigate = useNavigate()
     const [transactionType, setTransactionType] = React.useState(type) 
+    const [deleteConfirmationDialogOpen, setDeleteConfirmationDialogOpen] = React.useState(false) 
     const [originalMasterCategorySubCategory, setOriginalMasterCategorySubCategory] = React.useState<CategorySubCategoryGrouped[]>([])
     
     const [masterCategorySubCategory, setMasterCategorySubCategory] = React.useState<CategorySubCategoryGrouped[]>([])
@@ -65,7 +66,7 @@ export const AddTransaction = () => {
         setMasterSubCategory(subCategories?.subCategories || [])
     }
 
-    const addOrUpdateNewTransactions = async () => {
+    const addOrUpdateNewTransactions = async (isDelete: boolean) => {
         if (isNaN(Number(amountText))) {
             setSnackBarMessage('Please enter the valid amount')
             setSnackBarOpen(true)
@@ -89,10 +90,10 @@ export const AddTransaction = () => {
             Category: category,
             SubCategory: subCategory,
             PaymentMethod: paymentMethod,
-            Amount: transactionType === 'CREDIT' ? Number(amountText).toString() : (Number(amountText) * -1).toString(),
+            Amount: isDelete ? '0' : transactionType === 'CREDIT' ? Number(amountText).toString() : (Number(amountText) * -1).toString(),
             Payee: payeeText,
             Description: descriptionText,
-            Status: 'Cleared',
+            Status: isDelete ? 'Deleted' : 'Active',
             TransactionDate: transactionDate.toISOString(),
         }
         if (action === 'EDIT') {
@@ -144,7 +145,7 @@ export const AddTransaction = () => {
     }
     return (
         <Box sx={{ pb: 7 }} ref={ref}>
-            {canBeAdd ? <AppHeader title='Add Transactions' onClickBack={() => navigate(-1) } onClickRightButton={() => addOrUpdateNewTransactions()} /> 
+            {canBeAdd ? <AppHeader title='Add Transactions' onClickBack={() => navigate(-1) } onClickRightButton={() => addOrUpdateNewTransactions(false)} /> 
                 : <AppHeader title='Add Transactions' onClickBack={() => navigate(-1) }/> 
             }
             <Snackbar
@@ -234,8 +235,29 @@ export const AddTransaction = () => {
                 </FormControl>
             </Paper>
             <Paper sx={{ position: 'fixed', bottom: 60, left: 0, right: 0 }} elevation={5}>
-                <Button disabled={canBeAdd === false} onClick={() => addOrUpdateNewTransactions()} style={{width: '100%'}} variant="contained">{action === 'EDIT' ? 'Update' : 'Add'}</Button>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 4}}> 
+                    {action === 'EDIT' && <Button color='error' onClick={() => setDeleteConfirmationDialogOpen(true)} style={{width: '100%'}} variant="contained">{'Delete'}</Button>}
+                    <Button disabled={canBeAdd === false} onClick={() => addOrUpdateNewTransactions(false)} style={{width: '100%'}} variant="contained">{action === 'EDIT' ? 'Update' : 'Add'}</Button>
+                </div>
             </Paper>
+
+
+            <Dialog
+                open={deleteConfirmationDialogOpen}
+                onClose={() => setDeleteConfirmationDialogOpen(false)}
+                aria-labelledby="alert-dialog-title"
+                aria-describedby="alert-dialog-description"
+            >
+            <DialogTitle id="alert-dialog-title">
+              {"Are you sure want to delete?"}
+            </DialogTitle>
+            <DialogActions>
+              <Button onClick={() => setDeleteConfirmationDialogOpen(false)}>Cancel</Button>
+              <Button color='error' onClick={() => addOrUpdateNewTransactions(true)} autoFocus>
+                Delete
+              </Button>
+            </DialogActions>
+      </Dialog>
         </Box>
     )
 }

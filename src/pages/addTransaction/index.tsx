@@ -145,8 +145,8 @@ export const AddTransaction = () => {
     }
     return (
         <Box sx={{ pb: 7 }} ref={ref}>
-            {canBeAdd ? <AppHeader title='Add Transactions' onClickBack={() => navigate(-1) } onClickRightButton={() => addOrUpdateNewTransactions(false)} /> 
-                : <AppHeader title='Add Transactions' onClickBack={() => navigate(-1) }/> 
+            {canBeAdd ? <AppHeader title={action === 'EDIT' ? 'Update Transaction': 'Add Transactions'} onClickBack={() => navigate(-1) } onClickRightButton={() => addOrUpdateNewTransactions(false)} /> 
+                : <AppHeader title={action === 'EDIT' ? 'Update Transaction': 'Add Transactions'} onClickBack={() => navigate(-1) }/> 
             }
             <Snackbar
                 style={{ marginBottom: 100}}

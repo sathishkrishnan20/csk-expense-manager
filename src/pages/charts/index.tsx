@@ -1,6 +1,6 @@
 import * as React from 'react';
 import Box from '@mui/material/Box';
-import { CircularProgress, Divider, FormControl, MenuItem, Paper, Select, Typography, styled } from '@mui/material';
+import { CircularProgress, Divider, FormControl, MenuItem, Paper, Select, styled } from '@mui/material';
 import { AppHeader } from '../../components/AppBar';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ExpenseSchema } from '../../interface/expenses';

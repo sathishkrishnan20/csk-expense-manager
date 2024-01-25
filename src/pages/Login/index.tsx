@@ -1,7 +1,7 @@
 import { Box, Button, CircularProgress, Paper, Typography } from "@mui/material"
 import React, { useContext, useEffect, useState } from "react";
 import { AuthContext } from "../../context/AuthContext";
-import { GoogleLogin, TokenResponse, useGoogleLogin, useGoogleOneTapLogin } from "@react-oauth/google";
+import { TokenResponse, useGoogleLogin, useGoogleOneTapLogin } from "@react-oauth/google";
 import { DEMO_EXPENSE_MANAGER_SHEET_ID, EXPENSE_MANAGER_IMAGE_URL, SCOPES } from "../../config";
 import { LOCAL_SESSION_KEYS, getItem, setItem } from "../../context/storage";
 import GoolgeIcon from '@mui/icons-material/Google';

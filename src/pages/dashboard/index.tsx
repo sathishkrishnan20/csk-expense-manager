@@ -5,7 +5,7 @@ import ExpenseIcon from '@mui/icons-material/CreditCardOffOutlined'
 import CreditIcon from '@mui/icons-material/AddCardOutlined';
 
 import NotificationIcon from '@mui/icons-material/PowerSettingsNew';
-import { Avatar, Badge, Chip, CssBaseline, LinearProgress, Paper, Skeleton, Typography } from '@mui/material';
+import { Avatar, Badge, Chip, CssBaseline, Paper, Typography } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { Transactions } from '../transactions';
 import { useNavigate } from 'react-router-dom';

@@ -15,6 +15,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
 import { Profile } from './pages/profile';
 import { PrivacyPolicy } from './pages/privacy-policy';
+import { TermsAndServices } from './pages/terms-services';
 
 const theme = createTheme({
   palette: {
@@ -46,6 +47,7 @@ function App() {
                 <Route path="/charts" element={<TransactionCharts shopAppHeader={true}  />} />
                 <Route path="/profile" element={<Profile shopAppHeader={true}  />} />
                 <Route path="/privacy-policy" element={<PrivacyPolicy shopAppHeader={true}  />} />
+                <Route path="/terms-services" element={<TermsAndServices shopAppHeader={true}  />} />
               </Routes>
               {state.isLoggedIn ?  <AppFooter /> : null }
              

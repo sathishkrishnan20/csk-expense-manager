@@ -1,24 +1,14 @@
 
 
-import NotificationIcon from '@mui/icons-material/PowerSettingsNew';
-import { Avatar, Badge, Box, Paper } from '@mui/material';
-import { styled } from '@mui/material/styles';
+import { Box, Paper } from '@mui/material';
 import { AppHeader } from '../../components/AppBar';
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AuthContext } from '../../context/AuthContext';
-import { LOCAL_SESSION_KEYS, getItem } from '../../context/storage';
-const Div = styled('div')(({ theme }) => ({
-    ...theme.typography.button,
-    padding: theme.spacing(1),
-}));
 
 interface TransactionsProps {
     shopAppHeader: boolean;
 }
 export const PrivacyPolicy =  ({shopAppHeader}: TransactionsProps) => {
-    // @ts-ignore
-    const { logout, state } = React.useContext(AuthContext);
     const ref = React.useRef<HTMLDivElement>(null);
     const navigate = useNavigate()
 return (

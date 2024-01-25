@@ -24,7 +24,6 @@ export const Profile =  ({shopAppHeader}: TransactionsProps) => {
 return (
     <Box  sx={{ pb: 7 }} ref={ref}>
     {shopAppHeader ? <AppHeader title='Profile' onClickBack={() => navigate(-1)} rightButtonAsIconComponent={<div onClick={() => {
-        navigate('/')
         logout()
     }}> <NotificationIcon  style={{ fontSize: 30}}/> </div>} /> : null } 
         
@@ -35,7 +34,7 @@ return (
             src={state?.userInfo?.picture}
             alt={state?.userInfo?.name}
             loading="lazy"
-            style={{ maxWidth: 200, maxHeight: 200}}
+            // style={{ maxWidth: 200, maxHeight: 200}}
         />
         <div></div>
      

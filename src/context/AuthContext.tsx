@@ -1,6 +1,7 @@
 import React from 'react';
 import { useSetState } from 'react-use';
 import { LOCAL_SESSION_KEYS, getItem, removeItem, setItem } from './storage';
+import { useNavigate } from 'react-router-dom';
 
 interface UserInfo {
   id: string;
@@ -37,7 +38,7 @@ export const AuthContext = React.createContext(initialState);
 
 export const ContextProvider = (props: React.PropsWithChildren) => {
   const [state, setState] = useSetState(initialState);
-
+  const navigate = useNavigate()
   const setLoginPending = (isLoginPending: boolean) => setState({isLoginPending});
   const setLoginSuccess = (isLoggedIn: boolean) => setState({isLoggedIn});
   const setLoginError = (loginError: string) => setState({loginError});
@@ -58,6 +59,7 @@ export const ContextProvider = (props: React.PropsWithChildren) => {
       if (userInfo) {
         setUserInfo(JSON.parse(userInfo))
       }
+      navigate('/')
     } catch (error) {
       setLoginError('error');
     } finally {
@@ -76,6 +78,7 @@ export const ContextProvider = (props: React.PropsWithChildren) => {
     setLoginPending(false);
     setLoginSuccess(false);
     setLoginError('');
+    navigate('/login')
     
   }
 

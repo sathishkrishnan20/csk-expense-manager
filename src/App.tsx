@@ -14,6 +14,7 @@ import { TransactionCharts } from './pages/charts';
 import { LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
 import { Profile } from './pages/profile';
+import { PrivacyPolicy } from './pages/privacy-policy';
 
 const theme = createTheme({
   palette: {
@@ -33,19 +34,22 @@ function App() {
      <ThemeProvider theme={theme}>
       <LocalizationProvider dateAdapter={AdapterDayjs}> 
         <GoogleOAuthProvider clientId={CLIENT_ID}> 
-          {!state.isLoggedIn ? <Routes> <Route path="/" element={<Login />}> </Route> </Routes> : 
-          <> 
-          <Routes>
-            <Route path="/" element={<DashBoard />} />
-            <Route path="/transactions" element={<Transactions shopAppHeader={true} />} />
-            <Route path="/add" element={<AddTransaction />} />
-            <Route path="/charts" element={<TransactionCharts shopAppHeader={true}  />} />
-            <Route path="/profile" element={<Profile shopAppHeader={true}  />} />
-            
-            
-          </Routes>
-              <AppFooter />
-            </> }
+          {/* {!state.isLoggedIn ? <Routes> 
+              <Route path="/privacy-policy" element={<PrivacyPolicy shopAppHeader={true}  />} />
+            </Routes> : 
+            <>  */}
+              <Routes>
+                <Route path="/" element={<DashBoard />} />
+                <Route path="/login" element={<Login />}> </Route> 
+                <Route path="/transactions" element={<Transactions shopAppHeader={true} />} />
+                <Route path="/add" element={<AddTransaction />} />
+                <Route path="/charts" element={<TransactionCharts shopAppHeader={true}  />} />
+                <Route path="/profile" element={<Profile shopAppHeader={true}  />} />
+                <Route path="/privacy-policy" element={<PrivacyPolicy shopAppHeader={true}  />} />
+              </Routes>
+              {state.isLoggedIn ?  <AppFooter /> : null }
+             
+      
           
 
         </GoogleOAuthProvider>

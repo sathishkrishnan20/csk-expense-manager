@@ -16,7 +16,6 @@ interface TransactionsProps {
     shopAppHeader: boolean;
 }
 export const Profile =  ({shopAppHeader}: TransactionsProps) => {
-    // @ts-ignore
     const { logout, state } = React.useContext(AuthContext);
     const ref = React.useRef<HTMLDivElement>(null);
     const navigate = useNavigate()
@@ -26,28 +25,23 @@ return (
         logout()
     }}> <NotificationIcon  style={{ fontSize: 30}}/> </div>} /> : null } 
         
-    <Paper style={{ padding: 16,  }} elevation={0}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginLeft: 20, marginRight: 20, }}> 
+    <Paper style={{ padding: 16 }} elevation={0}>
+        <div className='fx fx-jc-sb m-lr-20'> 
         <div></div>
         <img
             src={state?.userInfo?.picture}
             alt={state?.userInfo?.name}
             loading="lazy"
-            // style={{ maxWidth: 200, maxHeight: 200}}
         />
         <div></div>
      
         </div>
   
-    <div style={{ display: 'flex', justifyContent: 'space-between', marginLeft: 20, marginRight: 20 }}> 
+    <div className='fx fx-jc-sb m-lr-20'> 
         <div></div>
         <Div style={{ color: 'GrayText' }}>{state?.userInfo?.name}</Div>
         <div></div>
     </div>
-    {/* <div style={{ display: 'flex', justifyContent: 'space-between',  marginLeft: 20, marginRight: 20 }}> 
-        <div>DB Link</div>
-        <div> <a target='_blank' href={`https://docs.google.com/spreadsheets/d/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/edit#gid=0`} rel="noreferrer"> Link</a></div>    
-    </div> */}
 </Paper>
 </Box>
 )

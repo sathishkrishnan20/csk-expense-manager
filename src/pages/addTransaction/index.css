@@ -1,0 +1,14 @@
+.form-container {
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.w-100p {
+    width: 100%;
+}
+
+.snackbar {
+    margin-bottom: 100px;
+}  

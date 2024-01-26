@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, useEffect } from 'react';
 import { Routes, Route } from "react-router-dom";
 import { DashBoard } from './pages/dashboard';
 import { Transactions } from './pages/transactions';
@@ -16,6 +16,7 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
 import { Profile } from './pages/profile';
 import { PrivacyPolicy } from './pages/privacy-policy';
 import { TermsAndServices } from './pages/terms-services';
+import { setItem, getItem, LOCAL_SESSION_KEYS } from './context/storage';
 
 const theme = createTheme({
   palette: {
@@ -28,9 +29,10 @@ const theme = createTheme({
 
 
 function App() {
-  // @ts-ignore
-  const { state } = useContext(AuthContext);
-  
+  const { state, loginIfSessionIsActive } = useContext(AuthContext);
+  useEffect(() => {
+    loginIfSessionIsActive()
+  }, [])
   return (
      <ThemeProvider theme={theme}>
       <LocalizationProvider dateAdapter={AdapterDayjs}> 

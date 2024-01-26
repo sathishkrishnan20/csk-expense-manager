@@ -14,21 +14,11 @@ export const Login =  () => {
     const ref = React.useRef<HTMLDivElement>(null);
     const [isLoading, setIsLoading] = useState(false)
     const windowSize = React.useRef([window.innerWidth, window.innerHeight]);
-    //@ts-ignore
-    const { login, setUser } = useContext(AuthContext);
+    const { login, setUser, loginIfSessionIsActive } = useContext(AuthContext);
     useEffect(() => {
-          const expiryTime = Number(getItem(LOCAL_SESSION_KEYS.TOKEN_EXPIRY_TIME)) 
-          if (new Date().getTime() <= expiryTime) {
-            const accessToken = getItem(LOCAL_SESSION_KEYS.ACCESS_TOKEN)
-            const sheetId = getItem(LOCAL_SESSION_KEYS.SHEET_ID);
-            if(sheetId)
-            setItem(LOCAL_SESSION_KEYS.SHEET_ID, sheetId)
-            login({
-                access_token: accessToken,
-                expiry_time: expiryTime
-            })
-          }
+      loginIfSessionIsActive()
     }, [])
+    
     useGoogleOneTapLogin({
         auto_select: true,
         onSuccess: async (_credentialResponse) => {
@@ -97,7 +87,7 @@ export const Login =  () => {
             <div className="login-text-sub-header" style={{ color: 'GrayText',  }}>Become your own money manager and make every cent count</div>
             
             <Button disabled={isLoading} startIcon={!isLoading ? <GoolgeIcon />: null} style={{ marginTop: 20, marginBottom: 20}}  variant="contained"  title="Login" onClick={() => onSubmit()}> {isLoading ? <CircularProgress size={25} /> : 'Login' }  </Button>
-            <Button style={{  marginBottom: 20}}  variant="contained"  title="Login" onClick={() => onSubmitDemo()}> Demo </Button>
+            <Button style={{ marginBottom: 20}}  variant="contained"  title="Login" onClick={() => onSubmitDemo()}> Demo </Button>
             
             </Paper> 
           <PrivacyPolicyComponent />  

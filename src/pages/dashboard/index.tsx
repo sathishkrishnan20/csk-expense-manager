@@ -5,7 +5,7 @@ import ExpenseIcon from '@mui/icons-material/CreditCardOffOutlined'
 import CreditIcon from '@mui/icons-material/AddCardOutlined';
 
 import NotificationIcon from '@mui/icons-material/PowerSettingsNew';
-import { Avatar, Badge, Chip, CssBaseline, Paper, Typography } from '@mui/material';
+import { Avatar, Chip, CssBaseline, Paper, Typography } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { Transactions } from '../transactions';
 import { useNavigate } from 'react-router-dom';
@@ -14,13 +14,14 @@ import { getTransactionsData } from '../../services/gsheet';
 import { ExpenseSchema } from '../../interface/expenses';
 import { TransactionSkeleton } from '../../components/Transactions/skeleton';
 import { TransactionNotFound } from '../../components/Transactions/not_found';
+import './index.css'
+
 const Div = styled('div')(({ theme }) => ({
     ...theme.typography.button,
     padding: theme.spacing(1),
 }));
 
 export const DashBoard = () => {
-    // @ts-ignore
     const { logout, state } = React.useContext(AuthContext);
     const navigate = useNavigate();
     const [transactions, setTransactions] = React.useState<ExpenseSchema[]>([])
@@ -57,42 +58,40 @@ export const DashBoard = () => {
        <Box sx={{ pb: 7 }} ref={ref}>
             <CssBaseline />
            
-            <Paper style={{ padding: 16, backgroundColor: '#FFF6E5' }} elevation={3}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginLeft: 20, marginRight: 20 }}> 
+            <Paper className='summarycontainer' style={{ backgroundColor: '#FFF6E5' }} elevation={3}>
+                <div className='fx fx-jc-sb m-lr-20' > 
                     <Avatar alt={state?.userInfo?.name} src={state?.userInfo?.picture} />
-                    <Div style={{ }}>{new Date().toLocaleString('default', { month: 'long' })}</Div>
+                    <Div>{new Date().toLocaleString('default', { month: 'long' })}</Div>
                     <div onClick={() => onLogout()}>
-                    <Badge style={{marginTop: 8}} color="primary">
-                        <NotificationIcon  style={{ fontSize: 30}} color='error' />
-                    </Badge>
+                        <NotificationIcon className='logout-icon' color='error' />
                     </div>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginLeft: 20, marginRight: 20 }}> 
+                <div  className='fx fx-jc-sb m-lr-20'> 
                     <div></div>
                     <Div style={{ color: 'GrayText' }}>{'Account Balance'}</Div>
                     <div></div>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: -12, marginLeft: 20, marginRight: 20 }}> 
+                <div  className='fx fx-jc-sb m-lr-20' style={{ marginTop: -12 }}> 
                     <div></div>
-                    <Div style={{ fontSize: 24, color: '#00A86B'  }}>₹{accountBalance}</Div>
+                    <Div className='acc-bal-text'>₹{accountBalance}</Div>
                     <div></div>
                 </div>
             </Paper>
       
             <Paper style={{ padding: 16 }} elevation={1}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20 }}>
-                    <div onClick={() => navigate('/add', { state: { type: 'CREDIT' }})} style={{ display: 'flex', width: '50%', backgroundColor: '#00A86B', padding: 10, borderRadius: 20  }}>
-                        <CreditIcon  style={{ marginLeft: 4, fontSize: 40, color: 'white'}} />
-                        <div style={{ marginLeft: 8 }}>
-                            <Div style={{ fontSize: 10, padding: 0, color: 'white' }}>{'Income'}</Div>
-                            <Div style={{ fontWeight: 900,  fontSize: 14, padding: 0 ,  color: 'white' }}>₹{credit}</Div>
+                <div  className='fx fx-jc-sb fx-g-20'>
+                    <div onClick={() => navigate('/add', { state: { type: 'CREDIT' }})} className='fx credit-debit-card-container' style={{backgroundColor: '#00A86B'  }}>
+                        <CreditIcon className='credit_debit_icn' />
+                        <div className='m-l-8'>
+                            <Div className='text'>{'Income'}</Div>
+                            <Div className='amount'>₹{credit}</Div>
                         </div>
                     </div>
-                    <div onClick={() => navigate('/add', { state: { type: 'DEBIT' }})} style={{ display: 'flex', width: '50%', backgroundColor: '#FD3C4A', padding: 10, borderRadius: 20  }}>
-                        <ExpenseIcon  style={{ marginLeft: 4, fontSize: 40, color: 'white'}} />
-                        <div style={{ marginLeft: 8 }}>
-                            <Div style={{ fontSize: 10, padding: 0, color: 'white' }}>{'Expenses'}</Div>
-                            <Div style={{ fontWeight: 900,  fontSize: 14, padding: 0 ,  color: 'white' }}>₹{debit}</Div>
+                    <div onClick={() => navigate('/add', { state: { type: 'DEBIT' }})} className='fx credit-debit-card-container' style={{  backgroundColor: '#FD3C4A' }}>
+                        <ExpenseIcon  className='credit_debit_icn' />
+                        <div className='m-l-8'>
+                            <Div className='text'>{'Expenses'}</Div>
+                            <Div className='amount'>₹{debit}</Div>
                         </div>
                     </div>
                 </div>
@@ -100,7 +99,7 @@ export const DashBoard = () => {
            
             <CssBaseline />
             <Paper style={{ marginTop: 4}} elevation={0}>
-                <div style={{ display: 'flex',  marginLeft: 6, marginBottom: 4, justifyContent: 'space-between'}}>
+                <div  className='fx fx-jc-sb' style={{  marginLeft: 6, marginBottom: 4}}>
                     <Typography fontWeight={800}>  Recent Transactions </Typography>
                     <div onClick={()=> naviageToTransactionsPage()}> 
                         <Chip style={{ color: '#7F3DFF', backgroundColor: '#EEE5FF'}}  label="See All" />

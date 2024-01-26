@@ -11,3 +11,37 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+
+.fx {
+  display: flex;
+}
+.fx-jc-sb {
+  justify-content: space-between;
+}
+
+.fx-g-20 {
+  gap: 20px;
+}
+
+.fx-g-4 {
+  gap: 4px;
+}
+
+.m-lr-20 {
+  margin-left: 20px;
+  margin-right: 20px;
+}
+
+.m-l-8 {
+  margin-left: 8px;
+}
+
+.center-abs {
+  position: absolute;
+  top: 45%;
+  left: 50%;
+  right: 0;
+  bottom: 0;
+  text-align: center; 
+}

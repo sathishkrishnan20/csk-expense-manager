@@ -9,6 +9,7 @@ import { DEMO_EXPENSE_MANAGER_SHEET_ID, INCOME_CATEGORY_NAMES } from '../../conf
 import { DatePicker } from '@mui/x-date-pickers';
 import dayjs, { Dayjs } from 'dayjs';
 import { LOCAL_SESSION_KEYS, getItem } from '../../context/storage';
+import './index.css'
 
 export const AddTransaction = () => {
     const {state: { type, action, expenseData }} = useLocation()
@@ -149,14 +150,14 @@ export const AddTransaction = () => {
                 : <AppHeader title={action === 'EDIT' ? 'Update Transaction': 'Add Transactions'} onClickBack={() => navigate(-1) }/> 
             }
             <Snackbar
-                style={{ marginBottom: 100}}
+                className='snackbar'
                 anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
                 open={snackBarOpen}
                 // onClose={handleClose}
                 message={snackBarMessage || "Successfully Updated"}
                 key={'top' + 'center'}
             />
-            <Paper style={{  padding: 8, display: 'flex', flexDirection: 'column', gap: 12}}> 
+            <Paper className='form-container'> 
                 <FormControl>
                     <RadioGroup
                         row
@@ -235,9 +236,9 @@ export const AddTransaction = () => {
                 </FormControl>
             </Paper>
             <Paper sx={{ position: 'fixed', bottom: 60, left: 0, right: 0 }} elevation={5}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 4}}> 
-                    {action === 'EDIT' && <Button color='error' onClick={() => setDeleteConfirmationDialogOpen(true)} style={{width: '100%'}} variant="contained">{'Delete'}</Button>}
-                    <Button disabled={canBeAdd === false} onClick={() => addOrUpdateNewTransactions(false)} style={{width: '100%'}} variant="contained">{action === 'EDIT' ? 'Update' : 'Add'}</Button>
+                <div className='fx fx-jc-sb fx-g-4'> 
+                    {action === 'EDIT' && <Button color='error' onClick={() => setDeleteConfirmationDialogOpen(true)} className='w-100p' variant="contained">{'Delete'}</Button>}
+                    <Button disabled={canBeAdd === false} onClick={() => addOrUpdateNewTransactions(false)} className='w-100p' variant="contained">{action === 'EDIT' ? 'Update' : 'Add'}</Button>
                 </div>
             </Paper>
 

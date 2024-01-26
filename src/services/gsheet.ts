@@ -68,7 +68,6 @@ interface MasterResp {
                        
                         if (element[h] === 'Deleted') {
                             isDeleted = true
-                            console.log(element[h])
                             break;
                         }
                     }

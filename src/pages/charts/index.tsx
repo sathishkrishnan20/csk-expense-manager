@@ -31,7 +31,6 @@ const Div = styled('div')(({ theme }) => ({
 }));
 
 export const TransactionCharts = ({ shopAppHeader, transactions: transactionsViaNaviagation }: TransactionsProps) => {
-     // @ts-ignore
      const { logout } = React.useContext(AuthContext);
      const windowSize = React.useRef([window.innerWidth, window.innerHeight]);
     
@@ -109,14 +108,7 @@ export const TransactionCharts = ({ shopAppHeader, transactions: transactionsVia
     return (
         <Box sx={{ pb: 7 }} ref={ref}>
         {shopAppHeader ? <AppHeader title='Transactions' onClickBack={() => navigate(-1) }/> : null } 
-        {loader ? <CircularProgress style={{ 
-            position: 'absolute',
-            top: '45%',
-            left: '50%',
-            right: 0,
-            bottom: 0,
-            textAlign: 'center' 
-        }}/> : transactions.length === 0 ? <TransactionNotFound /> : 
+        {loader ? <CircularProgress className='center-abs'/> : transactions.length === 0 ? <TransactionNotFound /> : 
         <Paper> 
             <Paper elevation={3}>
                 <Div>Income and Expeenses</Div>
@@ -144,7 +136,7 @@ export const TransactionCharts = ({ shopAppHeader, transactions: transactionsVia
             
             
             {expensesByCategory.length ? <Paper elevation={3}> 
-                <div style={{ display: 'flex', justifyContent: 'space-between'}}> 
+                <div className='fx fx-jc-sb'> 
                     <Div>Expenses</Div>
                     <FormControl variant="standard" sx={{ m: 1, minWidth: 120 }}>
                         <Select

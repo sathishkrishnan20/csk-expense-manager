@@ -15,7 +15,6 @@ interface TransactionsProps {
     transactions?: ExpenseSchema[]
 }
 export const Transactions = ({ shopAppHeader, transactions: transactionsViaNaviagation }: TransactionsProps) => {
-     // @ts-ignore
      const { logout } = React.useContext(AuthContext);
     const navigate = useNavigate()
     const { state } = useLocation()
@@ -63,8 +62,8 @@ export const Transactions = ({ shopAppHeader, transactions: transactionsViaNavia
             }}/> : transactions.length === 0 ? <TransactionNotFound /> : null}
             <Paper style={{ backgroundColor: 'ActiveBorder'}}>
               
-            {(transactions || []).map((item, index) => ( 
-                <Paper key={"t"+index} style={{  padding: 8, marginBottom: 1, borderRadius: 0 }} elevation={3}>
+            {(transactions || []).map((item) => ( 
+                <Paper key={"t"+item.RowId} style={{  padding: 8, marginBottom: 1, borderRadius: 0 }} elevation={3}>
                     <div onClick={() => navigate('/add', { state: { type: getType(item.Amount), action: 'EDIT', expenseData: item } })}>
                         <Typography style={{ color: 'GrayText' }}>{dayjs(item.TransactionDate).format('MMMM DD, YYYY')}</Typography>
                         

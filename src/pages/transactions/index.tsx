@@ -1,6 +1,6 @@
 import * as React from 'react';
 import Box from '@mui/material/Box';
-import { CircularProgress, Paper, Typography } from '@mui/material';
+import { Paper, Typography } from '@mui/material';
 import { AppHeader } from '../../components/AppBar';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ExpenseSchema } from '../../interface/expenses';
@@ -8,6 +8,7 @@ import { getTransactionsData } from '../../services/gsheet';
 import { TransactionNotFound } from '../../components/Transactions/not_found';
 import { AuthContext } from '../../context/AuthContext';
 import dayjs from 'dayjs';
+import { TransactionSkeleton } from '../../components/Transactions/skeleton';
 
 
 interface TransactionsProps {
@@ -35,31 +36,22 @@ export const Transactions = ({ shopAppHeader, transactions: transactionsViaNavia
 
     const loadRecentTransactionsData = async () => {
         try {
-            
-       
-        setLoader(true);
-        const {transactions}  = await getTransactionsData()
-        setTransactions(transactions);
-        setLoader(false);
-    } catch (error:any) {
-        if (error.response.status === 401) {
-            logout()
+            setLoader(true);
+            const {transactions}  = await getTransactionsData()
+            setTransactions(transactions);
+            setLoader(false);
+        } catch (error:any) {
+            if (error.response.status === 401) {
+                logout()
+            }
         }
-    }
     };
    
     const getType = (amount?: string) => Number(amount) >= 0 ? 'CREDIT' : 'DEBIT' 
     return (
         <Box sx={{ pb: 7 }} ref={ref}>
             {shopAppHeader ? <AppHeader title='Transactions' onClickBack={() => navigate(-1) }/> : null } 
-            {loader ? <CircularProgress style={{ 
-                position: 'absolute',
-                top: '45%',
-                left: '50%',
-                right: 0,
-                bottom: 0,
-                textAlign: 'center' 
-            }}/> : transactions.length === 0 ? <TransactionNotFound /> : null}
+            {loader ? <TransactionSkeleton count={10} /> : transactions.length === 0 ? <TransactionNotFound /> : null}
             <Paper style={{ backgroundColor: 'ActiveBorder'}}>
               
             {(transactions || []).map((item) => ( 

@@ -105,7 +105,7 @@ export const DashBoard = () => {
                         <Chip style={{ color: '#7F3DFF', backgroundColor: '#EEE5FF'}}  label="See All" />
                     </div>
                 </div>
-                {transactions?.length ? <Transactions shopAppHeader={false} transactions={transactions.slice(0, 5)} /> : loader ? <TransactionSkeleton /> : <TransactionNotFound /> }
+                {transactions?.length ? <Transactions shopAppHeader={false} transactions={transactions.slice(0, 5)} /> : loader ? <TransactionSkeleton count={10}/> : <TransactionNotFound /> }
             </Paper>
         </Box>
     )

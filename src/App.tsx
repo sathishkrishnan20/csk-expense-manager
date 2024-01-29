@@ -39,10 +39,10 @@ function App() {
         <GoogleOAuthProvider clientId={CLIENT_ID}>
           {state.isLoggedIn ? (
             <div className="hidden md:block">
-              <AppDrawer />{' '}
+              <AppDrawer />
             </div>
           ) : null}
-          <div className="md:ml-60">
+          <div className={state.isLoggedIn ? "md:ml-60": ""}>
             <Routes>
               <Route path="/" element={<Login />}></Route>
               <Route path="/privacy-policy" element={<PrivacyPolicy shopAppHeader={true} />} />

@@ -20,13 +20,13 @@ export const Login = () => {
   }, []);
 
   useGoogleOneTapLogin({
-      auto_select: true,
-      onSuccess: async (_credentialResponse) => {
-        onSubmit()
-      },
-      onError: () => {
-        console.log('Login Failed');
-      }
+    auto_select: true,
+    onSuccess: async (_credentialResponse) => {
+      onSubmit();
+    },
+    onError: () => {
+      console.log('Login Failed');
+    },
   });
   const onSubmit = useGoogleLogin({
     onSuccess: async (codeResponse) => {
@@ -105,12 +105,10 @@ export const Login = () => {
                 title="Login"
                 onClick={() => onSubmit()}
               >
-                {' '}
-                {isLoading ? <CircularProgress size={25} /> : 'Login'}{' '}
+                {isLoading ? <CircularProgress size={25} /> : 'Login'}
               </Button>
               <Button style={{ marginBottom: 20 }} variant="contained" title="Login" onClick={() => onSubmitDemo()}>
-                {' '}
-                Demo{' '}
+                {'Demo'}
               </Button>
             </div>
           </div>

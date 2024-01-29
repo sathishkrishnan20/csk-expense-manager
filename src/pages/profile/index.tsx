@@ -29,8 +29,7 @@ export const Profile = ({ shopAppHeader }: TransactionsProps) => {
                 logout();
               }}
             >
-              {' '}
-              <NotificationIcon style={{ fontSize: 30 }} />{' '}
+              <NotificationIcon style={{ fontSize: 30 }} />
             </div>
           }
         />

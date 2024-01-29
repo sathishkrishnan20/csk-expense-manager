@@ -37,9 +37,7 @@ function App() {
       <LocalizationProvider dateAdapter={AdapterDayjs}>
         <GoogleOAuthProvider clientId={CLIENT_ID}>
           <Routes>
-            <Route path="/" element={<Login />}>
-              {' '}
-            </Route>
+            <Route path="/" element={<Login />}></Route>
             <Route path="/home" element={<DashBoard />} />
             <Route path="/transactions" element={<Transactions shopAppHeader={true} />} />
             <Route path="/add" element={<AddTransaction />} />

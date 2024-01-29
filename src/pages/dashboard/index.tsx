@@ -14,11 +14,13 @@ import { getTransactionsData } from '../../services/gsheet';
 import { ExpenseSchema } from '../../interface/expenses';
 import { TransactionSkeleton } from '../../components/Transactions/skeleton';
 import { TransactionNotFound } from '../../components/Transactions/not_found';
-import './index.css';
+import './styles.css';
 
 const Div = styled('div')(({ theme }) => ({
   ...theme.typography.button,
   padding: theme.spacing(1),
+  color: 'white',
+  fontFamily: '',
 }));
 
 export const DashBoard = () => {
@@ -58,22 +60,22 @@ export const DashBoard = () => {
     <Box sx={{ pb: 7 }} ref={ref}>
       <CssBaseline />
 
-      <Paper className="summarycontainer" style={{ backgroundColor: '#FFF6E5' }} elevation={3}>
+      <Paper className="summary-container" elevation={3}>
         <div className="fx fx-jc-sb m-lr-20">
           <Avatar alt={state?.userInfo?.name} src={state?.userInfo?.picture} />
-          <Div>{new Date().toLocaleString('default', { month: 'long' })}</Div>
-          <div onClick={() => onLogout()}>
-            <NotificationIcon className="logout-icon" color="error" />
-          </div>
+          <Div></Div>
+          <button onClick={() => onLogout()}>
+            <NotificationIcon className="logout-icon text-white" />
+          </button>
         </div>
         <div className="fx fx-jc-sb m-lr-20">
           <div></div>
-          <Div style={{ color: 'GrayText' }}>{'Account Balance'}</Div>
+          <div className="acc-bal-text">{'Account Balance'}</div>
           <div></div>
         </div>
         <div className="fx fx-jc-sb m-lr-20" style={{ marginTop: -12 }}>
           <div></div>
-          <Div className="acc-bal-text">₹{accountBalance}</Div>
+          <div className="acc-bal">₹{accountBalance}</div>
           <div></div>
         </div>
       </Paper>
@@ -87,8 +89,8 @@ export const DashBoard = () => {
           >
             <CreditIcon className="credit_debit_icn" />
             <div className="m-l-8">
-              <Div className="text">{'Income'}</Div>
-              <Div className="amount">₹{credit}</Div>
+              <div className="text">{'Income'}</div>
+              <div className="amount">₹{credit}</div>
             </div>
           </div>
           <div
@@ -98,8 +100,8 @@ export const DashBoard = () => {
           >
             <ExpenseIcon className="credit_debit_icn" />
             <div className="m-l-8">
-              <Div className="text">{'Expenses'}</Div>
-              <Div className="amount">₹{debit}</Div>
+              <div className="text">{'Expenses'}</div>
+              <div className="amount">₹{debit}</div>
             </div>
           </div>
         </div>

@@ -17,6 +17,7 @@ import { Profile } from './pages/profile';
 import { PrivacyPolicy } from './pages/privacy-policy';
 import { TermsAndServices } from './pages/terms-services';
 import { setItem, getItem, LOCAL_SESSION_KEYS } from './context/storage';
+import { AppDrawer } from './components/AppDrawer';
 
 const theme = createTheme({
   palette: {
@@ -36,17 +37,31 @@ function App() {
     <ThemeProvider theme={theme}>
       <LocalizationProvider dateAdapter={AdapterDayjs}>
         <GoogleOAuthProvider clientId={CLIENT_ID}>
-          <Routes>
-            <Route path="/" element={<Login />}></Route>
-            <Route path="/home" element={<DashBoard />} />
-            <Route path="/transactions" element={<Transactions shopAppHeader={true} />} />
-            <Route path="/add" element={<AddTransaction />} />
-            <Route path="/charts" element={<TransactionCharts shopAppHeader={true} />} />
-            <Route path="/profile" element={<Profile shopAppHeader={true} />} />
-            <Route path="/privacy-policy" element={<PrivacyPolicy shopAppHeader={true} />} />
-            <Route path="/terms-services" element={<TermsAndServices shopAppHeader={true} />} />
-          </Routes>
-          {state.isLoggedIn ? <AppFooter /> : null}
+          {state.isLoggedIn ? (
+            <div className="hidden md:block">
+              <AppDrawer />{' '}
+            </div>
+          ) : null}
+          <div className="md:ml-60">
+            <Routes>
+              <Route path="/" element={<Login />}></Route>
+              <Route path="/privacy-policy" element={<PrivacyPolicy shopAppHeader={true} />} />
+              <Route path="/terms-services" element={<TermsAndServices shopAppHeader={true} />} />
+
+              <Route path="/home" element={<DashBoard />} />
+              <Route path="/transactions" element={<Transactions shopAppHeader={true} />} />
+              <Route path="/add" element={<AddTransaction />} />
+              <Route path="/charts" element={<TransactionCharts shopAppHeader={true} />} />
+              <Route path="/profile" element={<Profile shopAppHeader={true} />} />
+            </Routes>
+          </div>
+
+          {state.isLoggedIn ? (
+            <div className="md:hidden">
+              {' '}
+              <AppFooter />{' '}
+            </div>
+          ) : null}
         </GoogleOAuthProvider>
       </LocalizationProvider>
     </ThemeProvider>

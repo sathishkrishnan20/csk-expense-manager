@@ -2,6 +2,7 @@ import { Box, Paper } from '@mui/material';
 import { AppHeader } from '../../components/AppBar';
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { APP_TITLE } from '../../config';
 
 interface TransactionsProps {
   shopAppHeader: boolean;
@@ -13,27 +14,27 @@ export const TermsAndServices = ({ shopAppHeader }: TransactionsProps) => {
     <Box sx={{ pb: 7 }} ref={ref}>
       {shopAppHeader ? <AppHeader title="Terms & Services" onClickBack={() => navigate(-1)} /> : null}
       <Paper style={{ padding: 16 }} elevation={0}>
-        <h1>Terms of Service for Expense Manager</h1>
+        <h1>Terms of Service for {APP_TITLE}</h1>
         <p>
           <strong>Last updated: 24-Jan-2023</strong>
         </p>
         <p>
-          <em></em> We operates the Expense Manager Web App. By accessing or using the Web App, you agree to be bound by
+          <em></em> We operates the {APP_TITLE} Web App. By accessing or using the Web App, you agree to be bound by
           these terms and conditions.
         </p>
 
         <h2>1. Use of the App</h2>
 
         <p>
-          By using the Expense Manager App, you agree to use it only for its intended purpose of managing expenses. You
-          must not use the App for any illegal or unauthorized purpose. You are responsible for ensuring that your use
-          of the App complies with applicable laws and regulations.
+          By using the {APP_TITLE} App, you agree to use it only for its intended purpose of managing expenses. You must
+          not use the App for any illegal or unauthorized purpose. You are responsible for ensuring that your use of the
+          App complies with applicable laws and regulations.
         </p>
 
         <h2>2. Data Storage and Privacy</h2>
 
         <p>
-          The Expense Manager App uses Google Sheets as the primary storage mechanism for your expense data. Our privacy
+          The {APP_TITLE} App uses Google Sheets as the primary storage mechanism for your expense data. Our privacy
           policy outlines how your data is collected, used, and stored. By using the App, you agree to the terms
           specified in the privacy policy.
         </p>

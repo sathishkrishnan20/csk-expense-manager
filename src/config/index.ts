@@ -6,3 +6,5 @@ export const INCOME_CATEGORY_NAMES = ['Income'];
 
 export const DEMO_EXPENSE_MANAGER_SHEET_ID = '1zKs_0WJuVUaXOZKAQ4Ra17PO2YBCxPZQ0B9RIQGBP6g';
 export const EXPENSE_MANAGER_IMAGE_URL = 'https://i.ibb.co/Lt6twsn/csk-expense-manage.png';
+
+export const APP_TITLE = 'Expense Manager';

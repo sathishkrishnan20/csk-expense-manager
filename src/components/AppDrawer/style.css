@@ -1,0 +1,16 @@
+.drawer-container {
+  background-image: linear-gradient(to top, #9061ed, #5d3ba2);
+}
+
+.header-title-text {
+  align-self: center;
+  font-style: bold;
+  font-weight: 900 !important;
+}
+
+.header-title {
+  display: flex;
+  flex-direction: row;
+  margin-left: 2%;
+  margin-right: 2%;
+}

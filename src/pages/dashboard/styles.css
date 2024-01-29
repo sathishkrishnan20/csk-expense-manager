@@ -1,0 +1,65 @@
+.summary-container {
+  padding: 16px;
+  background-image: linear-gradient(to right, #9061ed, #5d3ba2);
+}
+
+.credit-debit-card-container {
+  display: flex;
+  width: 50%;
+  padding: 10px;
+  border-radius: 20px;
+}
+
+.credit-debit-card-container .text {
+  font-size: 10px;
+  padding: 0px;
+  color: white;
+}
+
+.credit-debit-card-container .amount {
+  font-weight: 900;
+  font-size: 14px;
+  padding: 0px;
+  color: white;
+}
+
+.credit_debit_icn {
+  margin-left: 4px;
+  font-size: 40px;
+  color: white;
+}
+
+.acc-bal-text {
+  color: #ffffff;
+  font-weight: 900;
+  font-family: Georgia, 'Times New Roman', Times, serif;
+}
+
+.text {
+  font-size: x-large;
+  font-weight: 900;
+  margin-bottom: 2px;
+  font-family: Georgia, 'Times New Roman', Times, serif;
+}
+
+.amount {
+  font-weight: 900;
+  margin-bottom: 2px;
+  font-family: Georgia, 'Times New Roman', Times, serif;
+}
+
+.acc-bal {
+  font-size: 24px;
+  color: #ffffff;
+  font-weight: 900;
+  margin: 20px;
+  font-family: Georgia, 'Times New Roman', Times, serif;
+}
+
+.logout-icon {
+  font-size: 30px;
+  margin-top: 8px;
+}
+.seeall-chip {
+  color: #7f3dff;
+}

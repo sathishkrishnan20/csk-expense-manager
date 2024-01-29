@@ -1,5 +1,5 @@
-import { Button, CircularProgress, Paper, Typography } from '@mui/material';
-import { EXPENSE_MANAGER_IMAGE_URL } from '../../config';
+import { Button, CircularProgress, Typography } from '@mui/material';
+import { APP_TITLE, EXPENSE_MANAGER_IMAGE_URL } from '../../config';
 import GoolgeIcon from '@mui/icons-material/Google';
 import './style.css';
 
@@ -14,14 +14,14 @@ export const Header = ({ isLoading, onClickLogin, onClickDemo }: HeaderProps) =>
       <div className="header-title">
         <img
           src={EXPENSE_MANAGER_IMAGE_URL}
-          alt={'ExpenseManager'}
+          alt={APP_TITLE}
           loading="lazy"
           style={{ maxHeight: 60 }}
           className="header-logo"
         />
 
         <Typography variant="h5" className="header-title-text" color={'white'}>
-          ExpenseManager
+          {APP_TITLE}
         </Typography>
       </div>
 

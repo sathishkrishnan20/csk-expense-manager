@@ -105,7 +105,7 @@ export const TransactionCharts = ({ shopAppHeader, transactions: transactionsVia
 
   return (
     <Box sx={{ pb: 7 }} ref={ref}>
-      {shopAppHeader ? <AppHeader title="Transactions" onClickBack={() => navigate(-1)} /> : null}
+      {shopAppHeader ? <AppHeader title="Charts" onClickBack={() => navigate(-1)} /> : null}
       {loader ? (
         <CircularProgress className="center-abs" />
       ) : transactions.length === 0 ? (

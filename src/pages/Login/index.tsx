@@ -9,7 +9,8 @@ import axios from 'axios';
 import { getOrSearchExpenseManagerFile } from '../../services/gdrive';
 import './style.css';
 import { PrivacyPolicyComponent } from '../../components/PrivacyPolicy';
-
+import { Header } from './Header';
+import expenseSystemPic from '../../static/images/2.webp';
 export const Login = () => {
   const ref = React.useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -19,15 +20,15 @@ export const Login = () => {
     loginIfSessionIsActive();
   }, []);
 
-  useGoogleOneTapLogin({
-    auto_select: true,
-    onSuccess: async (_credentialResponse) => {
-      onSubmit();
-    },
-    onError: () => {
-      console.log('Login Failed');
-    },
-  });
+  // useGoogleOneTapLogin({
+  //   auto_select: true,
+  //   onSuccess: async (_credentialResponse) => {
+  //     onSubmit();
+  //   },
+  //   onError: () => {
+  //     console.log('Login Failed');
+  //   },
+  // });
   const onSubmit = useGoogleLogin({
     onSuccess: async (codeResponse) => {
       await onSuccessOfGoogleLogin(codeResponse);
@@ -78,71 +79,62 @@ export const Login = () => {
   const getExpenseManagerFile = async () => {
     await getOrSearchExpenseManagerFile();
   };
+
+  const LeftTitle = ({ text }: { text: string }) => (
+    <Typography variant="h2" fontFamily={'cursive'} className="body-left-text">
+      {text}
+    </Typography>
+  );
+  const LeftSubTitle = ({ text }: { text: string }) => (
+    <Typography fontFamily={'monospace'} className="body-left-sub-text">
+      {text}
+    </Typography>
+  );
+
   return (
     <Box sx={{ pb: 7 }} ref={ref}>
-      <div className="body-container">
-        <Paper className="container" elevation={3}>
-          <div className="header-container">
-            <div className="header-title">
-              <img
-                src={EXPENSE_MANAGER_IMAGE_URL}
-                alt={'Expense Manager'}
-                loading="lazy"
-                style={{ maxHeight: 60 }}
-                className="header-logo"
-              />
-              <Typography variant="h4" className="header-title-text" color={'white'}>
-                Expense Manager
-              </Typography>
+      <div className="main-container">
+        <Paper className="w-full header-body-container" elevation={3}>
+          <Header isLoading={isLoading} onClickLogin={onSubmit} onClickDemo={onSubmitDemo} />
+          <div className="border"> </div>
+
+          <div className="body-container flex flex-col md:flex-row-reverse m-3">
+            <div>
+              <img src={expenseSystemPic} alt={'Expense Manager'} loading="lazy" />
             </div>
 
-            <div>
-              <Button
-                disabled={isLoading}
-                startIcon={!isLoading ? <GoolgeIcon /> : null}
-                style={{ marginTop: 20, marginBottom: 20 }}
-                variant="contained"
-                title="Login"
-                onClick={() => onSubmit()}
-              >
-                {isLoading ? <CircularProgress size={25} /> : 'Login'}
-              </Button>
-              <Button style={{ marginBottom: 20 }} variant="contained" title="Login" onClick={() => onSubmitDemo()}>
-                {'Demo'}
-              </Button>
+            <div className="">
+              <LeftTitle text="Track your" />
+              <LeftTitle text="Expenses" />
+              <LeftTitle text="To save money" />
+              <LeftTitle text=" Without any hassle" />
+              <div style={{ marginTop: 20 }}>
+                <LeftSubTitle text="Use our App to keep eye on your daily expenses," />
+                <LeftSubTitle text="ExpenseManager interface is easy to understand" />
+                <LeftSubTitle text="And can be your best friend in solving your savings" />
+              </div>
+
+              <div style={{ marginTop: 10 }}>
+                <Button
+                  className="w-full"
+                  variant="contained"
+                  color="inherit"
+                  title="Demo"
+                  onClick={() => onSubmitDemo()}
+                >
+                  {'Try Free Demo'}
+                </Button>
+              </div>
             </div>
           </div>
+          <Typography fontFamily={'serif'} className="privacy-info-text">
+              We won't save your data on our cloud, We respect your Privacy and We will save your expenses on your Google sheet
+          </Typography>
+      
         </Paper>
       </div>
-      {/* <div className="container"> 
-            <div className="header-container">
-            <div className="header-title">
-              <img
-                  src={EXPENSE_MANAGER_IMAGE_URL}
-                  alt={'Expense Manager'}
-                  loading="lazy"
-                  style={{ maxHeight: 60  }}
-              />
-                <Typography variant="h4">Expense Manager</Typography>
-             </div>
-              
-            </div>
-          </div>   */}
-      {/* <Paper className="login-container " style={{ height: windowSize.current[1] }} elevation={3}>
-            <img
-                src={EXPENSE_MANAGER_IMAGE_URL}
-                alt={'Expense Manager'}
-                loading="lazy"
-                style={{ maxHeight:  windowSize.current[1]  }}
-            />
-            <Typography className="login-text-header" variant={'h5'}>Gain Total Control of your Money</Typography>
-            <div className="login-text-sub-header" style={{ color: 'GrayText',  }}>Become your own money manager and make every cent count</div>
-            
-            <Button disabled={isLoading} startIcon={!isLoading ? <GoolgeIcon />: null} style={{ marginTop: 20, marginBottom: 20}}  variant="contained"  title="Login" onClick={() => onSubmit()}> {isLoading ? <CircularProgress size={25} /> : 'Login' }  </Button>
-            <Button style={{ marginBottom: 20}}  variant="contained"  title="Login" onClick={() => onSubmitDemo()}> Demo </Button>
-            
-            </Paper>  */}
       <PrivacyPolicyComponent />
+ 
     </Box>
   );
 };

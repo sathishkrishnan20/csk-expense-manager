@@ -7,20 +7,17 @@ import '@fontsource/roboto/500.css';
 import '@fontsource/roboto/700.css';
 
 import reportWebVitals from './reportWebVitals';
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { ContextProvider } from './context/AuthContext';
 
-const root = ReactDOM.createRoot(
-  document.getElementById('root') as HTMLElement
-);
-root.render( 
-      <BrowserRouter> 
-        <ContextProvider>
-          <App />
-        </ContextProvider>
-      </BrowserRouter>
-     
+const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement);
+root.render(
+  <BrowserRouter>
+    <ContextProvider>
+      <App />
+    </ContextProvider>
+  </BrowserRouter>,
 );
 
 // If you want to start measuring performance in your app, pass a function

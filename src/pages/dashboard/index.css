@@ -1,46 +1,43 @@
 .summarycontainer {
-    padding: 16px;
-    background-color: #FFF6E5;
+  padding: 16px;
+  background-color: #fff6e5;
 }
 
-
 .credit-debit-card-container {
-    display: flex;
-    width: 50%; 
-    padding: 10px;
-    border-radius: 20px;
+  display: flex;
+  width: 50%;
+  padding: 10px;
+  border-radius: 20px;
 }
 
 .credit-debit-card-container .text {
-    font-size: 10px;
-    padding: 0px;
-    color: white
+  font-size: 10px;
+  padding: 0px;
+  color: white;
 }
 
 .credit-debit-card-container .amount {
-    font-weight: 900;
-    font-size: 14px; 
-    padding: 0px;
-    color: white
+  font-weight: 900;
+  font-size: 14px;
+  padding: 0px;
+  color: white;
 }
 
 .credit_debit_icn {
-    margin-left: 4px;
-    font-size: 40px;
-    color: white;
+  margin-left: 4px;
+  font-size: 40px;
+  color: white;
 }
 
-
 .acc-bal-text {
-    font-size: 24px;
-    color: #00A86B
+  font-size: 24px;
+  color: #00a86b;
 }
 
 .logout-icon {
-    font-size: 30px;
-    margin-top: 8px;
+  font-size: 30px;
+  margin-top: 8px;
 }
 .seeall-chip {
-    color: #7F3DFF;
-   
+  color: #7f3dff;
 }

@@ -10,74 +10,82 @@ import { AuthContext } from '../../context/AuthContext';
 import dayjs from 'dayjs';
 import { TransactionSkeleton } from '../../components/Transactions/skeleton';
 
-
 interface TransactionsProps {
-    shopAppHeader: boolean;
-    transactions?: ExpenseSchema[]
+  shopAppHeader: boolean;
+  transactions?: ExpenseSchema[];
 }
 export const Transactions = ({ shopAppHeader, transactions: transactionsViaNaviagation }: TransactionsProps) => {
-     const { logout } = React.useContext(AuthContext);
-    const navigate = useNavigate()
-    const { state } = useLocation()
-    const [transactions, setTransactions] = React.useState<ExpenseSchema[]>([]);
-    const [loader, setLoader] = React.useState<boolean>(false);
-    const ref = React.useRef<HTMLDivElement>(null);
-    
-    React.useEffect(() => {
-        if (transactionsViaNaviagation?.length) {
-            setTransactions(transactionsViaNaviagation)
+  const { logout } = React.useContext(AuthContext);
+  const navigate = useNavigate();
+  const { state } = useLocation();
+  const [transactions, setTransactions] = React.useState<ExpenseSchema[]>([]);
+  const [loader, setLoader] = React.useState<boolean>(false);
+  const ref = React.useRef<HTMLDivElement>(null);
 
-        } else if (state?.transactions?.length) {
-            setTransactions(state.transactions)
-        } else {
-            loadRecentTransactionsData()
-        }
-    }, [])
+  React.useEffect(() => {
+    if (transactionsViaNaviagation?.length) {
+      setTransactions(transactionsViaNaviagation);
+    } else if (state?.transactions?.length) {
+      setTransactions(state.transactions);
+    } else {
+      loadRecentTransactionsData();
+    }
+  }, []);
 
-    const loadRecentTransactionsData = async () => {
-        try {
-            setLoader(true);
-            const {transactions}  = await getTransactionsData()
-            setTransactions(transactions);
-            setLoader(false);
-        } catch (error:any) {
-            if (error.response.status === 401) {
-                logout()
-            }
-        }
-    };
-   
-    const getType = (amount?: string) => Number(amount) >= 0 ? 'CREDIT' : 'DEBIT' 
-    return (
-        <Box sx={{ pb: 7 }} ref={ref}>
-            {shopAppHeader ? <AppHeader title='Transactions' onClickBack={() => navigate(-1) }/> : null } 
-            {loader ? <TransactionSkeleton count={10} /> : transactions.length === 0 ? <TransactionNotFound /> : null}
-            <Paper style={{ backgroundColor: 'ActiveBorder'}}>
-              
-            {(transactions || []).map((item) => ( 
-                <Paper key={"t"+item.RowId} style={{  padding: 8, marginBottom: 1, borderRadius: 0 }} elevation={3}>
-                    <div onClick={() => navigate('/add', { state: { type: getType(item.Amount), action: 'EDIT', expenseData: item } })}>
-                        <Typography style={{ color: 'GrayText' }}>{dayjs(item.TransactionDate).format('MMMM DD, YYYY')}</Typography>
-                        
-                        <div style={{display: 'flex', justifyContent: 'space-between'}}> 
-                            <Typography>{item.Payee}</Typography>
-                            <Typography color={getType(item.Amount) === 'CREDIT' ? 'green': 'red'} fontWeight={900}>₹{getType(item.Amount) === 'CREDIT' ? item.Amount: Number(item.Amount) * - 1 }</Typography>
-                        </div>
+  const loadRecentTransactionsData = async () => {
+    try {
+      setLoader(true);
+      const { transactions } = await getTransactionsData();
+      setTransactions(transactions);
+      setLoader(false);
+    } catch (error: any) {
+      if (error.response.status === 401) {
+        logout();
+      }
+    }
+  };
 
-                        <div style={{display: 'flex', justifyContent: 'space-between'}}> 
-                            <Typography>{item.Category} : {item.SubCategory}</Typography>
-                            <Typography fontWeight={800}>₹{item.ClosingBalance}</Typography>
-                        </div>
-                        
-                        <div style={{display: 'flex', justifyContent: 'space-between'}}> 
-                            <Typography fontWeight={100} fontSize={14}>{item.Description}</Typography>
-                            {item.PaymentMethod ? <Typography fontWeight={200}>{item.PaymentMethod}</Typography>: null }
-                        </div>
-                    </div>
-                </Paper>
-            ))}
-         </Paper>   
-        </Box>
-        
-    )
-}
+  const getType = (amount?: string) => (Number(amount) >= 0 ? 'CREDIT' : 'DEBIT');
+  return (
+    <Box sx={{ pb: 7 }} ref={ref}>
+      {shopAppHeader ? <AppHeader title="Transactions" onClickBack={() => navigate(-1)} /> : null}
+      {loader ? <TransactionSkeleton count={10} /> : transactions.length === 0 ? <TransactionNotFound /> : null}
+      <Paper style={{ backgroundColor: 'ActiveBorder' }}>
+        {(transactions || []).map((item) => (
+          <Paper key={'t' + item.RowId} style={{ padding: 8, marginBottom: 1, borderRadius: 0 }} elevation={3}>
+            <div
+              onClick={() =>
+                navigate('/add', { state: { type: getType(item.Amount), action: 'EDIT', expenseData: item } })
+              }
+            >
+              <Typography style={{ color: 'GrayText' }}>
+                {dayjs(item.TransactionDate).format('MMMM DD, YYYY')}
+              </Typography>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Typography>{item.Payee}</Typography>
+                <Typography color={getType(item.Amount) === 'CREDIT' ? 'green' : 'red'} fontWeight={900}>
+                  ₹{getType(item.Amount) === 'CREDIT' ? item.Amount : Number(item.Amount) * -1}
+                </Typography>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Typography>
+                  {item.Category} : {item.SubCategory}
+                </Typography>
+                <Typography fontWeight={800}>₹{item.ClosingBalance}</Typography>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Typography fontWeight={100} fontSize={14}>
+                  {item.Description}
+                </Typography>
+                {item.PaymentMethod ? <Typography fontWeight={200}>{item.PaymentMethod}</Typography> : null}
+              </div>
+            </div>
+          </Paper>
+        ))}
+      </Paper>
+    </Box>
+  );
+};

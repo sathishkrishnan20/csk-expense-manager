@@ -1,0 +1,29 @@
+
+  .circle1 {
+    position: relative;
+    width: 19rem;
+    height: 19rem;
+    background-color: rgb(1, 115, 43);
+    border-radius: 50%;
+    background: -webkit-linear-gradient(left, #dadada 50%, #0b814c 50%);
+  }
+
+ 
+  
+  .circle2 {
+    transform: translate(25%, 25%);
+    width: 200px;
+    height: 200px;
+    background-color: rgb(233, 27, 17);
+    border-radius: 50%;
+    border: 20px solid #ffffff;
+  }
+  
+  .circle3 {
+    transform: translate(30%, 30%);
+    width: 100px;
+    height: 100px;
+    border: 20px solid #ffffff;
+    background-color: rgb(240, 240, 240);
+    border-radius: 50%;
+  }

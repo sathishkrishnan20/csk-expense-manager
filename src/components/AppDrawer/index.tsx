@@ -35,7 +35,7 @@ export const AppDrawer = () => {
       variant="permanent"
       anchor="left"
     >
-      <div className="drawer-container h-full">
+      <div className="drawer-container h-full shadow-inner">
         <div className="header-title">
           <img
             src={EXPENSE_MANAGER_IMAGE_URL}
@@ -66,7 +66,7 @@ export const AppDrawer = () => {
               onClick={() => navigate(navigationLink)}
               key={title}
               type="button"
-              className="flex gap-x-2 text-purple-700 hover:text-white text-white bg-white hover:bg-purple-700   font-medium rounded-full text-sm px-5 py-2.5 text-center mb-2 dark:bg-purple-600 dark:hover:bg-purple-700 dark:focus:ring-purple-900"
+              className="flex gap-x-2 shadow bg-white hover:bg-purple-600 hover:text-white text-purple-700  font-medium rounded-full text-sm px-5 py-2.5 text-center mb-2"
             >
               <Icon />
               <h6>{title}</h6>

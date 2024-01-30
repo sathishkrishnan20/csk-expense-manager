@@ -48,15 +48,6 @@ export const Header = ({ isLoading, onClickLogin }: HeaderProps) => {
 
       <div className="header-right-buttons">
         <GoogleLoginButton isLoading={isLoading} onClickLogin={onClickLogin} />
-        {/* <Button
-          disabled={isLoading}
-          startIcon={!isLoading ? <GoolgeIcon /> : null}
-          variant="contained"
-          title="Login"
-          onClick={() => onClickLogin()}
-        >
-          {isLoading ? <CircularProgress size={25} /> : 'Login'}
-        </Button> */}
       </div>
     </div>
   );

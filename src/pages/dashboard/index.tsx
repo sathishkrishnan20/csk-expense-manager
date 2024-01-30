@@ -15,6 +15,7 @@ import { ExpenseSchema } from '../../interface/expenses';
 import { TransactionSkeleton } from '../../components/Transactions/skeleton';
 import { TransactionNotFound } from '../../components/Transactions/not_found';
 import './styles.css';
+import { EXPENSE_MANAGER_IMAGE_URL } from '../../config';
 
 const Div = styled('div')(({ theme }) => ({
   ...theme.typography.button,
@@ -55,14 +56,13 @@ export const DashBoard = () => {
     logout();
   };
   const naviageToTransactionsPage = () => navigate('/transactions', { state: { transactions } });
-
   return (
     <Box sx={{ pb: 7 }} ref={ref}>
       <CssBaseline />
-
+     
       <Paper className="summary-container" elevation={3}>
         <div className="fx fx-jc-sb m-lr-20">
-          <Avatar alt={state?.userInfo?.name} src={state?.userInfo?.picture} />
+          <Avatar alt={state?.userInfo?.name} src={state?.userInfo?.picture ? state?.userInfo?.picture : EXPENSE_MANAGER_IMAGE_URL} />
           <Div></Div>
           <button onClick={() => onLogout()}>
             <NotificationIcon className="logout-icon text-white" />
@@ -79,8 +79,10 @@ export const DashBoard = () => {
           <div></div>
         </div>
       </Paper>
-
-      <Paper style={{ padding: 16 }} elevation={1}>
+      {/* <Paper elevation={3}>
+         <CircleChat />
+      </Paper> */}
+      <Paper className='' style={{ padding: 16 }} elevation={1}>
         <div className="fx fx-jc-sb fx-g-20">
           <div
             onClick={() => navigate('/add', { state: { type: 'CREDIT' } })}
@@ -106,6 +108,8 @@ export const DashBoard = () => {
           </div>
         </div>
       </Paper>
+
+      
 
       <CssBaseline />
       <Paper style={{ marginTop: 4 }} elevation={0}>

@@ -10,7 +10,7 @@ import {
 import HomeIcon from '@mui/icons-material/Home';
 import TransactionIcon from '@mui/icons-material/DynamicForm';
 import BudgetIcon from '@mui/icons-material/PieChart';
-import ProfileIcon from '@mui/icons-material/AccountCircle';
+import ProfileIcon from '@mui/icons-material/Settings';
 import ExpenseIcon from '@mui/icons-material/CreditCardOffOutlined';
 import CreditIcon from '@mui/icons-material/AddCardOutlined';
 import React from 'react';
@@ -81,7 +81,7 @@ export const AppFooter = () => {
         )}
 
         <BottomNavigationAction label="Charts" onClick={() => navigate('charts')} icon={<BudgetIcon />} />
-        <BottomNavigationAction label="Profile" onClick={() => navigate('profile')} icon={<ProfileIcon />} />
+        <BottomNavigationAction label="Config" onClick={() => navigate('master_config')} icon={<ProfileIcon />} />
       </BottomNavigation>
     </Paper>
   );

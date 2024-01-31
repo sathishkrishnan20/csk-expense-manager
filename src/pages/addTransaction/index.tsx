@@ -30,11 +30,16 @@ import { DatePicker } from '@mui/x-date-pickers';
 import dayjs, { Dayjs } from 'dayjs';
 import { LOCAL_SESSION_KEYS, getItem } from '../../context/storage';
 import './index.css';
+import { useAppContext } from '../../context/AppContext';
+import { MasterActionKind } from '../../reducers/category';
 
 export const AddTransaction = () => {
   const {
     state: { type, action, expenseData },
   } = useLocation();
+
+  const { masterDataState, masterDataDispatch }  = useAppContext()
+  console.log('masterDataState', masterDataState, masterDataDispatch)
   const navigate = useNavigate();
   const [transactionType, setTransactionType] = React.useState(type);
   const [deleteConfirmationDialogOpen, setDeleteConfirmationDialogOpen] = React.useState(false);
@@ -63,13 +68,41 @@ export const AddTransaction = () => {
     loadMasterData();
   }, []);
   const loadMasterData = async () => {
-    const { category, payments } = await getMasterData();
+    const { category, payments } = await loadMasterDataFromReducerOrSheet()
     setOriginalMasterCategorySubCategory(category);
     setMasterCategorySubCategory(category);
     setMasterPaymentMethods(payments);
     onChangeTransctionType(transactionType, category);
     loadDataIfActionIsEdit(category);
   };
+
+  const loadMasterDataFromReducerOrSheet = async () => {
+    if (masterDataState.categoryAndSubCategories?.length && masterDataState.payments?.length ) {
+        return {
+          category: masterDataState.categoryAndSubCategories,
+          payments: masterDataState.payments
+        }
+    } else {
+      const { category, payments } = await getMasterData();
+      if (masterDataDispatch)  {
+          masterDataDispatch({
+            type: MasterActionKind.SET_CATEGORY,
+            payload: {
+              categoryAndSubCategories: category
+            }
+          })
+          masterDataDispatch({
+            type: MasterActionKind.SET_PAYMENTS,
+            payload: {
+              payments: payments
+            }
+          })
+      }
+      return {
+        category, payments
+      }
+    }
+  }
 
   const loadDataIfActionIsEdit = (originalCategories: CategorySubCategoryGrouped[]) => {
     const expenseEditData = expenseData as ExpenseSchema;

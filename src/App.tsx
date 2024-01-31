@@ -16,8 +16,10 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { Profile } from './pages/profile';
 import { PrivacyPolicy } from './pages/privacy-policy';
 import { TermsAndServices } from './pages/terms-services';
-import { setItem, getItem, LOCAL_SESSION_KEYS } from './context/storage';
 import { AppDrawer } from './components/AppDrawer';
+import { masterDataReducer } from './reducers/category';
+import { AppContext } from './context/AppContext';
+import { MasterDataConfig } from './pages/masterdata';
 
 const theme = createTheme({
   palette: {
@@ -28,42 +30,47 @@ const theme = createTheme({
   },
 });
 
+
 function App() {
   const { state, loginIfSessionIsActive } = useContext(AuthContext);
   useEffect(() => {
     loginIfSessionIsActive();
   }, []);
+  const [masterDataState, masterDataDispatch ] = React.useReducer(masterDataReducer, { categoryAndSubCategories: [] });
+
   return (
     <ThemeProvider theme={theme}>
-      <LocalizationProvider dateAdapter={AdapterDayjs}>
-        <GoogleOAuthProvider clientId={CLIENT_ID}>
-          {state.isLoggedIn ? (
-            <div className="hidden md:block">
-              <AppDrawer />
-            </div>
-          ) : null}
-          <div className={state.isLoggedIn ? "md:ml-60": ""}>
-            <Routes>
-              <Route path="/" element={<Login />}></Route>
-              <Route path="/privacy-policy" element={<PrivacyPolicy shopAppHeader={true} />} />
-              <Route path="/terms-services" element={<TermsAndServices shopAppHeader={true} />} />
+      <AppContext.Provider value={{ masterDataState, masterDataDispatch }}>
+        <LocalizationProvider dateAdapter={AdapterDayjs}>
+          <GoogleOAuthProvider clientId={CLIENT_ID}>
+            {state.isLoggedIn ? (
+              <div className="hidden md:block">
+                <AppDrawer />
+              </div>
+            ) : null}
+            <div className={state.isLoggedIn ? "md:ml-60": ""}>
+              <Routes>
+                <Route path="/" element={<Login />}></Route>
+                <Route path="/privacy-policy" element={<PrivacyPolicy shopAppHeader={true} />} />
+                <Route path="/terms-services" element={<TermsAndServices shopAppHeader={true} />} />
 
-              <Route path="/home" element={<DashBoard />} />
-              <Route path="/transactions" element={<Transactions shopAppHeader={true} />} />
-              <Route path="/add" element={<AddTransaction />} />
-              <Route path="/charts" element={<TransactionCharts shopAppHeader={true} />} />
-              <Route path="/profile" element={<Profile shopAppHeader={true} />} />
-            </Routes>
-          </div>
-
-          {state.isLoggedIn ? (
-            <div className="md:hidden">
-              {' '}
-              <AppFooter />{' '}
+                <Route path="/home" element={<DashBoard />} />
+                <Route path="/transactions" element={<Transactions shopAppHeader={true} />} />
+                <Route path="/add" element={<AddTransaction />} />
+                <Route path="/charts" element={<TransactionCharts shopAppHeader={true} />} />
+                <Route path="/profile" element={<Profile shopAppHeader={true} />} />
+                <Route path="/master_config" element={<MasterDataConfig shopAppHeader={true} />} />
+              </Routes>
             </div>
-          ) : null}
-        </GoogleOAuthProvider>
-      </LocalizationProvider>
+
+            {state.isLoggedIn ? (
+              <div className="md:hidden">
+                <AppFooter />
+              </div>
+            ) : null}
+          </GoogleOAuthProvider>
+        </LocalizationProvider>
+        </AppContext.Provider>
     </ThemeProvider>
   );
 }

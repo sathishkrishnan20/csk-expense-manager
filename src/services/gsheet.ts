@@ -186,6 +186,33 @@ export const updateTransaction = async (
   });
 };
 
+export const addNewSubCategory = async (
+  requestData: Omit<CategorySubCategorySchema, 'RowId' | 'Timestamp'>,
+): Promise<any> => {
+  
+  function getRequestInput() {
+    const requestInput: string[] = [];
+    const requestDataWithEx: CategorySubCategorySchema = {
+      ...requestData,
+      RowId: '=row()',
+      Timestamp: '=now()',
+    };
+    for (let index = 0; index < CATEGORY_SUBCATEGORY_TAB_HEADERS.length; index++) {
+      const element = CATEGORY_SUBCATEGORY_TAB_HEADERS[index];
+      requestInput.push(requestDataWithEx[element] || '');
+    }
+    return requestInput;
+  }
+
+  await instance.post(
+    `/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/values/${CATEGORY_SUBCATEGORY_TAB_NAME}!A:Z:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+    {
+      majorDimension: 'ROWS',
+      values: [getRequestInput()],
+    },
+  );
+};
+
 const getTransactionInput = (
   requestData: Omit<ExpenseSchema, 'Id' | 'OpeningBalance' | 'ClosingBalance' | 'Timestamp'>,
 ) => {

@@ -5,14 +5,13 @@ import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import Typography from '@mui/material/Typography';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
-import PlusIcon from '@mui/icons-material/AddOutlined';
 import React, { useEffect } from "react";
 import { MasterCategoryAndSubCategory } from "./master_category_subcategory";
 import { getMasterData } from "../../services/gsheet";
 import { MasterActionKind } from "../../reducers/category";
 import { useAppContext } from "../../context/AppContext";
 import { CategorySubCategoryGrouped, PaymentMethodsSchema } from "../../interface/expenses";
-import { Button } from "@mui/material";
+import AccountMenu from "./Menu";
 interface MasterCategoryAndSubCategoryProps {
     shopAppHeader: boolean;
     
@@ -71,7 +70,7 @@ export const MasterDataConfig = ({shopAppHeader}:MasterCategoryAndSubCategoryPro
     return (
         
         <div>
-            {shopAppHeader ? <AppHeader title="Master Data" onClickBack={() => navigate(-1)} /> : null}
+            {shopAppHeader ? <AppHeader title="Master Data" onClickBack={() => navigate(-1)} rightButtonAsIconComponent={<AccountMenu />} /> : null}
             
             {/* <Accordion expanded={expanded === 'payments'} onChange={() => handleChange('payments')}>
                 <AccordionSummary

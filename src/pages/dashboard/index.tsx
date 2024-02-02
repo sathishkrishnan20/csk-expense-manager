@@ -59,10 +59,13 @@ export const DashBoard = () => {
   return (
     <Box sx={{ pb: 0 }} ref={ref}>
       <CssBaseline />
-     
+
       <Paper className="summary-container" elevation={3}>
         <div className="fx fx-jc-sb m-lr-20">
-          <Avatar alt={state?.userInfo?.name} src={state?.userInfo?.picture ? state?.userInfo?.picture : EXPENSE_MANAGER_IMAGE_URL} />
+          <Avatar
+            alt={state?.userInfo?.name}
+            src={state?.userInfo?.picture ? state?.userInfo?.picture : EXPENSE_MANAGER_IMAGE_URL}
+          />
           <Div></Div>
           <button onClick={() => onLogout()}>
             <NotificationIcon className="logout-icon text-white" />
@@ -82,7 +85,7 @@ export const DashBoard = () => {
       {/* <Paper elevation={3}>
          <CircleChat />
       </Paper> */}
-      <Paper className='' style={{ padding: 16 }} elevation={1}>
+      <Paper className="" style={{ padding: 16 }} elevation={1}>
         <div className="fx fx-jc-sb fx-g-20">
           <div
             onClick={() => navigate('/add', { state: { type: 'CREDIT' } })}
@@ -108,8 +111,6 @@ export const DashBoard = () => {
           </div>
         </div>
       </Paper>
-
-      
 
       <CssBaseline />
       <Paper style={{ marginTop: 4 }} elevation={0}>

@@ -1,9 +1,9 @@
-import React, { Dispatch } from "react";
-import { MasterAction, MasterState } from "../reducers/category";
+import React, { Dispatch } from 'react';
+import { MasterAction, MasterState } from '../reducers/category';
 
 interface AppContextProps {
-    masterDataState: MasterState, 
-    masterDataDispatch?: Dispatch<MasterAction>
+  masterDataState: MasterState;
+  masterDataDispatch?: Dispatch<MasterAction>;
 }
 export const AppContext = React.createContext<AppContextProps>({ masterDataState: { categoryAndSubCategories: [] } });
 

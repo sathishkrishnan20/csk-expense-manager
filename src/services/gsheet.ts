@@ -135,7 +135,7 @@ export const getMasterData = async (): Promise<MasterResp> => {
       const sub = {
         RowId: element.RowId,
         subCategory: element.SubCategoryName,
-        Status: element.Status as StatusType
+        Status: element.Status as StatusType,
       };
       if (sub.Status === 'DELETED') {
         continue;
@@ -149,7 +149,7 @@ export const getMasterData = async (): Promise<MasterResp> => {
         map[categoryName].subCategories.push(sub);
       }
     }
-    console.log(Object.values(map))
+    console.log(Object.values(map));
     return {
       payments: getShemaed(headers, paymentMethodsData) as PaymentMethodsSchema[],
       category: Object.values(map),
@@ -195,11 +195,15 @@ export const updateTransaction = async (
 export const addNewSubCategory = async (
   requestDatas: Omit<CategorySubCategorySchema, 'RowId' | 'Timestamp'>[],
 ): Promise<any> => {
+  const inputs = []
+  for (const iterator of requestDatas) {
+     inputs.push(getCategorySubCategoryRequestInput(iterator)) 
+  }
   await instance.post(
     `/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/values/${CATEGORY_SUBCATEGORY_TAB_NAME}!A:Z:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
     {
       majorDimension: 'ROWS',
-      values: [getCategorySubCategoryRequestInput(requestDatas)],
+      values: inputs,
     },
   );
 };
@@ -212,7 +216,7 @@ export const updateCategorySubCategory = async (
     data: [
       {
         majorDimension: 'ROWS',
-        values: [getCategorySubCategoryRequestInput([requestData])],
+        values: [getCategorySubCategoryRequestInput(requestData)],
         dataFilter: {
           a1Range: `${CATEGORY_SUBCATEGORY_TAB_NAME}!A${requestData.RowId}:Z${requestData.RowId}`,
         },
@@ -221,9 +225,8 @@ export const updateCategorySubCategory = async (
   });
 };
 
-function getCategorySubCategoryRequestInput(requestDatas: Omit<CategorySubCategorySchema, 'RowId' | 'Timestamp'>[]) {
-  const requestInput: string[] = [];
-  for (const requestData of requestDatas) {
+function getCategorySubCategoryRequestInput(requestData: Omit<CategorySubCategorySchema, 'RowId' | 'Timestamp'>) {
+    const requestInput: string[] = [];
     const requestDataWithEx: CategorySubCategorySchema = {
       ...requestData,
       RowId: '=row()',
@@ -233,7 +236,7 @@ function getCategorySubCategoryRequestInput(requestDatas: Omit<CategorySubCatego
       const element = CATEGORY_SUBCATEGORY_TAB_HEADERS[index];
       requestInput.push(requestDataWithEx[element] || '');
     }
-  }
+  
   return requestInput;
 }
 

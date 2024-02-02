@@ -30,7 +30,7 @@ export default function AccountMenu() {
             aria-haspopup="true"
             aria-expanded={open ? 'true' : undefined}
           >
-            <Avatar sx={{ width: 32, height: 32 }}>M</Avatar>
+            <ListItemIcon />
           </IconButton>
         </Tooltip>
       </Box>
@@ -73,7 +73,7 @@ export default function AccountMenu() {
           <ListItemIcon>
             <PersonAdd fontSize="small" />
           </ListItemIcon>
-            Add Category
+          Add Category
         </MenuItem>
         <MenuItem onClick={handleClose}>
           <ListItemIcon>
@@ -81,7 +81,6 @@ export default function AccountMenu() {
           </ListItemIcon>
           Add Payment Method
         </MenuItem>
-       
       </Menu>
     </React.Fragment>
   );

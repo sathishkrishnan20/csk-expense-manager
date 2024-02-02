@@ -79,15 +79,9 @@ export const Login = () => {
   };
 
   const LeftTitle = ({ text }: { text: string }) => (
-    <h2 className="body-left-text text-3xl md:text-4xl lg:text-5xl">
-      {text}
-    </h2>
+    <h2 className="body-left-text text-3xl md:text-4xl lg:text-5xl">{text}</h2>
   );
-  const LeftSubTitle = ({ text }: { text: string }) => (
-    <h4 className="body-left-sub-text">
-      {text}
-    </h4>
-  );
+  const LeftSubTitle = ({ text }: { text: string }) => <h4 className="body-left-sub-text">{text}</h4>;
 
   return (
     <Box sx={{ pb: 7 }} ref={ref}>
@@ -98,7 +92,7 @@ export const Login = () => {
 
           <div className="body-container flex flex-col md:flex-row-reverse m-3">
             <div>
-              <img src={expenseSystemPic} alt={APP_TITLE} loading="lazy" className='max-w-25' />
+              <img src={expenseSystemPic} alt={APP_TITLE} loading="lazy" className="max-w-25" />
             </div>
 
             <div className="">

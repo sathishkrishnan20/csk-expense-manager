@@ -38,8 +38,8 @@ export const AddTransaction = () => {
     state: { type, action, expenseData },
   } = useLocation();
 
-  const { masterDataState, masterDataDispatch }  = useAppContext()
-  console.log('masterDataState', masterDataState, masterDataDispatch)
+  const { masterDataState, masterDataDispatch } = useAppContext();
+  console.log('masterDataState', masterDataState, masterDataDispatch);
   const navigate = useNavigate();
   const [transactionType, setTransactionType] = React.useState(type);
   const [deleteConfirmationDialogOpen, setDeleteConfirmationDialogOpen] = React.useState(false);
@@ -68,7 +68,7 @@ export const AddTransaction = () => {
     loadMasterData();
   }, []);
   const loadMasterData = async () => {
-    const { category, payments } = await loadMasterDataFromReducerOrSheet()
+    const { category, payments } = await loadMasterDataFromReducerOrSheet();
     setOriginalMasterCategorySubCategory(category);
     setMasterCategorySubCategory(category);
     setMasterPaymentMethods(payments);
@@ -77,32 +77,33 @@ export const AddTransaction = () => {
   };
 
   const loadMasterDataFromReducerOrSheet = async () => {
-    if (masterDataState.categoryAndSubCategories?.length && masterDataState.payments?.length ) {
-        return {
-          category: masterDataState.categoryAndSubCategories,
-          payments: masterDataState.payments
-        }
+    if (masterDataState.categoryAndSubCategories?.length && masterDataState.payments?.length) {
+      return {
+        category: masterDataState.categoryAndSubCategories,
+        payments: masterDataState.payments,
+      };
     } else {
       const { category, payments } = await getMasterData();
-      if (masterDataDispatch)  {
-          masterDataDispatch({
-            type: MasterActionKind.SET_CATEGORY,
-            payload: {
-              categoryAndSubCategories: category
-            }
-          })
-          masterDataDispatch({
-            type: MasterActionKind.SET_PAYMENTS,
-            payload: {
-              payments: payments
-            }
-          })
+      if (masterDataDispatch) {
+        masterDataDispatch({
+          type: MasterActionKind.SET_CATEGORY,
+          payload: {
+            categoryAndSubCategories: category,
+          },
+        });
+        masterDataDispatch({
+          type: MasterActionKind.SET_PAYMENTS,
+          payload: {
+            payments: payments,
+          },
+        });
       }
       return {
-        category, payments
-      }
+        category,
+        payments,
+      };
     }
-  }
+  };
 
   const loadDataIfActionIsEdit = (originalCategories: CategorySubCategoryGrouped[]) => {
     const expenseEditData = expenseData as ExpenseSchema;

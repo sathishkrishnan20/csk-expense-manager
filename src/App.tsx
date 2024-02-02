@@ -30,13 +30,12 @@ const theme = createTheme({
   },
 });
 
-
 function App() {
   const { state, loginIfSessionIsActive } = useContext(AuthContext);
   useEffect(() => {
     loginIfSessionIsActive();
   }, []);
-  const [masterDataState, masterDataDispatch ] = React.useReducer(masterDataReducer, { categoryAndSubCategories: [] });
+  const [masterDataState, masterDataDispatch] = React.useReducer(masterDataReducer, { categoryAndSubCategories: [] });
 
   return (
     <ThemeProvider theme={theme}>
@@ -48,7 +47,7 @@ function App() {
                 <AppDrawer />
               </div>
             ) : null}
-            <div className={state.isLoggedIn ? "md:ml-60": ""}>
+            <div className={state.isLoggedIn ? 'md:ml-60' : ''}>
               <Routes>
                 <Route path="/" element={<Login />}></Route>
                 <Route path="/privacy-policy" element={<PrivacyPolicy shopAppHeader={true} />} />
@@ -70,7 +69,7 @@ function App() {
             ) : null}
           </GoogleOAuthProvider>
         </LocalizationProvider>
-        </AppContext.Provider>
+      </AppContext.Provider>
     </ThemeProvider>
   );
 }

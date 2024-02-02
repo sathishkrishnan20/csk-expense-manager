@@ -131,7 +131,6 @@ export const TransactionCharts = ({ shopAppHeader, transactions: transactionsVia
                   fontWeight: 'bold',
                 },
               }}
-              width={windowSize.current[0]}
               height={250}
             />
           </Paper>
@@ -162,7 +161,6 @@ export const TransactionCharts = ({ shopAppHeader, transactions: transactionsVia
               <BarChart
                 xAxis={[{ scaleType: 'band', data: expensesByCategory.map((e) => e.label) }]}
                 series={[{ data: expensesByCategory.map((e) => e.value) }]}
-                width={windowSize.current[0]}
                 height={300}
               />
             </Paper>

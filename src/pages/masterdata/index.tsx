@@ -1,83 +1,96 @@
-import { useNavigate } from "react-router-dom";
-import { AppHeader } from "../../components/AppBar"
+import { useNavigate } from 'react-router-dom';
+import { AppHeader } from '../../components/AppBar';
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import Typography from '@mui/material/Typography';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
-import React, { useEffect, useState } from "react";
-import { MasterCategoryAndSubCategory } from "./master_category_subcategory";
-import { getMasterData } from "../../services/gsheet";
-import { MasterActionKind } from "../../reducers/category";
-import { useAppContext } from "../../context/AppContext";
-import { CategorySubCategoryGrouped, PaymentMethodsSchema } from "../../interface/expenses";
-import AccountMenu from "./Menu";
-import { Box } from "@mui/material";
+import PlusIcon from '@mui/icons-material/Add';
+import React, { useEffect, useState } from 'react';
+import { MasterCategoryAndSubCategory } from './master_category_subcategory';
+import { getMasterData } from '../../services/gsheet';
+import { MasterActionKind } from '../../reducers/category';
+import { useAppContext } from '../../context/AppContext';
+import { CategorySubCategoryGrouped, PaymentMethodsSchema } from '../../interface/expenses';
+import AccountMenu from './Menu';
+import { Box, Button } from '@mui/material';
 interface MasterCategoryAndSubCategoryProps {
-    shopAppHeader: boolean;
-    
-  }
+  shopAppHeader: boolean;
+}
 
-export const MasterDataConfig = ({shopAppHeader}:MasterCategoryAndSubCategoryProps) => {
-    const navigate = useNavigate();
-    const [expanded, setExpanded] = React.useState<string>('category');
-    const { masterDataState, masterDataDispatch }  = useAppContext()
-    const [masterCategorySubCategory, setMasterCategorySubCategory] = React.useState<
-    CategorySubCategoryGrouped[]
-  >([]);
-    const [isEditMode, setIsEditMode] = useState(false)
-    const ref = React.useRef<HTMLDivElement>(null);
-    const categoryRef = React.useRef<typeof MasterCategoryAndSubCategory>(null);
+export const MasterDataConfig = ({ shopAppHeader }: MasterCategoryAndSubCategoryProps) => {
+  const navigate = useNavigate();
+  const [expanded, setExpanded] = React.useState<string>('category');
+  const { masterDataState, masterDataDispatch } = useAppContext();
+  const [masterCategorySubCategory, setMasterCategorySubCategory] = React.useState<CategorySubCategoryGrouped[]>([]);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+  const categoryRef = React.useRef<typeof MasterCategoryAndSubCategory>(null);
 
   const [masterPaymentMethods, setMasterPaymentMethods] = React.useState<PaymentMethodsSchema[]>([]);
-  
-    useEffect(() => {
-        loadMasterDataFromReducerOrSheet()
-    }, [])
-    
-    const handleChange = (panel: string) => {
-        if  (panel === expanded) {
-            setExpanded('')
-        } else {
-            setExpanded(panel)
-        }
+
+  useEffect(() => {
+    loadMasterDataFromReducerOrSheet();
+  }, []);
+
+  const handleChange = (panel: string) => {
+    if (panel === expanded) {
+      setExpanded('');
+    } else {
+      setExpanded(panel);
     }
+  };
 
-    const loadMasterDataFromReducerOrSheet = async () => {
-        if (masterDataState.categoryAndSubCategories?.length && masterDataState.payments?.length ) {
-            setMasterCategorySubCategory(masterDataState.categoryAndSubCategories)
-            setMasterPaymentMethods(masterDataState.payments)
-        } else {
-          const { category, payments } = await getMasterData();
-          setMasterCategorySubCategory(category)
-          setMasterPaymentMethods(payments)
-          if (masterDataDispatch)  {
-              masterDataDispatch({
-                type: MasterActionKind.SET_CATEGORY,
-                payload: {
-                  categoryAndSubCategories: category
-                }
-              })
-              masterDataDispatch({
-                type: MasterActionKind.SET_PAYMENTS,
-                payload: {
-                  payments: payments
-                }
-              })
-          }
-          return {
-            category, payments
-          }
-        }
+  const loadMasterDataFromReducerOrSheet = async () => {
+    if (masterDataState.categoryAndSubCategories?.length && masterDataState.payments?.length) {
+      setMasterCategorySubCategory(masterDataState.categoryAndSubCategories);
+      setMasterPaymentMethods(masterDataState.payments);
+    } else {
+      const { category, payments } = await getMasterData();
+      setMasterCategorySubCategory(category);
+      setMasterPaymentMethods(payments);
+      if (masterDataDispatch) {
+        masterDataDispatch({
+          type: MasterActionKind.SET_CATEGORY,
+          payload: {
+            categoryAndSubCategories: category,
+          },
+        });
+        masterDataDispatch({
+          type: MasterActionKind.SET_PAYMENTS,
+          payload: {
+            payments: payments,
+          },
+        });
       }
-    
+      return {
+        category,
+        payments,
+      };
+    }
+  };
 
-    return (
-        <Box sx={{ pb: 7 }} ref={ref}>
-        <div>{/* @ts-ignore */}
-            {shopAppHeader ? <AppHeader title="Master Data" onClickBack={() => isEditMode ? categoryRef.current.alterEditMode() : navigate(-1) } rightButtonAsIconComponent={null} /> : null}
+  return (
+    <Box sx={{ pb: 7 }} ref={ref}>
+      <div>
+       
+        {shopAppHeader ? (
+          <AppHeader
+            title="Master Data"
             
-            {/* <Accordion expanded={expanded === 'payments'} onChange={() => handleChange('payments')}>
+            onClickBack={() => {
+              if(isEditMode) {
+                // @ts-ignore
+                categoryRef.current?.alterEditMode()
+              } else {
+                navigate(-1)
+              }
+            }} 
+            rightButtonAsIconComponent={<AccountMenu />}
+          />
+        ) : null}
+
+        {/* <Accordion expanded={expanded === 'payments'} onChange={() => handleChange('payments')}>
                 <AccordionSummary
                     expandIcon={<ArrowDownwardIcon />}
                     aria-controls="panel1-content"
@@ -91,31 +104,40 @@ export const MasterDataConfig = ({shopAppHeader}:MasterCategoryAndSubCategoryPro
                     </Typography>
                 </AccordionDetails>
             </Accordion> */}
-            <Accordion expanded={expanded === 'category'} onChange={() => handleChange('category')}>
-                <AccordionSummary
-                    expandIcon={
-                        <div style={{display: 'flex', flexDirection: expanded === 'category' ? 'row' : 'row-reverse' }}>  
-                            <ArrowDownwardIcon />  
-                            {/* <div onClick={() => console.log('ss')}> 
-                                <Button variant="contained"> <PlusIcon /></Button>
-                            </div> */}
-                        </div>
-                    }
-                    aria-controls="panel1-content"
-                    id="panel1-header">
-                        <Typography>Categories</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                    <MasterCategoryAndSubCategory 
-                        ref={categoryRef}
-                        categoriesAndSubCategories={masterCategorySubCategory}
-                        onHandleEditMode={(mode) => setIsEditMode(mode)} 
-                        onSuccessOfSubCategoryAdd={() => loadMasterDataFromReducerOrSheet()} />
-                </AccordionDetails>
-            </Accordion>
-            
-            
-        </div>
-        </Box>
-    )
-}
+        <Accordion expanded={expanded === 'category'} onChange={() => handleChange('category')}>
+          <AccordionSummary
+            expandIcon={
+              <div style={{ display: 'flex', flexDirection: expanded === 'category' ? 'row' : 'row-reverse' }}>
+                <ArrowDownwardIcon />
+                {/* {expanded === 'category' ? null : (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                    }}
+                  >
+                    <Button variant="contained">
+                     
+                      <PlusIcon /> add
+                    </Button>
+                  </div>
+                )} */}
+              </div>
+            }
+            aria-controls="panel1-content"
+            id="panel1-header"
+          >
+            <Typography>Categories</Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            <MasterCategoryAndSubCategory
+              ref={categoryRef}
+              categoriesAndSubCategories={masterCategorySubCategory}
+              onHandleEditMode={(mode) => setIsEditMode(mode)}
+              onSuccessOfSubCategoryAdd={() => loadMasterDataFromReducerOrSheet()}
+            />
+          </AccordionDetails>
+        </Accordion>
+      </div>
+    </Box>
+  );
+};

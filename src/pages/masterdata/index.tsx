@@ -14,13 +14,14 @@ import { useAppContext } from '../../context/AppContext';
 import { CategorySubCategoryGrouped, PaymentMethodsSchema } from '../../interface/expenses';
 import AccountMenu from './Menu';
 import { Box, Button } from '@mui/material';
+import { MasterPayments } from './master_payments';
 interface MasterCategoryAndSubCategoryProps {
   shopAppHeader: boolean;
 }
 
 export const MasterDataConfig = ({ shopAppHeader }: MasterCategoryAndSubCategoryProps) => {
   const navigate = useNavigate();
-  const [expanded, setExpanded] = React.useState<string>('category');
+  const [expanded, setExpanded] = React.useState<string>('payments');
   const { masterDataState, masterDataDispatch } = useAppContext();
   const [masterCategorySubCategory, setMasterCategorySubCategory] = React.useState<CategorySubCategoryGrouped[]>([]);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -90,37 +91,27 @@ export const MasterDataConfig = ({ shopAppHeader }: MasterCategoryAndSubCategory
           />
         ) : null}
 
-        {/* <Accordion expanded={expanded === 'payments'} onChange={() => handleChange('payments')}>
-                <AccordionSummary
-                    expandIcon={<ArrowDownwardIcon />}
-                    aria-controls="panel1-content"
-                    id="panel1-header">
-                    <Typography>Payment</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                    <Typography>
-                        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse
-                        malesuada lacus ex, sit amet blandit leo lobortis eget.
-                    </Typography>
-                </AccordionDetails>
-            </Accordion> */}
+        <Accordion expanded={expanded === 'payments'} onChange={() => handleChange('payments')}>
+            <AccordionSummary
+                expandIcon={<ArrowDownwardIcon />}
+                aria-controls="panel1-content"
+                id="panel1-header">
+                <Typography>Payment Modes</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <MasterPayments
+                paymentsData={masterPaymentMethods}
+                onHandleEditMode={(mode) => setIsEditMode(mode)}
+                onSuccessOfSubCategoryAdd={() => loadMasterDataFromReducerOrSheet()}
+              />
+            </AccordionDetails>
+        </Accordion>
+
         <Accordion expanded={expanded === 'category'} onChange={() => handleChange('category')}>
           <AccordionSummary
             expandIcon={
               <div style={{ display: 'flex', flexDirection: expanded === 'category' ? 'row' : 'row-reverse' }}>
                 <ArrowDownwardIcon />
-                {/* {expanded === 'category' ? null : (
-                  <div
-                    onClick={(e) => {
-                      e.stopPropagation();
-                    }}
-                  >
-                    <Button variant="contained">
-                     
-                      <PlusIcon /> add
-                    </Button>
-                  </div>
-                )} */}
               </div>
             }
             aria-controls="panel1-content"
@@ -137,6 +128,8 @@ export const MasterDataConfig = ({ shopAppHeader }: MasterCategoryAndSubCategory
             />
           </AccordionDetails>
         </Accordion>
+
+      
       </div>
     </Box>
   );

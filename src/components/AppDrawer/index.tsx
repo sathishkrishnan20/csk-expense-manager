@@ -9,7 +9,7 @@ import './style.css';
 import HomeIcon from '@mui/icons-material/Home';
 import TransactionIcon from '@mui/icons-material/DynamicForm';
 import BudgetIcon from '@mui/icons-material/PieChart';
-import ProfileIcon from '@mui/icons-material/AccountCircle';
+import SettingsIcon from '@mui/icons-material/Settings';
 import { useNavigate } from 'react-router-dom';
 
 export const AppDrawer = () => {
@@ -20,7 +20,7 @@ export const AppDrawer = () => {
     { title: 'Dashboard', Icon: HomeIcon, navigationLink: '/home' },
     { title: 'Transactions', Icon: TransactionIcon, navigationLink: '/transactions' },
     { title: 'Charts', Icon: BudgetIcon, navigationLink: '/charts' },
-    { title: 'Profile', Icon: ProfileIcon, navigationLink: '/profile' },
+    { title: 'Configuration', Icon: SettingsIcon, navigationLink: '/master_config' },
   ];
   return (
     <Drawer

@@ -57,7 +57,7 @@ export const DashBoard = () => {
   };
   const naviageToTransactionsPage = () => navigate('/transactions', { state: { transactions } });
   return (
-    <Box sx={{ pb: 7 }} ref={ref}>
+    <Box sx={{ pb: 0 }} ref={ref}>
       <CssBaseline />
      
       <Paper className="summary-container" elevation={3}>

@@ -26,8 +26,9 @@ export const CATEGORY_SUBCATEGORY_TAB_HEADERS: (keyof CategorySubCategorySchema)
   'CategoryName',
   'SubCategoryName',
   'Timestamp',
+  'Status'  
 ];
-export const PAYMENT_METHOD_TAB_HEADERS: (keyof PaymentMethodsSchema)[] = ['RowId', 'PaymentMethodName', 'Timestamp'];
+export const PAYMENT_METHOD_TAB_HEADERS: (keyof PaymentMethodsSchema)[] = ['RowId', 'PaymentMethodName', 'Timestamp', 'Status'];
 
 export const CATEGORY_SUB_CATEGORY_MASTER_DATA = [
   ['=row()', INCOME_CATEGORY_NAMES[0], 'Salary', '=now()'],

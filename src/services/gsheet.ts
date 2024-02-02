@@ -5,6 +5,7 @@ import {
   CategorySubCategorySchema,
   ExpenseSchema,
   PaymentMethodsSchema,
+  StatusType,
 } from '../interface/expenses';
 import {
   CATEGORY_SUBCATEGORY_TAB_HEADERS,
@@ -115,10 +116,10 @@ export const getMasterData = async (): Promise<MasterResp> => {
   try {
     const [paymentMethods, category] = await Promise.all([
       instance.get(
-        `/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/values/${PAYMENT_METHOD_TAB_NAME}!A1:B99999?majorDimension=ROWS`,
+        `/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/values/${PAYMENT_METHOD_TAB_NAME}!A1:D99999?majorDimension=ROWS`,
       ),
       instance.get(
-        `/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/values/${CATEGORY_SUBCATEGORY_TAB_NAME}!A1:C99999?majorDimension=ROWS`,
+        `/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/values/${CATEGORY_SUBCATEGORY_TAB_NAME}!A1:E99999?majorDimension=ROWS`,
       ),
     ]);
     const paymentMethodsData = paymentMethods.data.values;
@@ -134,7 +135,11 @@ export const getMasterData = async (): Promise<MasterResp> => {
       const sub = {
         RowId: element.RowId,
         subCategory: element.SubCategoryName,
+        Status: element.Status as StatusType
       };
+      if (sub.Status === 'DELETED') {
+        continue;
+      }
       if (!map[categoryName]) {
         map[categoryName] = {
           categoryName,
@@ -144,8 +149,9 @@ export const getMasterData = async (): Promise<MasterResp> => {
         map[categoryName].subCategories.push(sub);
       }
     }
+    console.log(Object.values(map))
     return {
-      payments: getShemaed(headers, paymentMethodsData),
+      payments: getShemaed(headers, paymentMethodsData) as PaymentMethodsSchema[],
       category: Object.values(map),
     };
   } catch (error) {
@@ -187,11 +193,37 @@ export const updateTransaction = async (
 };
 
 export const addNewSubCategory = async (
-  requestData: Omit<CategorySubCategorySchema, 'RowId' | 'Timestamp'>,
+  requestDatas: Omit<CategorySubCategorySchema, 'RowId' | 'Timestamp'>[],
 ): Promise<any> => {
-  
-  function getRequestInput() {
-    const requestInput: string[] = [];
+  await instance.post(
+    `/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/values/${CATEGORY_SUBCATEGORY_TAB_NAME}!A:Z:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+    {
+      majorDimension: 'ROWS',
+      values: [getCategorySubCategoryRequestInput(requestDatas)],
+    },
+  );
+};
+
+export const updateCategorySubCategory = async (
+  requestData: Omit<CategorySubCategorySchema, 'Timestamp'>,
+): Promise<any> => {
+  await instance.post(`/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/values:batchUpdateByDataFilter`, {
+    valueInputOption: 'USER_ENTERED',
+    data: [
+      {
+        majorDimension: 'ROWS',
+        values: [getCategorySubCategoryRequestInput([requestData])],
+        dataFilter: {
+          a1Range: `${CATEGORY_SUBCATEGORY_TAB_NAME}!A${requestData.RowId}:Z${requestData.RowId}`,
+        },
+      },
+    ],
+  });
+};
+
+function getCategorySubCategoryRequestInput(requestDatas: Omit<CategorySubCategorySchema, 'RowId' | 'Timestamp'>[]) {
+  const requestInput: string[] = [];
+  for (const requestData of requestDatas) {
     const requestDataWithEx: CategorySubCategorySchema = {
       ...requestData,
       RowId: '=row()',
@@ -201,17 +233,9 @@ export const addNewSubCategory = async (
       const element = CATEGORY_SUBCATEGORY_TAB_HEADERS[index];
       requestInput.push(requestDataWithEx[element] || '');
     }
-    return requestInput;
   }
-
-  await instance.post(
-    `/${getItem(LOCAL_SESSION_KEYS.SHEET_ID)}/values/${CATEGORY_SUBCATEGORY_TAB_NAME}!A:Z:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
-    {
-      majorDimension: 'ROWS',
-      values: [getRequestInput()],
-    },
-  );
-};
+  return requestInput;
+}
 
 const getTransactionInput = (
   requestData: Omit<ExpenseSchema, 'Id' | 'OpeningBalance' | 'ClosingBalance' | 'Timestamp'>,

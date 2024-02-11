@@ -1,5 +1,5 @@
 import React, { useContext, useEffect } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { DashBoard } from './pages/dashboard';
 import { Transactions } from './pages/transactions';
 import { AddTransaction } from './pages/addTransaction';
@@ -48,18 +48,24 @@ function App() {
               </div>
             ) : null}
             <div className={state.isLoggedIn ? 'md:ml-60' : ''}>
+              
+              {!state.isLoggedIn ? 
+              
+              
               <Routes>
                 <Route path="/" element={<Login />}></Route>
                 <Route path="/privacy-policy" element={<PrivacyPolicy shopAppHeader={true} />} />
                 <Route path="/terms-services" element={<TermsAndServices shopAppHeader={true} />} />
-
+                <Route path="*" element={<Navigate replace to="/" />} />
+              </Routes> : <Routes>
                 <Route path="/home" element={<DashBoard />} />
                 <Route path="/transactions" element={<Transactions shopAppHeader={true} />} />
                 <Route path="/add" element={<AddTransaction />} />
                 <Route path="/charts" element={<TransactionCharts shopAppHeader={true} />} />
                 <Route path="/profile" element={<Profile shopAppHeader={true} />} />
                 <Route path="/master_config" element={<MasterDataConfig shopAppHeader={true} />} />
-              </Routes>
+                <Route path="*" element={<Navigate replace to="/home" />} />
+              </Routes> } 
             </div>
 
             {state.isLoggedIn ? (

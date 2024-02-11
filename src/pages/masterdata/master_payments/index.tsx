@@ -18,8 +18,6 @@ import {
   ListItemText,
 } from '@mui/material';
 
-import EditIcon from '@mui/icons-material/Edit';
-import PlusIcon from '@mui/icons-material/Add';
 import { useAppContext } from '../../../context/AppContext';
 
 interface MasterCategoryAndSubCategoryProps {

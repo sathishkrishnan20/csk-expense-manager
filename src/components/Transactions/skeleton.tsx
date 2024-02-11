@@ -11,7 +11,6 @@ export const TransactionSkeleton = ({ count = 10 }: ITransactionSkeletonProps) =
   return (
     <div>
       {arr.map((item, index) => {
-        console.log(item, index);
         return (
           <div key={'' + index}>
             <div style={{ flex: 1, display: 'flex', justifyContent: 'space-between', flexDirection: 'row' }}>

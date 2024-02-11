@@ -10,12 +10,11 @@ import { styled } from '@mui/material/styles';
 import { Transactions } from '../transactions';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
-import { getTransactionsData } from '../../services/gsheet';
-import { ExpenseSchema } from '../../interface/expenses';
 import { TransactionSkeleton } from '../../components/Transactions/skeleton';
 import { TransactionNotFound } from '../../components/Transactions/not_found';
 import './styles.css';
 import { EXPENSE_MANAGER_IMAGE_URL } from '../../config';
+import { useTransactions } from '../../hooks/useTransactionData';
 
 const Div = styled('div')(({ theme }) => ({
   ...theme.typography.button,
@@ -27,31 +26,8 @@ const Div = styled('div')(({ theme }) => ({
 export const DashBoard = () => {
   const { logout, state } = React.useContext(AuthContext);
   const navigate = useNavigate();
-  const [transactions, setTransactions] = React.useState<ExpenseSchema[]>([]);
-  const [accountBalance, setAccountBalance] = React.useState(0);
-  const [credit, setCredit] = React.useState(0);
-  const [debit, setDebit] = React.useState(0);
-  const [loader, setLoader] = React.useState<boolean>(false);
+  const {transactions, accountBalance, credit,debit, loader   } = useTransactions({})
   const ref = React.useRef<HTMLDivElement>(null);
-  React.useEffect(() => {
-    loadRecentTransactionsData();
-  }, []);
-
-  const loadRecentTransactionsData = async () => {
-    try {
-      setLoader(true);
-      const { transactions, balance, income, expenses } = await getTransactionsData();
-      setTransactions(transactions);
-      setCredit(income);
-      setAccountBalance(balance);
-      setDebit(expenses);
-      setLoader(false);
-    } catch (error: any) {
-      if (error.response.status === 401) {
-        logout();
-      }
-    }
-  };
   const onLogout = () => {
     logout();
   };

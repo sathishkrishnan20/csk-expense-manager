@@ -4,46 +4,20 @@ import { Paper, Typography } from '@mui/material';
 import { AppHeader } from '../../components/AppBar';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ExpenseSchema } from '../../interface/expenses';
-import { getTransactionsData } from '../../services/gsheet';
 import { TransactionNotFound } from '../../components/Transactions/not_found';
-import { AuthContext } from '../../context/AuthContext';
 import dayjs from 'dayjs';
 import { TransactionSkeleton } from '../../components/Transactions/skeleton';
+import { useTransactions } from '../../hooks/useTransactionData';
 
 interface TransactionsProps {
   shopAppHeader: boolean;
   transactions?: ExpenseSchema[];
 }
 export const Transactions = ({ shopAppHeader, transactions: transactionsViaNaviagation }: TransactionsProps) => {
-  const { logout } = React.useContext(AuthContext);
   const navigate = useNavigate();
   const { state } = useLocation();
-  const [transactions, setTransactions] = React.useState<ExpenseSchema[]>([]);
-  const [loader, setLoader] = React.useState<boolean>(false);
+  const { transactions, loader } = useTransactions({ transactions: transactionsViaNaviagation?.length ? transactionsViaNaviagation : state?.transactions?.length? state?.transactions : [] });
   const ref = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    if (transactionsViaNaviagation?.length) {
-      setTransactions(transactionsViaNaviagation);
-    } else if (state?.transactions?.length) {
-      setTransactions(state.transactions);
-    } else {
-      loadRecentTransactionsData();
-    }
-  }, []);
-
-  const loadRecentTransactionsData = async () => {
-    try {
-      setLoader(true);
-      const { transactions } = await getTransactionsData();
-      setTransactions(transactions);
-      setLoader(false);
-    } catch (error: any) {
-      if (error.response.status === 401) {
-        logout();
-      }
-    }
-  };
 
   const getType = (amount?: string) => (Number(amount) >= 0 ? 'CREDIT' : 'DEBIT');
   return (

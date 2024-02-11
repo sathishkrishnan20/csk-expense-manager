@@ -2,13 +2,12 @@ import * as React from 'react';
 import Box from '@mui/material/Box';
 import { CircularProgress, Divider, FormControl, MenuItem, Paper, Select, styled } from '@mui/material';
 import { AppHeader } from '../../components/AppBar';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { ExpenseSchema } from '../../interface/expenses';
-import { getTransactionsData } from '../../services/gsheet';
 import { TransactionNotFound } from '../../components/Transactions/not_found';
-import { AuthContext } from '../../context/AuthContext';
 import { BarChart, PieChart, pieArcLabelClasses } from '@mui/x-charts';
 import { INCOME_CATEGORY_NAMES } from '../../config';
+import { useTransactions } from '../../hooks/useTransactionData';
 
 enum DATA_FIELDS_TO_FILTER {
   CATEGORY = 'CATEGORY',
@@ -30,51 +29,25 @@ const Div = styled('div')(({ theme }) => ({
   padding: theme.spacing(1),
 }));
 
-export const TransactionCharts = ({ shopAppHeader, transactions: transactionsViaNaviagation }: TransactionsProps) => {
-  const { logout } = React.useContext(AuthContext);
-  const windowSize = React.useRef([window.innerWidth, window.innerHeight]);
-
+export const TransactionCharts = ({ shopAppHeader }: TransactionsProps) => {
+  
   const navigate = useNavigate();
-  const { state } = useLocation();
-  const [transactions, setTransactions] = React.useState<ExpenseSchema[]>([]);
+  const {transactions, credit: income, debit: expenses, loader } = useTransactions({})
   const [onlyExpensess, setOnlyExpenses] = React.useState<ExpenseSchema[]>([]);
-
   const [expensesByCategory, setExpensesByCategory] = React.useState<PieChartProps[]>([]);
-
-  const [income, setIncome] = React.useState<number>(0);
-  const [expenses, setExpenses] = React.useState<number>(0);
-  const [loader, setLoader] = React.useState<boolean>(false);
   const [expensesBarChartBy, setExpensesBarChartBy] = React.useState<DATA_FIELDS_TO_FILTER>(
     DATA_FIELDS_TO_FILTER.CATEGORY,
   );
   const ref = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
-    if (transactionsViaNaviagation?.length) {
-      setTransactions(transactionsViaNaviagation);
-    } else if (state?.transactions?.length) {
-      setTransactions(state.transactions);
-    } else {
-      loadRecentTransactionsData();
-    }
-  }, []);
+        loadRecentTransactionsData();
+  }, [transactions]);
 
   const loadRecentTransactionsData = async () => {
-    try {
-      setLoader(true);
-      const { transactions, expenses, income } = await getTransactionsData();
-      setExpenses(Math.abs(expenses));
-      setIncome(income);
-      setTransactions(transactions);
       const onlyExpensess = transactions.filter((e) => INCOME_CATEGORY_NAMES.includes(e.Category) === false);
       setOnlyExpenses(onlyExpensess);
       categoriseTheData(onlyExpensess, expensesBarChartBy);
-      setLoader(false);
-    } catch (error: any) {
-      if (error.response.status === 401) {
-        logout();
-      }
-    }
   };
 
   const categoriseTheData = (onlyExpensessData: ExpenseSchema[], expensedChartSeleted: DATA_FIELDS_TO_FILTER) => {
@@ -121,7 +94,7 @@ export const TransactionCharts = ({ shopAppHeader, transactions: transactionsVia
                   arcLabelMinAngle: 30,
                   data: [
                     { id: 1, label: 'Income', value: income, color: '#00A86B' },
-                    { id: 2, label: 'Expenses', value: expenses, color: '#FD3C4A' },
+                    { id: 2, label: 'Expenses', value: Math.abs(expenses), color: '#FD3C4A' },
                   ],
                 },
               ]}

@@ -82,45 +82,48 @@ export const TransactionCharts = ({ shopAppHeader }: TransactionsProps) => {
     setExpensesByCategory(Object.values(map));
   };
 
+  const DateFilters = () => (
+    <div className='flex justify-end mx-2 mb-1 gap-2  pt-4'>
+    <FormControl>
+      <DatePicker
+        label="Start Date"
+        closeOnSelect
+        value={startDate}
+        onChange={(newValue) => setStartDate(newValue as Dayjs)}
+    />
+    </FormControl>
+
+    <FormControl>
+      <DatePicker
+        label="End Date"
+        closeOnSelect
+        value={endDate}
+        onAccept={(value) => {
+
+        }}
+        onChange={(newValue) => {
+            if (newValue?.isBefore(startDate)) {
+              alert('Please select the end date greater than start date')
+            } else {
+              setEndDate(newValue as Dayjs)
+            }
+          }
+        }
+    />
+    </FormControl>
+  </div>
+  )
+ 
   return (
     <Box sx={{ pb: 7 }} ref={ref}>
       {shopAppHeader ? <AppHeader title="Charts" onClickBack={() => navigate(-1)} /> : null}
+      <DateFilters /> 
       {loader ? (
         <CircularProgress className="center-abs" />
       ) : transactions.length === 0 ? (
-        <TransactionNotFound />
+          <TransactionNotFound />
       ) : (
-        <Paper elevation={3}>
-          <div className='flex justify-end mx-2 mb-1 gap-2  pt-4'>
-            <FormControl>
-              <DatePicker
-                label="Start Date"
-                closeOnSelect
-                value={startDate}
-                onChange={(newValue) => setStartDate(newValue as Dayjs)}
-            />
-            </FormControl>
-
-            <FormControl>
-              <DatePicker
-                label="End Date"
-                closeOnSelect
-                value={endDate}
-                onAccept={(value) => {
-
-                }}
-                onChange={(newValue) => {
-                    if (newValue?.isBefore(startDate)) {
-                      alert('Please select the end date greater than start date')
-                    } else {
-                      setEndDate(newValue as Dayjs)
-                    }
-                  }
-                }
-            />
-            </FormControl>
-          </div>
-
+        <Paper>
           <Paper elevation={3}>
             <Div>Income and Expeenses</Div>
             <PieChart

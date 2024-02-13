@@ -26,11 +26,14 @@ const Div = styled('div')(({ theme }) => ({
 export const DashBoard = () => {
   const { logout, state } = React.useContext(AuthContext);
   const navigate = useNavigate();
-  const {transactions, accountBalance, credit,debit, loader   } = useTransactions({})
+  const { transactions, accountBalance, credit,debit, loader } = useTransactions({})
+
   const ref = React.useRef<HTMLDivElement>(null);
+
   const onLogout = () => {
     logout();
   };
+
   const naviageToTransactionsPage = () => navigate('/transactions', { state: { transactions } });
   return (
     <Box sx={{ pb: 0 }} ref={ref}>

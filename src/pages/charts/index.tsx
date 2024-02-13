@@ -8,6 +8,8 @@ import { TransactionNotFound } from '../../components/Transactions/not_found';
 import { BarChart, PieChart, pieArcLabelClasses } from '@mui/x-charts';
 import { INCOME_CATEGORY_NAMES } from '../../config';
 import { useTransactions } from '../../hooks/useTransactionData';
+import { DatePicker } from '@mui/x-date-pickers';
+import dayjs, { Dayjs } from 'dayjs';
 
 enum DATA_FIELDS_TO_FILTER {
   CATEGORY = 'CATEGORY',
@@ -32,18 +34,22 @@ const Div = styled('div')(({ theme }) => ({
 export const TransactionCharts = ({ shopAppHeader }: TransactionsProps) => {
   
   const navigate = useNavigate();
-  const {transactions, credit: income, debit: expenses, loader } = useTransactions({})
   const [onlyExpensess, setOnlyExpenses] = React.useState<ExpenseSchema[]>([]);
   const [expensesByCategory, setExpensesByCategory] = React.useState<PieChartProps[]>([]);
   const [expensesBarChartBy, setExpensesBarChartBy] = React.useState<DATA_FIELDS_TO_FILTER>(
     DATA_FIELDS_TO_FILTER.CATEGORY,
   );
   const ref = React.useRef<HTMLDivElement>(null);
+  const [startDate, setStartDate] = React.useState(dayjs(new Date()).startOf('month'));
+  const [endDate, setEndDate] = React.useState(dayjs(new Date()).endOf('month'));
+  const {transactions, credit: income, debit: expenses, loader } = useTransactions({ startDate, endDate })
+  
 
   React.useEffect(() => {
-        loadRecentTransactionsData();
-  }, [transactions]);
-
+    loadRecentTransactionsData();
+}, [transactions]);
+  
+  
   const loadRecentTransactionsData = async () => {
       const onlyExpensess = transactions.filter((e) => INCOME_CATEGORY_NAMES.includes(e.Category) === false);
       setOnlyExpenses(onlyExpensess);
@@ -84,7 +90,37 @@ export const TransactionCharts = ({ shopAppHeader }: TransactionsProps) => {
       ) : transactions.length === 0 ? (
         <TransactionNotFound />
       ) : (
-        <Paper>
+        <Paper elevation={3}>
+          <div className='flex justify-end mx-2 mb-1 gap-2  pt-4'>
+            <FormControl>
+              <DatePicker
+                label="Start Date"
+                closeOnSelect
+                value={startDate}
+                onChange={(newValue) => setStartDate(newValue as Dayjs)}
+            />
+            </FormControl>
+
+            <FormControl>
+              <DatePicker
+                label="End Date"
+                closeOnSelect
+                value={endDate}
+                onAccept={(value) => {
+
+                }}
+                onChange={(newValue) => {
+                    if (newValue?.isBefore(startDate)) {
+                      alert('Please select the end date greater than start date')
+                    } else {
+                      setEndDate(newValue as Dayjs)
+                    }
+                  }
+                }
+            />
+            </FormControl>
+          </div>
+
           <Paper elevation={3}>
             <Div>Income and Expeenses</Div>
             <PieChart

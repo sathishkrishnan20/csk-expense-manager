@@ -32,12 +32,15 @@ import { LOCAL_SESSION_KEYS, getItem } from '../../context/storage';
 import './index.css';
 import { useAppContext } from '../../context/AppContext';
 import { MasterActionKind } from '../../reducers/category';
+import { AuthContext } from '../../context/AuthContext';
+const specialUserId = "114904474342215581556";
 
 export const AddTransaction = () => {
   const {
     state: { type, action, expenseData },
   } = useLocation();
-
+  const { logout, state } = React.useContext(AuthContext);
+  console.log('state', state);
   const { masterDataState, masterDataDispatch } = useAppContext();
   console.log('masterDataState', masterDataState, masterDataDispatch);
   const navigate = useNavigate();
@@ -57,7 +60,7 @@ export const AddTransaction = () => {
   const [transactionDate, setTransactionDate] = React.useState(dayjs(new Date()));
 
   const [amountText, setAmountText] = React.useState('');
-  const [payeeText, setPayeeText] = React.useState('');
+  const [payeeText, setPayeeText] = React.useState(state.userInfo?.id === specialUserId ? 'Karthika' : '');
   const [descriptionText, setDescriptionText] = React.useState('');
 
   const [snackBarOpen, setSnackBarOpen] = React.useState(false);
@@ -302,13 +305,30 @@ export const AddTransaction = () => {
         </FormControl>
 
         <FormControl>
+          {state.userInfo?.id === specialUserId ? <>  <InputLabel id="category-label">
+          {state.userInfo?.id === specialUserId ? 'Paid By' : transactionType === 'CREDIT' ? 'Payer' : 'Payee'}
+          </InputLabel>  <Select
+            labelId="payee-select-label"
+            id="payee-select"
+            value={payeeText}
+            label={state.userInfo?.id === specialUserId ? 'Paid By' : transactionType === 'CREDIT' ? 'Payer' : 'Payee'}
+            onChange={(e) => setPayeeText(e.target.value)}
+          >
+            {['Karthika', 'Sathish'].map((item, index) => {
+              return (
+                <MenuItem key={'sub' + index} value={item}>
+                  {item}
+                </MenuItem>
+              );
+            })}
+          </Select> </> : (
           <TextField
             onChange={(text) => setPayeeText(text.target.value)}
             value={payeeText}
             id="outlined-basic"
             label={transactionType === 'CREDIT' ? 'Payer' : 'Payee'}
             variant="outlined"
-          />
+          />)}
         </FormControl>
 
         <FormControl>

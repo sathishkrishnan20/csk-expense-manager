@@ -294,13 +294,17 @@ export const AddTransaction = () => {
             label="Sub Category"
             onChange={(e) => setSubCategory(e.target.value)}
           >
-            {masterSubCategory.map((item, index) => {
+            {masterSubCategory.filter((e) => e.subCategory !== 'Others').map((item, index) => {
               return (
                 <MenuItem key={'sub' + index} value={item.subCategory}>
                   {item.subCategory}
                 </MenuItem>
               );
             })}
+            {masterSubCategory.find(e => e.subCategory === 'Others') ? 
+                <MenuItem key={'sub' + masterSubCategory.length} value={'Others'}>
+                  Others
+                </MenuItem> : null}
           </Select>
         </FormControl>
 

@@ -15,6 +15,7 @@ enum DATA_FIELDS_TO_FILTER {
   CATEGORY = 'CATEGORY',
   SUB_CATEGORY = 'SUB_CATEGORY',
   PAYMENT_METHOD = 'PAYMENT_METHOD',
+  PAID_BY = 'PAID_BY',
 }
 
 interface TransactionsProps {
@@ -63,6 +64,7 @@ export const TransactionCharts = ({ shopAppHeader }: TransactionsProps) => {
       CATEGORY: 'Category',
       SUB_CATEGORY: 'SubCategory',
       PAYMENT_METHOD: 'PaymentMethod',
+      PAID_BY: 'Payee'
     };
 
     for (const exp of onlyExpensessData) {
@@ -166,6 +168,7 @@ export const TransactionCharts = ({ shopAppHeader }: TransactionsProps) => {
                     <MenuItem value={DATA_FIELDS_TO_FILTER.CATEGORY}>Category</MenuItem>
                     <MenuItem value={DATA_FIELDS_TO_FILTER.SUB_CATEGORY}>Sub Category</MenuItem>
                     <MenuItem value={DATA_FIELDS_TO_FILTER.PAYMENT_METHOD}>Payment Method</MenuItem>
+                    <MenuItem value={DATA_FIELDS_TO_FILTER.PAID_BY}>Payer</MenuItem>
                   </Select>
                 </FormControl>
               </div>

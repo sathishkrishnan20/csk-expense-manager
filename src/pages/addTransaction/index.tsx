@@ -212,7 +212,8 @@ export const AddTransaction = () => {
     setTransactionType(type);
   };
 
-  const openPaymentApp = () => {
+  const openPaymentApp = async () => {
+    await addOrUpdateNewTransactions(false)
     // Try this Later
     const upiParams = new URLSearchParams({
       pa: 'your-vpa@bank',

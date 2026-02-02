@@ -35,6 +35,9 @@ import { MasterActionKind } from '../../reducers/category';
 import { AuthContext } from '../../context/AuthContext';
 const specialUserId = "114904474342215581556";
 
+const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+const isAndroid = /Android/i.test(navigator.userAgent);
+
 export const AddTransaction = () => {
   const {
     state: { type, action, expenseData },
@@ -208,6 +211,24 @@ export const AddTransaction = () => {
     setSubCategory('');
     setTransactionType(type);
   };
+
+  const openPaymentApp = () => {
+    // Try this Later
+    const upiParams = new URLSearchParams({
+      pa: 'your-vpa@bank',
+      pn: 'Your Name',
+      tn: 'Test payment',
+      am: '1.00',
+      cu: 'INR',
+    }).toString();
+  
+    if(isIOS) {
+        window.location.href = `gpay://pay`
+    } else if(isAndroid) {
+        const intentUrl = 'intent://upi/pay' + '#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;end;';
+        window.location.href = intentUrl;
+    }
+  }
   return (
     <Box sx={{ pb: 7 }} ref={ref}>
       {canBeAdd ? (
@@ -375,6 +396,17 @@ export const AddTransaction = () => {
               {'Delete'}
             </Button>
           )}
+          {(action !== 'EDIT' && (isIOS || isAndroid)) && (
+            <Button
+              disabled={canBeAdd === false}
+              onClick={() => openPaymentApp()}
+              className="w-100p"
+              variant="contained"
+            >
+              {'Add & Open Gpay'}
+            </Button> 
+          )}
+
           <Button
             disabled={canBeAdd === false}
             onClick={() => addOrUpdateNewTransactions(false)}

@@ -7,6 +7,7 @@ import type { Classification, Direction } from "../domain/taxonomy";
 import { File } from "expo-file-system";
 import { importStatement, type ImportSummary } from "./importStatement";
 import { reclassify, type ReclassifySummary } from "./reclassify";
+import { isExcelBinary, excelToCSV } from "../domain/excelReader";
 
 export class MissingApiKeyError extends Error {}
 
@@ -29,7 +30,9 @@ export async function runImport(fileUri: string, onProgress: (message: string) =
   const classifier = await createClassifier();
 
   onProgress("Reading file…");
-  const text = await new File(fileUri).text();
+  const file = new File(fileUri);
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const text = isExcelBinary(bytes) ? excelToCSV(bytes) : new TextDecoder().decode(bytes);
 
   return importStatement(text, {
     store: sqliteStore,

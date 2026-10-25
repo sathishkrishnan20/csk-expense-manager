@@ -173,12 +173,35 @@ function assertTextFile(text: string) {
   }
 }
 
+// ICICI and some other banks split long narration text across multiple rows.
+// A continuation row has text in exactly one cell while every other cell is
+// empty; we append that text to the same column of the preceding row.
+function mergeContinuationRows(grid: string[][]): string[][] {
+  const merged: string[][] = [];
+  for (const row of grid) {
+    const filledIndices: number[] = [];
+    for (let i = 0; i < row.length; i++) {
+      if (row[i].trim() !== "") filledIndices.push(i);
+    }
+    if (filledIndices.length === 1 && merged.length > 0) {
+      const col = filledIndices[0];
+      merged[merged.length - 1] = [...merged[merged.length - 1]];
+      merged[merged.length - 1][col] = (merged[merged.length - 1][col] ?? "") + row[col];
+    } else {
+      merged.push(row);
+    }
+  }
+  return merged;
+}
+
 export function parseStatement(input: string): ParseResult {
   const text = input.replace(/^﻿/, "");
   assertTextFile(text);
 
   const delimiter = detectDelimiter(text);
-  const grid = Papa.parse<string[]>(text, { delimiter, skipEmptyLines: true }).data;
+  const grid = mergeContinuationRows(
+    Papa.parse<string[]>(text, { delimiter, skipEmptyLines: true }).data,
+  );
 
   const header = findHeader(grid);
   const map = header?.map ?? POSITIONAL;

@@ -119,3 +119,41 @@ test("skips unparseable lines but counts them", () => {
   assert.equal(rows.length, 4);
   assert.equal(skippedLines, 1);
 });
+
+test("merges continuation rows where the bank splits a long narration across lines", () => {
+  // Row 38 in the ICICI export: narration is split after "YesBank_" with
+  // "Ye/664388587875/ICI..." on the next line in the narration column only.
+  const csv = [
+    ",S No.,Value Date,Transaction Date,Cheque Number,Transaction Remarks,Withdrawal Amount(INR),Deposit Amount(INR),Balance(INR)",
+    ",37,04/10/2026,04/10/2026,,UPI/YADAV CHAT/XXter3@yesbank/UPI/YesBank_Ye/664310874345/ICI8ac87ee6a5874245a43e1cccdf41e054,60.00,0.00,39243.51",
+    ",38,04/10/2026,04/10/2026,,UPI/SHREE OM B/XX4282@yesbank/UPI/YesBank_,90.00,0.00,39153.51",
+    ",,,,,Ye/664388587875/ICI2f7ef48ccd12425387a57ac4b02d340c,,,",
+    ",39,04/10/2026,04/10/2026,,UPI/KRISHNA D/XXidxx@pty/UPI/YES BANK P/664318384400/ICI6d0cca5885734d6ea6a1afc2902e9a42,90.00,0.00,39063.51",
+  ].join("\n");
+
+  const { rows } = parseStatement(csv);
+  assert.equal(rows.length, 3);
+
+  // The merged row (index 1) should have a complete narration and UPI ref
+  const merged = rows[1];
+  assert.equal(merged.payee, "SHREE OM B");
+  assert.equal(merged.upiRef, "664388587875");
+  assert.equal(merged.dedupeKey, "upi:664388587875:D");
+  assert.equal(merged.amountPaise, 9000);
+});
+
+test("merges multiple continuation rows with the preceding data row", () => {
+  // Simulate a narration so long it wraps into two continuation lines.
+  const csv = [
+    "Sl No,Txn Date,Value Date,Chq/Ref No,Narration,Withdrawal Amt,Deposit Amt,Closing Balance",
+    "1,01/10/2026,01/10/2026,,UPI/LONG PAYEE NAME/XX1234@ybl/a very long note that gets,100.00,0.00,5000.00",
+    ",,,, truncated here/YES BANK L/,,",
+    ",,,,629618527541/ICI1b6599f36818417bb843655ab8257ea1,,",
+    "2,02/10/2026,02/10/2026,,UPI/SHORT/XX99@ybl/note/AXIS BANK/629682828654/ICI169a,50.00,0.00,4950.00",
+  ].join("\n");
+
+  const { rows } = parseStatement(csv);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].upiRef, "629618527541");
+  assert.equal(rows[1].payee, "SHORT");
+});

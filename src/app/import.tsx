@@ -42,9 +42,9 @@ export default function ImportStatement() {
       <AppHeader title="Import Statement" onBack={() => router.back()} />
       <ScrollView contentContainerStyle={styles.body}>
         <T style={styles.text}>
-          Choose the CSV you downloaded from your bank. New transactions are categorised with AI from their UPI notes,
-          using your own categories (anything that does not fit goes to Others : Uncategorised). Rows you have already
-          imported are skipped.
+          Choose the CSV or Excel file (.xls, .xlsx) you downloaded from your bank. New transactions are categorised
+          with AI from their UPI notes, using your own categories (anything that does not fit goes to Others :
+          Uncategorised). Rows you have already imported are skipped.
         </T>
 
         <Button label={busy ? "Working…" : "Choose statement file"} onPress={pick} disabled={busy} />

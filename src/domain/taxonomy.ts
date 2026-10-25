@@ -17,6 +17,10 @@ export function allowedCategories(all: CategoryDef[], direction: Direction): Cat
   return all.filter((c) => isIncomeCategory(c.category) === (direction === "credit"));
 }
 
+// classified_by value of a hand-added entry whose category the owner left for the AI
+// ("Categorise later"). Re-classify picks these up; once labelled the value becomes the model id.
+export const PENDING_AI = "pending";
+
 export function fallbackFor(direction: Direction): Classification {
   return direction === "credit" ? INCOME_FALLBACK : FALLBACK;
 }

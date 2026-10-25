@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getTotals, listTransactions, type Totals, type TransactionRecord } from "../../db/transactions";
 import { formatRupees } from "../../domain/format";
 import { T } from "../../ui/Text";
-import { Chip } from "../../ui/forms";
+import { Button, Chip } from "../../ui/forms";
 import { RowDivider, TransactionRow } from "../../ui/TransactionRow";
 import { colors, fonts, shadow } from "../../ui/theme";
 
@@ -84,6 +84,8 @@ export default function Home() {
         </View>
       </View>
 
+      {recent && recent.length === 0 ? <WelcomeCard onHelp={() => router.push("/help")} /> : null}
+
       <View style={styles.recentHeader}>
         <T weight="black" style={styles.recentTitle}>
           Recent Transactions
@@ -92,7 +94,7 @@ export default function Home() {
       </View>
 
       {recent && recent.length === 0 ? (
-        <T style={styles.empty}>No transactions yet. Tap + to add one or import your bank statement.</T>
+        <T style={styles.empty}>No transactions yet.</T>
       ) : (
         (recent ?? []).map((item) => (
           <View key={item.id}>
@@ -105,7 +107,35 @@ export default function Home() {
   );
 }
 
+// Shown only until the first transaction exists.
+function WelcomeCard({ onHelp }: { onHelp: () => void }) {
+  return (
+    <View style={styles.welcome}>
+      <T weight="bold" style={{ fontSize: 17 }}>
+        Welcome! Get started in three steps
+      </T>
+      {[
+        "Config > AI: choose an AI (Gemini, Claude, ChatGPT or Ollama) and save its key.",
+        "Config > Categories: check the list. AI only uses your own categories.",
+        "Import your bank statement, or add a Credit or Debit by hand.",
+      ].map((step, i) => (
+        <View key={step} style={styles.welcomeStep}>
+          <T style={styles.welcomeNumber}>{i + 1}.</T>
+          <T style={styles.welcomeText}>{step}</T>
+        </View>
+      ))}
+      <View style={{ marginTop: 6 }}>
+        <Button label="How it works" onPress={onHelp} />
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  welcome: { margin: 12, padding: 16, gap: 8, borderRadius: 8, backgroundColor: colors.primaryTint },
+  welcomeStep: { flexDirection: "row", gap: 8 },
+  welcomeNumber: { width: 20, fontSize: 15, lineHeight: 22, color: colors.textSecondary },
+  welcomeText: { flex: 1, fontSize: 15, lineHeight: 22 },
   page: { flex: 1, backgroundColor: colors.background },
   summary: { paddingHorizontal: 16, paddingBottom: 16 },
   avatarRow: { flexDirection: "row", justifyContent: "space-between", marginHorizontal: 20 },

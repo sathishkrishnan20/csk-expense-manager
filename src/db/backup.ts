@@ -1,5 +1,5 @@
 import { BACKUP_FORMAT, BACKUP_VERSION, type Backup, type BackupTransaction } from "../domain/backup";
-import { getDb } from "./database";
+import { getDb, inTransaction } from "./database";
 
 interface TransactionRow {
   id: string;
@@ -90,7 +90,7 @@ export async function restoreBackup(backup: Backup, skipped: number): Promise<Re
     skipped,
   };
 
-  await db.withExclusiveTransactionAsync(async (txn) => {
+  await inTransaction(db, async (txn) => {
     for (const c of backup.categories) {
       const r = await txn.runAsync(
         `INSERT OR IGNORE INTO categories (category, subcategory, sort)

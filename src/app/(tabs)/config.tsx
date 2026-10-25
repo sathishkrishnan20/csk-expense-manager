@@ -1,22 +1,38 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { addPaymentMethod, loadPaymentMethods, removePaymentMethod } from "../../db/config";
 import { countReclassifyCandidates } from "../../db/transactions";
 import { runReclassify } from "../../import/services";
-import { MODELS, type Provider } from "../../llm/providers";
-import { loadApiKey, loadSettings, saveApiKey, saveProvider } from "../../settings/settings";
+import { DEFAULT_OLLAMA_URL, PROVIDER_LABEL, providerNeedsKey, type Provider } from "../../llm/providers";
+import { confirmAction } from "../../platform/dialogs";
+import { secureStorageLabel } from "../../platform/secureStorage";
+import { useSecureLock } from "../../platform/useSecureLock";
+import {
+  hasApiKey,
+  loadApiKey,
+  loadModel,
+  loadOllamaUrl,
+  loadProvider,
+  saveApiKey,
+  saveModel,
+  saveOllamaUrl,
+  saveProvider,
+} from "../../settings/settings";
 import { CategoriesSection } from "../../ui/CategoriesSection";
 import { DataBackupSection } from "../../ui/DataBackupSection";
+import { AiStatus, ActiveAiLine } from "../../ui/ActiveAi";
 import { AppHeader } from "../../ui/Header";
 import { T } from "../../ui/Text";
 import { Button, OutlinedInput } from "../../ui/forms";
+import { UnlockGate } from "../../ui/UnlockGate";
 import { colors } from "../../ui/theme";
 
 type Section = "payments" | "category" | "ai" | "backup" | "reclassify" | "";
 
 export default function Config() {
+  const router = useRouter();
   const [expanded, setExpanded] = useState<Section>("payments");
   const toggle = (section: Section) => setExpanded(expanded === section ? "" : section);
 
@@ -43,6 +59,10 @@ export default function Config() {
         >
           <ReclassifySection />
         </Accordion>
+        <Pressable style={[styles.accordion, styles.summary]} onPress={() => router.push("/help")} accessibilityRole="link">
+          <T>How it works</T>
+          <MaterialIcons name="chevron-right" size={24} color={colors.textSecondary} />
+        </Pressable>
       </ScrollView>
     </View>
   );
@@ -86,11 +106,14 @@ function PaymentModes() {
     }
   };
 
-  const remove = (method: string) =>
-    Alert.alert(`Remove "${method}"?`, "Existing transactions keep it.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Remove", style: "destructive", onPress: () => removePaymentMethod(method).then(reload) },
-    ]);
+  const remove = async (method: string) => {
+    const confirmed = await confirmAction({
+      title: `Remove "${method}"?`,
+      message: "Existing transactions keep it.",
+      confirmLabel: "Remove",
+    });
+    if (confirmed) await removePaymentMethod(method).then(reload);
+  };
 
   return (
     <View>
@@ -113,64 +136,130 @@ function PaymentModes() {
   );
 }
 
-const PROVIDER_LABEL: Record<Provider, string> = { gemini: "Gemini", anthropic: "Claude" };
+const PROVIDER_NOTE: Record<Provider, string> = {
+  gemini: "Gemini keys come from Google AI Studio and have a free tier.",
+  anthropic:
+    "Claude keys come from the Anthropic Console and are billed per use, separately from any claude.ai subscription.",
+  openai:
+    "ChatGPT here means the OpenAI API: keys come from platform.openai.com and are billed per use, separately from a ChatGPT subscription.",
+  ollama:
+    "Ollama runs open models on your own computer: free, and nothing leaves your network. Install it, run it, and pull the model (for example: ollama pull llama3.2). On an iPhone, use that computer's address on the same Wi-Fi (for example http://192.168.1.20:11434) and start Ollama with OLLAMA_HOST=0.0.0.0; in a browser, localhost works. Small models place transactions less accurately than the cloud ones.",
+};
 
 function AiSection() {
   const [provider, setProvider] = useState<Provider>("gemini");
   const [apiKey, setApiKey] = useState("");
+  const [model, setModel] = useState("");
+  const [savedModel, setSavedModel] = useState(""); // what is actually used, not what is being typed
+  const [keySaved, setKeySaved] = useState(false);
+  const [ollamaUrl, setOllamaUrl] = useState(DEFAULT_OLLAMA_URL);
   const [status, setStatus] = useState("");
+  const { locked } = useSecureLock();
+  const needsKey = providerNeedsKey(provider);
 
   useEffect(() => {
-    loadSettings().then((s) => {
-      setProvider(s.provider);
-      setApiKey(s.apiKey ?? "");
-    });
+    loadProvider().then(setProvider);
+    loadOllamaUrl().then(setOllamaUrl);
   }, []);
+
+  // Each provider keeps its own model and key; they are read again when the provider changes.
+  useEffect(() => {
+    loadModel(provider).then((m) => {
+      setModel(m);
+      setSavedModel(m);
+    });
+  }, [provider]);
+
+  const refreshKeySaved = useCallback(() => hasApiKey(provider).then(setKeySaved), [provider]);
+  useEffect(() => {
+    refreshKeySaved();
+  }, [refreshKeySaved]);
+
+  // The key is also read again when the web build is unlocked.
+  useEffect(() => {
+    if (!needsKey || locked) {
+      setApiKey("");
+      return;
+    }
+    loadApiKey(provider)
+      .then((key) => setApiKey(key ?? ""))
+      .catch(() => setApiKey(""));
+  }, [provider, needsKey, locked]);
 
   const choose = async (next: Provider) => {
     setProvider(next);
     setStatus("");
     await saveProvider(next);
-    setApiKey((await loadApiKey(next)) ?? "");
   };
 
   const save = async () => {
-    await saveApiKey(provider, apiKey);
-    setStatus(apiKey.trim() ? "Saved to the iOS Keychain." : "Key removed.");
+    try {
+      await saveModel(provider, model);
+      const stored = await loadModel(provider);
+      setModel(stored);
+      setSavedModel(stored);
+      if (provider === "ollama") {
+        await saveOllamaUrl(ollamaUrl);
+        setOllamaUrl(await loadOllamaUrl());
+        setStatus("Saved.");
+      } else {
+        await saveApiKey(provider, apiKey);
+        await refreshKeySaved();
+        setStatus(apiKey.trim() ? `Saved. The key is in ${secureStorageLabel}.` : "Key removed.");
+      }
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : String(err));
+    }
   };
+
+  const fields = (
+    <>
+      <OutlinedInput label="Model" value={model} onChangeText={setModel} autoCapitalize="none" />
+      {needsKey ? (
+        <OutlinedInput
+          label={`${PROVIDER_LABEL[provider]} API key`}
+          value={apiKey}
+          onChangeText={setApiKey}
+          secureTextEntry
+          autoCapitalize="none"
+        />
+      ) : (
+        <OutlinedInput label="Ollama address" value={ollamaUrl} onChangeText={setOllamaUrl} autoCapitalize="none" keyboardType="url" />
+      )}
+      <Button label="Save" onPress={save} />
+    </>
+  );
 
   return (
     <View style={{ gap: 12 }}>
+      <AiStatus provider={provider} model={savedModel} keySaved={keySaved} />
+      <T style={styles.note}>
+        Pick the AI that categorises your transactions. Your pick applies straight away; Save stores the model and key
+        for the one selected. Only this one is used.
+      </T>
       <View style={styles.segment}>
         {(Object.keys(PROVIDER_LABEL) as Provider[]).map((p) => (
           <Pressable key={p} style={[styles.segmentOption, provider === p && styles.segmentActive]} onPress={() => choose(p)}>
-            <T weight="medium" style={{ color: provider === p ? "#fff" : colors.primary, fontSize: 15 }}>
+            {provider === p ? <MaterialIcons name="check" size={16} color="#fff" /> : null}
+            <T weight="medium" numberOfLines={1} style={{ color: provider === p ? "#fff" : colors.primary, fontSize: 14 }}>
               {PROVIDER_LABEL[p]}
             </T>
           </Pressable>
         ))}
       </View>
-      <T style={styles.muted}>Model: {MODELS[provider]}</T>
 
-      <OutlinedInput
-        label={`${PROVIDER_LABEL[provider]} API key`}
-        value={apiKey}
-        onChangeText={setApiKey}
-        secureTextEntry
-        autoCapitalize="none"
-      />
-      <Button label="Save key" onPress={save} />
+      {needsKey ? <UnlockGate>{fields}</UnlockGate> : fields}
       {status ? <T style={styles.muted}>{status}</T> : null}
 
       <T style={styles.note}>
-        Gemini keys come from Google AI Studio and have a free tier. Claude keys come from the Anthropic Console and are
-        billed per use, separately from any claude.ai subscription. The key stays in the iOS Keychain on this phone.
+        {PROVIDER_NOTE[provider]}
+        {needsKey ? ` The key stays in ${secureStorageLabel}.` : ""}
       </T>
       <T style={styles.note}>
-        When you import, each new transaction's payee, UPI note, narration and amount is sent to the provider you choose
-        so it can be categorised. Nothing else leaves your phone.
+        When you import or re-classify, each transaction's payee, UPI note, narration and amount is sent to the AI you
+        choose so it can be categorised{needsKey ? "" : " (here, to your own Ollama server)"}. Nothing else leaves your
+        device. Each provider keeps its own key and model, so switching does not delete the others.
       </T>
-
     </View>
   );
 }
@@ -210,14 +299,17 @@ function ReclassifySection() {
   return (
     <View style={{ gap: 12 }}>
       <T style={styles.note}>
-        After adding categories, re-run the AI on imported transactions that ended up in Others : Uncategorised. Anything
-        you categorised by hand is left alone. Needs internet and your AI key (see AI).
+        After adding categories, re-run the AI on imported transactions that ended up in Others : Uncategorised, and on
+        entries you added by hand with "Categorise later". Anything you categorised by hand is left alone. Needs internet and your AI key (see AI).
       </T>
-      <Button
-        label={busy ? "Working…" : `Re-classify uncategorised (${pending})`}
-        onPress={reclassify}
-        disabled={busy || pending === 0}
-      />
+      <ActiveAiLine />
+      <UnlockGate>
+        <Button
+          label={busy ? "Working…" : `Re-classify uncategorised (${pending})`}
+          onPress={reclassify}
+          disabled={busy || pending === 0}
+        />
+      </UnlockGate>
       {busy && progress ? <T style={styles.muted}>{progress}</T> : null}
       {result ? <T style={result.isError ? styles.error : styles.muted}>{result.text}</T> : null}
     </View>
@@ -243,6 +335,6 @@ const styles = StyleSheet.create({
   note: { color: colors.textSecondary, fontSize: 13, lineHeight: 19 },
   divider: { height: 1, backgroundColor: "#e0e0e0", marginVertical: 4 },
   segment: { flexDirection: "row", borderRadius: 4, borderWidth: 1, borderColor: colors.primary, overflow: "hidden" },
-  segmentOption: { flex: 1, paddingVertical: 10, alignItems: "center" },
+  segmentOption: { flex: 1, paddingVertical: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4 },
   segmentActive: { backgroundColor: colors.primary },
 });

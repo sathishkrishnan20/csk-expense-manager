@@ -17,4 +17,13 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   return context.resolveRequest(context, moduleName, platform);
 };
 
+// expo-sqlite on web: the SQLite engine is a .wasm file, and it runs in a worker that shares
+// memory (SharedArrayBuffer), which browsers only allow on cross-origin isolated pages.
+config.resolver.assetExts.push("wasm");
+config.server.enhanceMiddleware = (middleware) => (req, res, next) => {
+  res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+  return middleware(req, res, next);
+};
+
 module.exports = config;

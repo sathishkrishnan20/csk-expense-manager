@@ -3,10 +3,13 @@ import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import { useRouter } from "expo-router";
 import type { ImportSummary } from "../import/importStatement";
-import { MissingApiKeyError, runImport } from "../import/services";
+import { formatLongDate, formatRupees } from "../domain/format";
+import { MissingApiKeyError, restoreDeletedRows, runImport } from "../import/services";
+import { ActiveAiLine } from "../ui/ActiveAi";
 import { AppHeader } from "../ui/Header";
 import { T } from "../ui/Text";
 import { Button } from "../ui/forms";
+import { UnlockGate } from "../ui/UnlockGate";
 import { colors, shadow } from "../ui/theme";
 
 export default function ImportStatement() {
@@ -16,20 +19,45 @@ export default function ImportStatement() {
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [needsKey, setNeedsKey] = useState(false);
+  const [restoreNote, setRestoreNote] = useState<string | null>(null);
 
   const pick = async () => {
     setError(null);
     setNeedsKey(false);
     setSummary(null);
+    setRestoreNote(null);
 
     const picked = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true });
     if (picked.canceled) return;
 
     setBusy(true);
     try {
-      setSummary(await runImport(picked.assets[0].uri, setProgress));
+      setSummary(await runImport(picked.assets[0], setProgress));
     } catch (err) {
       setNeedsKey(err instanceof MissingApiKeyError);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+      setProgress("");
+    }
+  };
+
+  const restore = async () => {
+    if (!summary) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const r = await restoreDeletedRows(summary.deletedEarlier, setProgress);
+      const parts = [`${r.restored} deleted transaction${r.restored === 1 ? "" : "s"} added back`];
+      if (r.summary) {
+        parts.push(`${r.summary.moved} categorised, ${r.summary.stillUncategorised} still uncategorised`);
+        if (r.summary.notProcessed > 0) parts.push(`${r.summary.notProcessed} not processed`);
+      }
+      if (r.keptManual > 0) parts.push(`${r.keptManual} kept the category you chose`);
+      const problem = r.error ?? r.summary?.error;
+      setRestoreNote(`${parts.join(", ")}.${problem ? ` The AI step stopped: ${problem}. They keep the categories they had.` : ""}`);
+      setSummary({ ...summary, deletedEarlier: [] });
+    } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
@@ -47,7 +75,10 @@ export default function ImportStatement() {
           Uncategorised). Rows you have already imported are skipped.
         </T>
 
-        <Button label={busy ? "Working…" : "Choose statement file"} onPress={pick} disabled={busy} />
+        <ActiveAiLine />
+        <UnlockGate>
+          <Button label={busy ? "Working…" : "Choose statement file"} onPress={pick} disabled={busy} />
+        </UnlockGate>
 
         {busy ? (
           <View style={styles.progress}>
@@ -64,6 +95,31 @@ export default function ImportStatement() {
             <T weight="bold">{summary.error ? "Import stopped" : "Import finished"}</T>
             <T style={styles.text}>New transactions saved: {summary.imported}</T>
             <T style={styles.text}>Already imported (skipped): {summary.alreadyStored}</T>
+            {summary.deletedEarlier.length > 0 ? (
+              <View style={styles.deleted}>
+                <T weight="medium" style={styles.text}>
+                  {summary.deletedEarlier.length} transaction{summary.deletedEarlier.length === 1 ? " in this file was" : "s in this file were"}{" "}
+                  deleted by you earlier, so {summary.deletedEarlier.length === 1 ? "it was" : "they were"} not added again:
+                </T>
+                {summary.deletedEarlier.slice(0, 5).map((r) => (
+                  <T key={r.dedupeKey} style={styles.small} numberOfLines={1}>
+                    {formatLongDate(r.txnDate)} · {r.payee ?? "—"} · {formatRupees(r.amountPaise)}
+                  </T>
+                ))}
+                {summary.deletedEarlier.length > 5 ? (
+                  <T style={styles.small}>and {summary.deletedEarlier.length - 5} more</T>
+                ) : null}
+                <Button
+                  label={`Add ${summary.deletedEarlier.length === 1 ? "it" : "them"} back and categorise`}
+                  onPress={restore}
+                  disabled={busy}
+                />
+                <T style={styles.small}>
+                  Uses your selected AI to categorise afresh. A category you chose by hand is kept.
+                </T>
+              </View>
+            ) : null}
+            {restoreNote ? <T style={styles.text}>{restoreNote}</T> : null}
             {summary.duplicatesInFile > 0 ? (
               <T style={styles.text}>Repeated within the file (skipped): {summary.duplicatesInFile}</T>
             ) : null}
@@ -77,6 +133,9 @@ export default function ImportStatement() {
                 will be skipped.
               </T>
             ) : null}
+            <View style={styles.cardAction}>
+              <Button label="Continue to Home" onPress={() => router.navigate("/")} />
+            </View>
           </View>
         ) : null}
       </ScrollView>
@@ -88,7 +147,10 @@ const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.background },
   body: { padding: 16, gap: 16 },
   text: { fontSize: 15, lineHeight: 22, color: colors.text },
+  small: { fontSize: 14, lineHeight: 20, color: colors.textSecondary },
+  deleted: { gap: 6, padding: 12, borderRadius: 8, backgroundColor: colors.primaryTint },
   progress: { flexDirection: "row", alignItems: "center", gap: 10 },
   error: { color: colors.error, fontSize: 15, lineHeight: 22 },
+  cardAction: { marginTop: 10 },
   card: { backgroundColor: "#fff", padding: 16, borderRadius: 4, gap: 6, ...shadow.low },
 });

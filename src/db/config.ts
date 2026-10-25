@@ -1,6 +1,6 @@
 import { validateCategoryEdit, validateNewName, type CategoryEdit } from "../domain/categoryEdit";
 import { isProtectedCategory, type CategoryDef } from "../domain/masterData";
-import { getDb } from "./database";
+import { getDb, inTransaction } from "./database";
 
 export async function loadCategories(): Promise<CategoryDef[]> {
   const db = await getDb();
@@ -26,7 +26,7 @@ export async function saveCategory(edit: CategoryEdit): Promise<void> {
   const subs = edit.subs.map((s) => ({ original: s.original, name: s.name.trim() })).filter((s) => s.name !== "");
 
   const db = await getDb();
-  await db.withExclusiveTransactionAsync(async (txn) => {
+  await inTransaction(db, async (txn) => {
     if (edit.original !== null && edit.original !== name) {
       await txn.runAsync("UPDATE categories SET category = ? WHERE category = ?", [name, edit.original]);
       await txn.runAsync("UPDATE transactions SET category = ? WHERE category = ?", [name, edit.original]);

@@ -3,6 +3,7 @@ import {
   Animated,
   FlatList,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   TextInput,
@@ -11,10 +12,10 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import { MaterialIcons } from "@expo/vector-icons";
 import { formatFieldDate, fromISODate, toISODate } from "../domain/format";
 import { T } from "./Text";
+import { BrowserDateInput, CalendarPicker } from "./CalendarPicker";
 import { colors, fonts, shadow } from "./theme";
 
 const FIELD_HEIGHT = 56;
@@ -195,31 +196,65 @@ export function InlineSelect<V extends string>({
   );
 }
 
-export function DateField({ label, value, onChange }: { label: string; value: string; onChange: (iso: string) => void }) {
+interface DateFieldProps {
+  label: string;
+  value: string | null; // null shows the placeholder (an open end of a range)
+  onChange: (iso: string) => void;
+  onClear?: () => void;
+  placeholder?: string;
+}
+
+// Phone: tap the field, pick in a sheet, press OK. Browser: the date is picked in the field itself.
+export function DateField(props: DateFieldProps) {
+  return Platform.OS === "web" ? <WebDateField {...props} /> : <SheetDateField {...props} />;
+}
+
+function WebDateField({ label, value, onChange, onClear }: DateFieldProps) {
+  return (
+    <FieldFrame label={label} floated>
+      <BrowserDateInput
+        value={value}
+        onChange={(iso) => {
+          if (iso) onChange(iso);
+          else onClear?.();
+        }}
+      />
+      {onClear && value !== null ? (
+        <Pressable onPress={onClear} hitSlop={10} style={[styles.dropIcon, { right: 40 }]} accessibilityLabel={`Clear ${label}`}>
+          <MaterialIcons name="close" size={20} color={colors.textSecondary} />
+        </Pressable>
+      ) : null}
+    </FieldFrame>
+  );
+}
+
+function SheetDateField({ label, value, onChange, onClear, placeholder = "Any date" }: DateFieldProps) {
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState(fromISODate(value));
+  const startFrom = () => fromISODate(value ?? toISODate(new Date()));
+  const [draft, setDraft] = useState(startFrom());
   return (
     <>
       <Pressable
         onPress={() => {
-          setDraft(fromISODate(value));
+          setDraft(startFrom());
           setOpen(true);
         }}
       >
         <FieldFrame label={label} floated>
-          <T style={styles.selectValue}>{formatFieldDate(value)}</T>
-          <MaterialIcons name="calendar-today" size={20} color={colors.textSecondary} style={styles.dropIcon} />
+          <T style={[styles.selectValue, value === null && { color: colors.textSecondary }]}>
+            {value === null ? placeholder : formatFieldDate(value)}
+          </T>
+          {onClear && value !== null ? (
+            <Pressable onPress={onClear} hitSlop={10} style={styles.dropIcon} accessibilityLabel={`Clear ${label}`}>
+              <MaterialIcons name="close" size={20} color={colors.textSecondary} />
+            </Pressable>
+          ) : (
+            <MaterialIcons name="calendar-today" size={20} color={colors.textSecondary} style={styles.dropIcon} />
+          )}
         </FieldFrame>
       </Pressable>
       <Sheet visible={open} title={label} onClose={() => setOpen(false)}>
-        <DateTimePicker
-          value={draft}
-          mode="date"
-          display="inline"
-          accentColor={colors.primary}
-          themeVariant="light"
-          onChange={(_event, date) => date && setDraft(date)}
-        />
+        <CalendarPicker value={draft} onChange={setDraft} />
         <View style={styles.sheetActions}>
           <TextButton label="Cancel" onPress={() => setOpen(false)} />
           <TextButton
@@ -235,6 +270,33 @@ export function DateField({ label, value, onChange }: { label: string; value: st
   );
 }
 
+// Two to four mutually exclusive choices side by side.
+export function Segmented<V extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: V; label: string }[];
+  value: V;
+  onChange: (value: V) => void;
+}) {
+  return (
+    <View style={styles.segment}>
+      {options.map((o) => (
+        <Pressable
+          key={o.value}
+          onPress={() => onChange(o.value)}
+          style={[styles.segmentOption, o.value === value && styles.segmentActive]}
+        >
+          <T weight="medium" style={{ color: o.value === value ? "#fff" : colors.primary, fontSize: 14 }}>
+            {o.label}
+          </T>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
 export function RadioOption({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} style={styles.radio} hitSlop={6}>
@@ -244,6 +306,32 @@ export function RadioOption({ label, selected, onPress }: { label: string; selec
         color={selected ? colors.primary : colors.textSecondary}
       />
       <T style={{ marginLeft: 6 }}>{label}</T>
+    </Pressable>
+  );
+}
+
+export function CheckOption({
+  label,
+  hint,
+  checked,
+  onPress,
+}: {
+  label: string;
+  hint?: string;
+  checked: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} style={styles.checkOption} hitSlop={6} accessibilityRole="checkbox" accessibilityState={{ checked }}>
+      <MaterialIcons
+        name={checked ? "check-box" : "check-box-outline-blank"}
+        size={24}
+        color={checked ? colors.primary : colors.textSecondary}
+      />
+      <View style={{ flex: 1, marginLeft: 6 }}>
+        <T>{label}</T>
+        {hint ? <T style={styles.checkHint}>{hint}</T> : null}
+      </View>
     </Pressable>
   );
 }
@@ -340,13 +428,19 @@ const styles = StyleSheet.create({
   selectValue: { paddingHorizontal: 13, paddingRight: 40 },
   dropIcon: { position: "absolute", right: 10 },
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", padding: 24 },
-  sheet: { backgroundColor: "#fff", borderRadius: 8, paddingVertical: 8, ...shadow.high },
+  // maxWidth keeps dialogs a dialog size in a wide browser window; on a phone it is never reached.
+  sheet: { backgroundColor: "#fff", borderRadius: 8, paddingVertical: 8, width: "100%", maxWidth: 420, alignSelf: "center", ...shadow.high },
   sheetTitle: { paddingHorizontal: 16, paddingVertical: 12, fontSize: 18 },
+  checkOption: { flexDirection: "row", alignItems: "flex-start", paddingHorizontal: 4, paddingVertical: 2 },
+  checkHint: { color: colors.textSecondary, fontSize: 13, lineHeight: 18 },
   sheetActions: { flexDirection: "row", justifyContent: "flex-end", paddingHorizontal: 8, paddingBottom: 4 },
   option: { paddingHorizontal: 16, paddingVertical: 14 },
   optionSelected: { backgroundColor: "rgba(127,61,255,0.1)" },
   empty: { paddingHorizontal: 16, paddingVertical: 12, color: colors.textSecondary },
   inline: { flexDirection: "row", alignItems: "center", minWidth: 120, justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: colors.outline, paddingVertical: 4 },
+  segment: { flexDirection: "row", borderRadius: 4, borderWidth: 1, borderColor: colors.primary, overflow: "hidden" },
+  segmentOption: { flex: 1, paddingVertical: 9, alignItems: "center" },
+  segmentActive: { backgroundColor: colors.primary },
   radio: { flexDirection: "row", alignItems: "center", marginRight: 24 },
   button: { height: 36, minWidth: 64, borderRadius: 4, paddingHorizontal: 16, alignItems: "center", justifyContent: "center" },
   buttonLabel: { color: "#fff", fontSize: 14, letterSpacing: 1.25 },

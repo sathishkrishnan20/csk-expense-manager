@@ -31,13 +31,13 @@ Screens (src/app, Expo Router) read SQLite.
 
 | Concern | Choice |
 |---|---|
-| App | Expo SDK 58, React Native 0.88, TypeScript, iOS only |
+| App | Expo SDK 58, React Native 0.88, TypeScript. iOS is the target; a web build is supported in code but untested (see "Web" in section 3) |
 | Navigation | Expo Router 58. Tabs come from `expo-router/js-tabs` with a custom `tabBar`; Add/Edit and Import are root-stack screens above the tabs |
 | Look | Theme values copied from the web app (`src/ui/theme.ts`): primary `#7F3DFF`, gradient `#9061ed` to `#5d3ba2`, income `#00A86B`, expense `#FD3C4A`, Roboto, Georgia for the Home numbers, MUI-style outlined fields and bottom bar |
 | Storage | `expo-sqlite`, file `expenses.db`, schema version 2 |
 | Money | Integer paise; `amount_paise` is always positive and `direction` says which way |
-| API key | `expo-secure-store` (iOS Keychain) |
-| LLM | Gemini (default, `gemini-3.5-flash-lite`) or Claude (`claude-haiku-5-5`), chosen in Config. Model ids live in `src/llm/providers.ts` |
+| API key | iOS Keychain via `expo-secure-store`; AES-GCM-encrypted in browser `localStorage` on web, with the key derived from a passkey (WebAuthn PRF) (`src/platform/secureStorage*.ts`) |
+| LLM | One active provider chosen in Config > AI: Gemini (default, `gemini-3.5-flash-lite`), Claude (`claude-haiku-5-5`), ChatGPT / OpenAI (`gpt-6-luna`, Chat Completions with strict `json_schema`) or Ollama (`llama3.2`, `POST {address}/api/chat` with the schema in `format`, no key). The model name is editable per provider; defaults live in `src/llm/providers.ts` (`MODELS`) |
 | Charts | `react-native-gifted-charts` |
 
 Layout: `src/domain` (categories, parser, formatting; pure), `src/llm`, `src/import`,
@@ -91,26 +91,121 @@ because a refund can reuse the original reference). Other rows:
 `row:<date>|<D|C>|<paise>|<balance>|<narration>`. The key is unique in SQLite.
 
 **Delete is soft.** `status = 'DELETED'`; the bank key stays, so importing the same
-statement again does not bring a deleted row back. Deleted rows are excluded from
-lists, totals and charts.
+statement again does not bring a deleted row back on its own. Instead the import summary
+(`ImportSummary.deletedEarlier`, found via `TransactionStore.deletedKeys`) lists up to five of
+them and offers "Add them back and categorise", which re-activates those rows
+(`restoreDeleted` in `src/db/transactions.ts`) and then categorises them afresh with the selected
+AI through the Re-classify pipeline (`restoreDeletedRows` in `src/import/services.ts`, using the
+fields from the file). Rows whose category the owner chose by hand (`classified_by = 'manual'`)
+are restored with it unchanged. If the AI step fails, the rows are still restored and keep the
+categories they had. The owner decides, so an
+overlapping statement never resurrects a deliberate delete by accident. Deleted rows are
+excluded from lists, totals and charts.
 
 **Migration.** `PRAGMA user_version` 2. Data from the first release (single table,
 old built-in categories) is carried over: rows become `Others : Uncategorised`
 (credits `Income : Others`), `classified_by = 'migrated'`, ready for re-classify.
 
-**Export and import of all data** (Config > "Export and Import"). Export writes
-one JSON file (`format: expense-manager-backup`, `version: 1`) with every transaction
-(including soft-deleted rows), all category rows in order, and the payment modes, and
-opens the iOS share sheet (Save to Files, AirDrop). The AI key is never included. Import
-is a merge, never an overwrite: rows already on the phone (same id or same bank key) are
-left untouched and only missing transactions, categories and payment modes are added;
-damaged rows are skipped and counted, and a file that is not a backup or comes from a
-newer version is rejected with a message. Code: `src/domain/backup.ts` (format and
-validation, tested), `src/db/backup.ts`, `src/ui/DataBackupSection.tsx`. Uses `expo-sharing`.
+**Transaction filters** (Transactions tab, a collapsible "Filters" bar above the list):
+date range (inclusive, either end can be left open), type (all / debit / credit), category,
+sub category (enabled once a category is chosen; changing the category clears it), and
+All / Categorised / Uncategorised, where "Categorised" hides the `Others : Uncategorised`
+rows. Filtering happens in memory on the loaded list. The category and sub category choices are
+the owner's current Config categories plus any label that only exists on old transactions,
+so those stay filterable. Filters are not remembered between visits. Code:
+`src/domain/transactionFilters.ts` (logic, tested), `src/ui/TransactionFilters.tsx`.
+
+**Several AI providers.** Exactly one is active (`llm_provider`); each keeps its own API
+key (secure storage), model name and, for Ollama, address (plain storage,
+`src/settings/settings.ts`). Only the active one is ever called and there is deliberately **no
+automatic fallback** to another provider: a silent switch would send the owner's transactions to
+a service they did not choose for that run, change the cost, and mix labels. The model that
+labelled a row is stored in `classified_by`. Ollama needs no key, and the app only sends data to
+the owner's own server. iOS needs `NSAllowsLocalNetworking` and a local-network usage string
+(`app.json` `ios.infoPlist`, so a changed development build is needed); a browser needs Ollama to
+allow the page's origin (`OLLAMA_ORIGINS`). Not built, possible later: a cascade (Ollama first,
+a cloud AI only for rows it leaves uncategorised).
+
+**In-app guide** (its own page, `src/app/help.tsx`, opened from a "How it works" row at the bottom of Config, a menu item in the browser sidebar, and a button on a first-run welcome card on Home that shows only while there are no transactions): collapsible topics (what it does, getting
+started, importing, adding by hand, categories, views, where data is stored, what leaves the
+device, whether the API key is safe, backup, troubleshooting). Text is plain data in
+`src/domain/helpContent.ts` (`helpTopics(platform)`, wording differs for iPhone and web,
+tested in `helpContent.test.ts`), rendered by `src/ui/HelpSection.tsx`. It is a root-stack screen like `add` and `import`. When behaviour
+changes (storage, key handling, what is sent to the AI), update that file too.
+
+**"Categorise later" for hand entries.** On the Add form the category is optional: tick
+"Categorise later with AI" and the row is stored in the fallback (Others : Uncategorised
+for a debit, Income : Others for a credit) with `classified_by = 'pending'`
+(`PENDING_AI` in `src/domain/taxonomy.ts`), not `'manual'`; the list shows it as "Waiting
+for AI". **Re-classify Uncategorised** includes pending rows and sends the payee,
+description, amount and type (hand entries have no bank narration); the result replaces
+`pending` with the model id. Choosing a category on a pending row (or editing it by hand)
+makes it `'manual'`, so the AI never overwrites it; unticking the box on a pending row
+requires a category again. Imported rows cannot be set to pending. Deliberately not done:
+categorising on save. One call per entry is wasteful, and Re-classify batches 20 per call;
+revisit if waiting turns out to be annoying. Code: `categoryFor` / `updateTransaction` /
+`CANDIDATE_WHERE` in `src/db/transactions.ts`, `src/app/add.tsx`.
+
+**Export and import of all data** (Config > "Export and Import"). Export writes one CSV
+(UTF-8 with a BOM so Excel reads it correctly, `expense-manager-backup-YYYY-MM-DD.csv`) and
+opens the iOS share sheet (Save to Files, AirDrop) or downloads it in a browser. One header
+row, then blocks side by side: **transactions** (readable columns first: Date as `23-Oct-2026`,
+Type, Amount in rupees, Category, Subcategory, Payee, Payment Method, Description, Balance,
+Status; then Classified By, Source and the bank details; then Id, Bank Key, Created,
+Updated, which restore needs), **5 empty columns**, **Category List / Subcategory List**,
+**5 empty columns**, **Payment Mode List**. It includes soft-deleted rows (Status =
+Deleted) so a restore keeps deleted bank rows from coming back. The AI key is never
+included. Import finds columns by header name (order does not matter), accepts day-first
+dates in several styles, amounts with commas, comma or semicolon separators and a BOM, and
+still reads the JSON files of the first version. Rows typed into Excel need no Id (a stable
+one is made from the row), and an empty Category and Subcategory means "Categorise later"
+(`pending`). Text cells starting with `= + - @` get a leading `'` on export (and lose it on
+import) so Excel never runs bank text as a formula. Import is a merge, never an overwrite:
+rows already on the device (same id or same bank key) are left untouched and only missing
+transactions, categories and payment modes are added; damaged rows are skipped and counted,
+and a file that is not a backup or comes from a newer version is rejected with a message.
+Known limit: if the file is saved from Excel with a regional date style that is month-first
+and has no month name (for example `10/05/2026`), it is read day-first. Code:
+`src/domain/backup.ts` (format and validation, tested), `src/db/backup.ts`,
+`src/ui/DataBackupSection.tsx`, `src/platform/files*.ts`. Uses `papaparse` and `expo-sharing`.
 
 **Embeddings, vector search and RAG were dropped** (an earlier learning goal; not
 needed for classifying a short note into a list). They can return later, for example
 for "ask questions about my spending".
+
+**Web** (`npm run web`; code written, never run). SQLite was not the only blocker. What
+differs per platform lives behind `.web.ts(x)` files so the phone code is unchanged:
+`src/platform/secureStorage` (Keychain vs passkey-encrypted `localStorage`, see below), `src/platform/files` (share
+sheet vs browser download, and reading the picked file), `src/platform/dialogs`
+(`Alert.alert` does nothing on web, so confirmations use `window.confirm`), and
+`src/ui/CalendarPicker` (`@react-native-community/datetimepicker` has no web build, so on web
+`DateField` is the browser's own `<input type="date">` inside the field, picked in one step; the
+phone keeps the tap, pick, OK sheet). `inTransaction` in `src/db/database.ts` uses an exclusive
+transaction on the phone and a plain transaction on web (expo-sqlite web has no exclusive
+ones), and WAL is not requested on web. `expo-sqlite` on web runs wa-sqlite in a worker with
+`SharedArrayBuffer`, so the page must be cross-origin isolated: `metro.config.js` adds the
+`wasm` asset type and the COOP/COEP headers for the dev server (any host would need the
+same headers). `app.json` uses `web.output: "single"` (not static rendering, which cannot
+run SQLite). Layout in a browser follows the web Expense Manager: below 768px wide it is the phone layout
+(bottom bar and + button) as a centred column of at most 480px; from 768px up the bottom bar
+is hidden (`Footer` returns null) and `src/ui/Sidebar.tsx` shows the permanent left drawer
+(pages, plus Credit / Debit / Import in place of the + menu) with the page filling all
+the space to its right, as in the web app. The breakpoint and widths are in `src/ui/useLayout.ts`, which also
+gives `useContentWidth()` for pixel-sized content (the bar chart). Phones never reach the
+breakpoint, so the iPhone layout is unchanged. Dialogs (`Sheet`) are at most 420px wide.
+Web data is separate from phone data; Export/Import moves it.
+
+**Web API key protection.** `secureStorage.web.ts` encrypts the key with AES-GCM; the
+AES key is derived (HKDF) from the WebAuthn **PRF** output of a platform passkey, so it
+exists only in memory after the user verifies with Touch ID / PIN, once per page load
+("Unlock"). The passkey is only a local key source (no server, so the challenge is never
+verified). `UnlockGate` shows an Unlock button in place of the key field, the import button
+and the re-classify button while locked; browsers only show the prompt from a tap, which is
+why unlocking is its own button. The provider choice is stored unencrypted (`plainStorage`).
+First save creates the passkey; if the browser only returns the secret on a second call,
+Save asks to be pressed again. Limits: needs PRF support (recent Safari/Chrome); a deleted
+passkey makes the stored key unreadable ("Forget saved key" resets); malware or a malicious
+extension running while unlocked can still read the key.
 
 ## 4. Differences from the web app (deliberate)
 
@@ -146,14 +241,16 @@ for "ask questions about my spending".
 
 ## 6. What was verified, and what was not
 
-Verified: 52 unit tests, typecheck, `expo-doctor`, a production iOS bundle, and a
+Verified: 66 unit tests (latest run; the web changes were checked with typecheck and unit tests only), typecheck, `expo-doctor`, a production iOS bundle, and a
 run in the iOS 26.2 simulator covering every page; the **+** menu; adding, editing
 and soft-deleting; adding a category; the data migration from the first version;
 real requests reaching Google and Anthropic (rejected for a fake key, as expected);
 and, against a local mock of Gemini, a full import with debits and credits, the
 re-classify flow, and re-importing a statement that includes a deleted row.
 
-Not verified: a real classification by Gemini or Claude (no key was available), a
+Not verified: the whole web build (never started in a browser: SQLite wasm loading,
+the isolation headers, the date input, download/upload, charts on web, and above all the
+passkey create/unlock flow, which depends on browser and authenticator PRF support), a real classification by Gemini or Claude (no key was available), a
 real bank CSV with a header row, a physical iPhone, and statements with hundreds of
 rows. The simulator's fast keyboard injection sometimes dropped characters on some
 forms (and once left the app); fields accepted full text in other runs, so this was

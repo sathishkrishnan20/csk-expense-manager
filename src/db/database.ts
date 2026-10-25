@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import * as SQLite from "expo-sqlite";
 import { DEFAULT_CATEGORIES, DEFAULT_PAYMENT_METHODS, FALLBACK } from "../domain/masterData";
 
@@ -45,6 +46,16 @@ CREATE TABLE IF NOT EXISTS transactions (
 CREATE INDEX IF NOT EXISTS transactions_date_idx ON transactions (txn_date DESC, created_at DESC);
 `;
 
+// Runs the work in one transaction. Native uses an exclusive transaction; the web build of
+// expo-sqlite does not have those, and its plain transaction runs on the same connection.
+export async function inTransaction(
+  db: SQLite.SQLiteDatabase,
+  work: (txn: SQLite.SQLiteDatabase) => Promise<void>,
+): Promise<void> {
+  if (Platform.OS === "web") await db.withTransactionAsync(() => work(db));
+  else await db.withExclusiveTransactionAsync(work);
+}
+
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
 export function getDb(): Promise<SQLite.SQLiteDatabase> {
@@ -54,7 +65,7 @@ export function getDb(): Promise<SQLite.SQLiteDatabase> {
 
 async function open(): Promise<SQLite.SQLiteDatabase> {
   const db = await SQLite.openDatabaseAsync("expenses.db");
-  await db.execAsync("PRAGMA journal_mode = WAL;");
+  if (Platform.OS !== "web") await db.execAsync("PRAGMA journal_mode = WAL;");
 
   const row = await db.getFirstAsync<{ user_version: number }>("PRAGMA user_version");
   if ((row?.user_version ?? 0) < SCHEMA_VERSION) await migrate(db);
@@ -73,7 +84,7 @@ async function open(): Promise<SQLite.SQLiteDatabase> {
 // 'migrated' and set to the fallback so "Re-classify uncategorised" can
 // categorise them against the user's own categories.
 async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
-  await db.withExclusiveTransactionAsync(async (txn) => {
+  await inTransaction(db, async (txn) => {
     const columns = await txn.getAllAsync<{ name: string }>("SELECT name FROM pragma_table_info('transactions')");
     const isV1 = columns.length > 0 && !columns.some((c) => c.name === "id");
     if (isV1) await txn.execAsync("ALTER TABLE transactions RENAME TO transactions_v1");

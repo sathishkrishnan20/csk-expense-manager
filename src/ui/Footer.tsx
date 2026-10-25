@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabBarProps } from "expo-router/js-tabs";
 import { T } from "./Text";
 import { colors, shadow } from "./theme";
+import { useIsDesktop } from "./useLayout";
 
 type IconName = keyof typeof MaterialIcons.glyphMap;
 
@@ -47,6 +48,7 @@ export function Footer({ state, navigateToTab }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const desktop = useIsDesktop();
   const active = state.routes[state.index]?.name;
 
   const go = (route: () => void) => () => {
@@ -70,6 +72,9 @@ export function Footer({ state, navigateToTab }: BottomTabBarProps) {
     },
     { label: "Import", icon: "file-upload", color: colors.importAction, open: go(() => router.push("/import")) },
   ];
+
+  // Wide browser windows use the side drawer instead.
+  if (desktop) return null;
 
   return (
     <View pointerEvents="box-none" style={styles.wrapper}>

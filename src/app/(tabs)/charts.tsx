@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { Alert, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { BarChart, PieChart } from "react-native-gifted-charts";
 import { useFocusEffect } from "expo-router";
 import {
@@ -10,10 +10,12 @@ import {
   type Totals,
 } from "../../db/transactions";
 import { formatRupees, monthRange } from "../../domain/format";
+import { notify } from "../../platform/dialogs";
 import { AppHeader } from "../../ui/Header";
 import { T } from "../../ui/Text";
 import { DateField, InlineSelect } from "../../ui/forms";
 import { colors, shadow } from "../../ui/theme";
+import { useContentWidth } from "../../ui/useLayout";
 
 const GROUPINGS: { value: ExpenseGrouping; label: string }[] = [
   { value: "category", label: "Category" },
@@ -37,7 +39,7 @@ function compact(rupees: number): string {
 }
 
 export default function Charts() {
-  const { width } = useWindowDimensions();
+  const width = useContentWidth();
   const initial = monthRange(new Date());
   const [start, setStart] = useState(initial.start);
   const [end, setEnd] = useState(initial.end);
@@ -85,14 +87,14 @@ export default function Charts() {
             <DateField
               label="Start Date"
               value={start}
-              onChange={(v) => (v > end ? Alert.alert("Please select a start date before the end date") : setStart(v))}
+              onChange={(v) => (v > end ? notify("Please select a start date before the end date") : setStart(v))}
             />
           </View>
           <View style={{ flex: 1 }}>
             <DateField
               label="End Date"
               value={end}
-              onChange={(v) => (v < start ? Alert.alert("Please select the end date greater than start date") : setEnd(v))}
+              onChange={(v) => (v < start ? notify("Please select the end date greater than start date") : setEnd(v))}
             />
           </View>
         </View>

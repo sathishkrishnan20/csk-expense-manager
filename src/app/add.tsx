@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { loadCategories, loadPaymentMethods } from "../db/config";
 import { addTransaction, deleteTransaction, getTransaction, updateTransaction } from "../db/transactions";
 import { parseAmountInput, toISODate } from "../domain/format";
 import { INCOME_CATEGORY, isIncomeCategory, sortOthersLast, type CategoryDef } from "../domain/masterData";
-import type { Direction } from "../domain/taxonomy";
+import { PENDING_AI, type Direction } from "../domain/taxonomy";
+import { confirmAction } from "../platform/dialogs";
 import { AppHeader, HeaderTextButton } from "../ui/Header";
-import { Button, DateField, OutlinedInput, RadioOption, SelectField, useSnackbar } from "../ui/forms";
+import { Button, CheckOption, DateField, OutlinedInput, RadioOption, SelectField, useSnackbar } from "../ui/forms";
 import { colors, shadow } from "../ui/theme";
 
 // Add a transaction by hand (meant for cash), or edit/delete an existing one when ?id= is given.
@@ -27,6 +28,9 @@ export default function AddTransaction() {
   const [payee, setPayee] = useState("");
   const [method, setMethod] = useState("");
   const [description, setDescription] = useState("");
+  // Leave the category for "Re-classify Uncategorised" to fill in with AI.
+  const [categoriseLater, setCategoriseLater] = useState(false);
+  const [wasPending, setWasPending] = useState(false);
 
   const [categories, setCategories] = useState<CategoryDef[]>([]);
   const [methods, setMethods] = useState<string[]>([]);
@@ -49,8 +53,11 @@ export default function AddTransaction() {
         setDirection(record.direction);
         setDate(record.txnDate);
         setAmount(String(record.amountPaise / 100));
-        setCategory(record.category);
-        setSubcategory(record.subcategory);
+        const pending = record.classifiedBy === PENDING_AI;
+        setWasPending(pending);
+        setCategoriseLater(pending);
+        setCategory(pending ? "" : record.category);
+        setSubcategory(pending ? "" : record.subcategory);
         setPayee(record.payee ?? "");
         setMethod(record.paymentMethod ?? "");
         setDescription(record.description ?? "");
@@ -90,7 +97,9 @@ export default function AddTransaction() {
     setSubcategory("");
   };
 
-  const canSave = !!category && !!subcategory && !!amount && !!payee.trim();
+  const canSave = !!amount && !!payee.trim() && (categoriseLater || (!!category && !!subcategory));
+  // Hand entries can be left for the AI; imported and already-categorised rows cannot.
+  const canCategoriseLater = !editing || wasPending;
 
   const submit = async () => {
     const amountPaise = parseAmountInput(amount);
@@ -102,8 +111,9 @@ export default function AddTransaction() {
       txnDate: date,
       direction,
       amountPaise,
-      category,
-      subcategory,
+      category: categoriseLater ? "" : category,
+      subcategory: categoriseLater ? "" : subcategory,
+      categoriseLater,
       payee: payee.trim(),
       paymentMethod: method || null,
       description: description.trim() || null,
@@ -124,18 +134,11 @@ export default function AddTransaction() {
     setMethod(methods.includes("Cash") ? "Cash" : "");
   };
 
-  const confirmDelete = () =>
-    Alert.alert("Are you sure want to delete?", undefined, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          await deleteTransaction(id!);
-          router.back();
-        },
-      },
-    ]);
+  const confirmDelete = async () => {
+    if (!(await confirmAction({ title: "Are you sure want to delete?", confirmLabel: "Delete" }))) return;
+    await deleteTransaction(id!);
+    router.back();
+  };
 
   return (
     <KeyboardAvoidingView style={styles.page} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -152,14 +155,28 @@ export default function AddTransaction() {
         </View>
         <DateField label="Date" value={date} onChange={setDate} />
         <OutlinedInput label="Amount" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" />
+        {canCategoriseLater ? (
+          <CheckOption
+            label="Categorise later with AI"
+            hint="Saved as uncategorised until you run Re-classify in Config, which sends many entries to the AI in one go."
+            checked={categoriseLater}
+            onPress={() => setCategoriseLater(!categoriseLater)}
+          />
+        ) : null}
         <SelectField
           label="Category"
           value={category}
           options={categoryOptions}
           onChange={changeCategory}
-          disabled={direction === "credit"}
+          disabled={direction === "credit" || categoriseLater}
         />
-        <SelectField label="Sub Category" value={subcategory} options={subcategoryOptions} onChange={setSubcategory} />
+        <SelectField
+          label="Sub Category"
+          value={subcategory}
+          options={subcategoryOptions}
+          onChange={setSubcategory}
+          disabled={categoriseLater}
+        />
         <OutlinedInput
           label={direction === "credit" ? "Payer" : "Payee"}
           value={payee}

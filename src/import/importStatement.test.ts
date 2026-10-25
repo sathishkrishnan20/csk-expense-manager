@@ -13,8 +13,12 @@ const STATEMENT = [
 
 class MemoryStore implements TransactionStore {
   rows = new Map<string, ImportedTransaction>();
+  deleted = new Set<string>();
   async existingKeys(keys: string[]) {
     return new Set(keys.filter((k) => this.rows.has(k)));
+  }
+  async deletedKeys(keys: string[]) {
+    return new Set(keys.filter((k) => this.deleted.has(k)));
   }
   async insert(rows: ImportedTransaction[]) {
     for (const r of rows) this.rows.set(r.dedupeKey, r);
@@ -154,4 +158,20 @@ test("rows the model forgot to return are not saved", async () => {
   });
   assert.equal(summary.imported, 1);
   assert.equal(summary.notSaved, 3);
+});
+
+test("rows the owner deleted earlier are not added again, but are reported so they can be restored", async () => {
+  const store = new MemoryStore();
+  await importStatement(STATEMENT, { store, classifierLabel: "m", classify: classifyByDirection });
+  store.deleted.add("upi:629618527541:D");
+  store.deleted.add("upi:629682828654:D");
+
+  const again = await importStatement(STATEMENT, { store, classifierLabel: "m", classify: classifyByDirection });
+  assert.equal(again.imported, 0);
+  assert.equal(again.alreadyStored, 2); // the two still there
+  assert.deepEqual(again.deletedEarlier.map((r) => [r.dedupeKey, r.payee, r.amountPaise]), [
+    ["upi:629618527541:D", "SATHISH KR", 135500],
+    ["upi:629682828654:D", "SRINIVAS V", 7500],
+  ]);
+  assert.equal(store.rows.size, 4);
 });

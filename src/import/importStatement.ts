@@ -9,7 +9,8 @@ export interface ImportedTransaction extends ParsedTransaction, Classification {
 }
 
 export interface TransactionStore {
-  existingKeys(keys: string[]): Promise<Set<string>>;
+  existingKeys(keys: string[]): Promise<Set<string>>; // includes deleted rows
+  deletedKeys?(keys: string[]): Promise<Set<string>>; // the subset the owner deleted
   insert(rows: ImportedTransaction[]): Promise<void>;
 }
 
@@ -25,7 +26,10 @@ export interface ImportSummary {
   parsed: number;
   skippedLines: number;
   duplicatesInFile: number;
-  alreadyStored: number;
+  alreadyStored: number; // already in the app and still there
+  // Rows of this file the owner deleted earlier. They are not added again unless the owner
+  // asks (see restoreDeleted), so a deliberate delete survives importing an overlapping statement.
+  deletedEarlier: ParsedTransaction[];
   imported: number;
   notSaved: number;
   error: string | null;
@@ -40,15 +44,19 @@ export async function importStatement(text: string, deps: ImportDeps): Promise<I
   for (const row of rows) if (!unique.has(row.dedupeKey)) unique.set(row.dedupeKey, row);
 
   // Keys of soft-deleted rows are still in the store, so a transaction the user
-  // deleted is not brought back by importing the same statement again.
-  const existing = await deps.store.existingKeys([...unique.keys()]);
+  // deleted is not brought back by importing the same statement again; it is reported instead.
+  const keys = [...unique.keys()];
+  const existing = await deps.store.existingKeys(keys);
+  const deleted = existing.size > 0 && deps.store.deletedKeys ? await deps.store.deletedKeys(keys) : new Set<string>();
   const fresh = [...unique.values()].filter((r) => !existing.has(r.dedupeKey));
+  const deletedEarlier = [...unique.values()].filter((r) => deleted.has(r.dedupeKey));
 
   const summary: ImportSummary = {
     parsed: rows.length,
     skippedLines,
     duplicatesInFile: rows.length - unique.size,
-    alreadyStored: unique.size - fresh.length,
+    alreadyStored: unique.size - fresh.length - deletedEarlier.length,
+    deletedEarlier,
     imported: 0,
     notSaved: 0,
     error: null,

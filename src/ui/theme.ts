@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+
 // Values taken from the web Expense Manager (theme.palette.primary, dashboard
 // styles.css, and the colours used on its pages).
 export const colors = {
@@ -28,7 +30,7 @@ export const fonts = {
   medium: "Roboto_500Medium",
   bold: "Roboto_700Bold",
   black: "Roboto_900Black",
-  serifBold: "Georgia-Bold",
+  serifBold: Platform.select({ web: "Georgia, serif", default: "Georgia-Bold" }),
 };
 
 export type FontWeight = Exclude<keyof typeof fonts, "serifBold">;

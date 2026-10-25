@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { deleteCategory, loadCategories, saveCategory } from "../db/config";
 import { validateCategoryEdit, type CategoryEdit } from "../domain/categoryEdit";
 import { isProtectedCategory, isProtectedSubcategory, type CategoryDef } from "../domain/masterData";
+import { confirmAction } from "../platform/dialogs";
 import { T } from "./Text";
 import { Button, OutlinedInput, TextButton } from "./forms";
 import { colors } from "./theme";
@@ -72,29 +73,22 @@ export function CategoriesSection() {
     }
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!edit?.original) return;
     const name = edit.original;
-    Alert.alert(
-      "Are you sure want to delete?",
-      "This removes the category and its subcategories from the list. Existing transactions keep their labels.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deleteCategory(name);
-              await reload();
-              setEdit(null);
-            } catch (err) {
-              setError(err instanceof Error ? err.message : String(err));
-            }
-          },
-        },
-      ],
-    );
+    const confirmed = await confirmAction({
+      title: "Are you sure want to delete?",
+      message: "This removes the category and its subcategories from the list. Existing transactions keep their labels.",
+      confirmLabel: "Delete",
+    });
+    if (!confirmed) return;
+    try {
+      await deleteCategory(name);
+      await reload();
+      setEdit(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   if (edit) {

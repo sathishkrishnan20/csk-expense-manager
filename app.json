@@ -8,7 +8,13 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.sathish.aiexpensemanager"
+      "bundleIdentifier": "com.sathish.aiexpensemanager",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        },
+        "NSLocalNetworkUsageDescription": "Expense Manager connects to an Ollama server on your network to categorise transactions, if you choose Ollama."
+      }
     },
     "plugins": [
       "expo-sqlite",
@@ -19,8 +25,13 @@
       "expo-sharing"
     ],
     "platforms": [
-      "ios"
+      "ios",
+      "web"
     ],
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
     "scheme": "expensemanager"
   }
 }

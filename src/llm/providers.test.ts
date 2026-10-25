@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createLlmCall, MODELS } from "./providers";
+import { createLlmCall, MODELS, normalizeOllamaUrl, providerNeedsKey } from "./providers";
 import { buildSchema } from "./classify";
 
 const SCHEMA = buildSchema(["Food", "Others"]);
@@ -124,4 +124,121 @@ test("anthropic: refusal and API errors become readable errors", async () => {
     fetch: async () => json({ type: "error", error: { type: "authentication_error", message: "invalid x-api-key" } }, 401),
   });
   await assert.rejects(() => unauthorized("s", "u", SCHEMA), /^Error: Claude request failed \(401\): invalid x-api-key$/);
+});
+
+test("a model typed in Config replaces the default one for every provider", async () => {
+  let url = "";
+  const gemini = createLlmCall("gemini", "k", {
+    model: "gemini-custom",
+    fetch: async (u) => {
+      url = String(u);
+      return json({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify(RESULTS) }] } }] });
+    },
+  });
+  await gemini("s", "u", SCHEMA);
+  assert.ok(url.includes("/models/gemini-custom:generateContent"));
+
+  let anthropicModel = "";
+  const claude = createLlmCall("anthropic", "k", {
+    model: "claude-custom",
+    fetch: async (_u, init) => {
+      anthropicModel = JSON.parse(String(init!.body)).model;
+      return json({ id: "m", type: "message", role: "assistant", model: "x", stop_reason: "end_turn", stop_sequence: null, content: [{ type: "text", text: JSON.stringify(RESULTS) }], usage: { input_tokens: 1, output_tokens: 1 } });
+    },
+  });
+  await claude("s", "u", SCHEMA);
+  assert.equal(anthropicModel, "claude-custom");
+});
+
+const openaiAnswer = (content: string | null, extra: Record<string, unknown> = {}, finish = "stop") =>
+  json({ choices: [{ finish_reason: finish, message: { content, ...extra } }] });
+
+test("openai: bearer key, strict json_schema, reasoning effort for reasoning models, parses the answer", async () => {
+  let captured: { url: string; init: RequestInit } | undefined;
+  const call = createLlmCall("openai", "sk-test", {
+    fetch: async (url, init) => {
+      captured = { url: String(url), init: init! };
+      return openaiAnswer(JSON.stringify(RESULTS));
+    },
+  });
+  assert.deepEqual(await call("SYS", "USER", SCHEMA), RESULTS);
+
+  assert.equal(captured!.url, "https://api.openai.com/v1/chat/completions");
+  assert.equal((captured!.init.headers as Record<string, string>).Authorization, "Bearer sk-test");
+  const body = JSON.parse(String(captured!.init.body));
+  assert.equal(body.model, MODELS.openai);
+  assert.deepEqual(body.messages, [
+    { role: "system", content: "SYS" },
+    { role: "user", content: "USER" },
+  ]);
+  assert.equal(body.response_format.type, "json_schema");
+  assert.equal(body.response_format.json_schema.strict, true);
+  assert.deepEqual(body.response_format.json_schema.schema, SCHEMA);
+  assert.equal(body.reasoning_effort, "low");
+});
+
+test("openai: reasoning_effort is only sent to models that take it", async () => {
+  let body: Record<string, unknown> = {};
+  const call = createLlmCall("openai", "k", {
+    model: "gpt-4.1-mini",
+    fetch: async (_u, init) => {
+      body = JSON.parse(String(init!.body));
+      return openaiAnswer(JSON.stringify(RESULTS));
+    },
+  });
+  await call("s", "u", SCHEMA);
+  assert.equal(body.model, "gpt-4.1-mini");
+  assert.equal("reasoning_effort" in body, false);
+});
+
+test("openai: refusals, cut-off answers, empty answers and API errors are readable", async () => {
+  const run = (res: () => Response) => createLlmCall("openai", "k", { fetch: async () => res() })("s", "u", SCHEMA);
+  await assert.rejects(() => run(() => openaiAnswer(null, { refusal: "I cannot help" })), /declined.*I cannot help/);
+  await assert.rejects(() => run(() => openaiAnswer("{", {}, "length")), /cut off/);
+  await assert.rejects(() => run(() => openaiAnswer(null)), /empty response/);
+  await assert.rejects(
+    () => run(() => json({ error: { message: "Incorrect API key provided" } }, 401)),
+    /^Error: OpenAI request failed \(401\): Incorrect API key provided$/,
+  );
+});
+
+test("ollama: posts to the owner's server with the schema as format, no key, and parses message.content", async () => {
+  let captured: { url: string; init: RequestInit } | undefined;
+  const call = createLlmCall("ollama", "", {
+    baseUrl: "192.168.1.20:11434/",
+    model: "qwen3:8b",
+    fetch: async (url, init) => {
+      captured = { url: String(url), init: init! };
+      return json({ done_reason: "stop", message: { role: "assistant", content: JSON.stringify(RESULTS) } });
+    },
+  });
+  assert.deepEqual(await call("SYS", "USER", SCHEMA), RESULTS);
+
+  assert.equal(captured!.url, "http://192.168.1.20:11434/api/chat");
+  assert.equal((captured!.init.headers as Record<string, string>).Authorization, undefined);
+  const body = JSON.parse(String(captured!.init.body));
+  assert.equal(body.model, "qwen3:8b");
+  assert.equal(body.stream, false);
+  assert.deepEqual(body.format, SCHEMA);
+  assert.equal(body.options.temperature, 0);
+  assert.match(body.messages[0].content, /^SYS\n\nAnswer only with JSON/);
+  assert.equal(body.messages[1].content, "USER");
+});
+
+test("ollama: unreachable server, missing model, cut-off and non-JSON answers are readable", async () => {
+  const run = (fetchImpl: typeof fetch) =>
+    createLlmCall("ollama", "", { baseUrl: "http://mac.local:11434", model: "llama3.2", fetch: fetchImpl, sleep: async () => {} })("s", "u", SCHEMA);
+
+  await assert.rejects(() => run(async () => { throw new TypeError("Network request failed"); }), /Could not reach Ollama at http:\/\/mac\.local:11434/);
+  await assert.rejects(() => run(async () => json({ error: "model not found" }, 404)), /does not have the model "llama3\.2".*ollama pull llama3\.2/);
+  await assert.rejects(() => run(async () => json({ done_reason: "length", message: { content: "{" } })), /cut off/);
+  await assert.rejects(() => run(async () => json({ done_reason: "stop", message: { content: "Sure! here you go" } })), /not valid JSON/);
+});
+
+test("ollama address: scheme added, trailing slashes dropped, empty means the local default", () => {
+  assert.equal(normalizeOllamaUrl("  192.168.1.20:11434// "), "http://192.168.1.20:11434");
+  assert.equal(normalizeOllamaUrl("https://ollama.example.com/"), "https://ollama.example.com");
+  assert.equal(normalizeOllamaUrl(""), "http://localhost:11434");
+  assert.equal(providerNeedsKey("ollama"), false);
+  assert.equal(providerNeedsKey("openai"), true);
 });

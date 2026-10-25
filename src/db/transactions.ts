@@ -2,7 +2,8 @@ import type { ImportedTransaction, TransactionStore } from "../import/importStat
 import type { ReclassifyCandidate } from "../import/reclassify";
 import type { Classification, Direction } from "../domain/taxonomy";
 import { FALLBACK } from "../domain/masterData";
-import { getDb } from "./database";
+import { PENDING_AI, fallbackFor } from "../domain/taxonomy";
+import { getDb, inTransaction } from "./database";
 
 export interface TransactionRecord {
   id: string;
@@ -28,6 +29,15 @@ export interface TransactionInput {
   payee: string;
   paymentMethod: string | null;
   description: string | null;
+  // Leave the category to the AI: the row is stored in the fallback category and marked
+  // pending, and "Re-classify Uncategorised" labels it later (category/subcategory are ignored).
+  categoriseLater?: boolean;
+}
+
+// What actually gets stored for the category columns and classified_by.
+function categoryFor(input: TransactionInput) {
+  if (input.categoriseLater) return { ...fallbackFor(input.direction), pending: true };
+  return { category: input.category, subcategory: input.subcategory, pending: false };
 }
 
 interface Row {
@@ -88,32 +98,39 @@ function newId(): string {
 
 export async function addTransaction(input: TransactionInput): Promise<void> {
   const db = await getDb();
+  const stored = categoryFor(input);
   await db.runAsync(
     `INSERT INTO transactions
        (id, source, txn_date, direction, amount_paise, category, subcategory, payee, payment_method, description, classified_by)
-     VALUES (?, 'manual', ?, ?, ?, ?, ?, ?, ?, ?, 'manual')`,
+     VALUES (?, 'manual', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       newId(),
       input.txnDate,
       input.direction,
       input.amountPaise,
-      input.category,
-      input.subcategory,
+      stored.category,
+      stored.subcategory,
       input.payee,
       input.paymentMethod,
       input.description,
+      stored.pending ? PENDING_AI : "manual",
     ],
   );
 }
 
 // Changing the category of an AI-labelled row marks it as the user's own choice,
-// so "Re-classify uncategorised" will never overwrite it.
+// so "Re-classify uncategorised" will never overwrite it. Choosing "Categorise later"
+// hands the row back to the AI; choosing a category on a waiting row makes it the owner's.
 export async function updateTransaction(id: string, input: TransactionInput): Promise<void> {
   const db = await getDb();
+  const stored = categoryFor(input);
   await db.runAsync(
     `UPDATE transactions SET
        txn_date = ?, direction = ?, amount_paise = ?,
-       classified_by = CASE WHEN category != ? OR subcategory != ? THEN 'manual' ELSE classified_by END,
+       classified_by = CASE
+         WHEN ? THEN ?
+         WHEN classified_by = ? OR category != ? OR subcategory != ? THEN 'manual'
+         ELSE classified_by END,
        category = ?, subcategory = ?, payee = ?, payment_method = ?, description = ?,
        updated_at = datetime('now')
      WHERE id = ?`,
@@ -121,10 +138,13 @@ export async function updateTransaction(id: string, input: TransactionInput): Pr
       input.txnDate,
       input.direction,
       input.amountPaise,
-      input.category,
-      input.subcategory,
-      input.category,
-      input.subcategory,
+      stored.pending ? 1 : 0,
+      PENDING_AI,
+      PENDING_AI,
+      stored.category,
+      stored.subcategory,
+      stored.category,
+      stored.subcategory,
       input.payee,
       input.paymentMethod,
       input.description,
@@ -197,6 +217,33 @@ export async function getExpensesBy(grouping: ExpenseGrouping, range: DateRange)
 
 const KEY_CHUNK = 500;
 
+// Puts deleted bank rows back after the owner confirmed it. Returns how many came back and which
+// of them the AI may categorise again (not the ones whose category the owner chose by hand).
+export async function restoreDeleted(dedupeKeys: string[]): Promise<{ restored: number; reclassifiable: Set<string> }> {
+  const db = await getDb();
+  let restored = 0;
+  const reclassifiable = new Set<string>();
+  await inTransaction(db, async (txn) => {
+    for (let i = 0; i < dedupeKeys.length; i += KEY_CHUNK) {
+      const chunk = dedupeKeys.slice(i, i + KEY_CHUNK);
+      const r = await txn.runAsync(
+        `UPDATE transactions SET status = 'ACTIVE', updated_at = datetime('now')
+         WHERE status = 'DELETED' AND dedupe_key IN (${chunk.map(() => "?").join(",")})`,
+        chunk,
+      );
+      restored += r.changes;
+
+      const rows = await txn.getAllAsync<{ dedupe_key: string }>(
+        `SELECT dedupe_key FROM transactions
+         WHERE status = 'ACTIVE' AND classified_by != 'manual' AND dedupe_key IN (${chunk.map(() => "?").join(",")})`,
+        chunk,
+      );
+      for (const row of rows) reclassifiable.add(row.dedupe_key);
+    }
+  });
+  return { restored, reclassifiable };
+}
+
 // Bank rows from a statement. existingKeys includes soft-deleted rows on purpose.
 export const sqliteStore: TransactionStore = {
   async existingKeys(keys) {
@@ -214,9 +261,24 @@ export const sqliteStore: TransactionStore = {
     return found;
   },
 
+  async deletedKeys(keys) {
+    const db = await getDb();
+    const found = new Set<string>();
+    for (let i = 0; i < keys.length; i += KEY_CHUNK) {
+      const chunk = keys.slice(i, i + KEY_CHUNK);
+      const placeholders = chunk.map(() => "?").join(",");
+      const rows = await db.getAllAsync<{ dedupe_key: string }>(
+        `SELECT dedupe_key FROM transactions WHERE status = 'DELETED' AND dedupe_key IN (${placeholders})`,
+        chunk,
+      );
+      for (const row of rows) found.add(row.dedupe_key);
+    }
+    return found;
+  },
+
   async insert(rows: ImportedTransaction[]) {
     const db = await getDb();
-    await db.withExclusiveTransactionAsync(async (txn) => {
+    await inTransaction(db, async (txn) => {
       for (const r of rows) {
         await txn.runAsync(
           `INSERT OR IGNORE INTO transactions
@@ -249,11 +311,11 @@ export const sqliteStore: TransactionStore = {
 };
 
 
-const CANDIDATE_WHERE = `status = 'ACTIVE' AND source = 'import' AND classified_by != 'manual'
-  AND ((direction = 'debit' AND category = ? AND subcategory = ?) OR classified_by = 'migrated')`;
+const CANDIDATE_WHERE = `status = 'ACTIVE' AND classified_by != 'manual'
+  AND (classified_by IN ('${PENDING_AI}', 'migrated') OR (direction = 'debit' AND category = ? AND subcategory = ?))`;
 
-// Imported rows the AI left in the fallback (or that came from the earlier
-// version of the app), never rows the user categorised by hand.
+// Rows the AI left in the fallback, rows that came from the earlier version of the app, and
+// hand entries waiting for the AI ("Categorise later"); never rows the user categorised by hand.
 export async function listReclassifyCandidates(): Promise<ReclassifyCandidate[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<{
@@ -263,9 +325,10 @@ export async function listReclassifyCandidates(): Promise<ReclassifyCandidate[]>
     payee: string | null;
     vpa: string | null;
     note: string | null;
-    narration: string;
+    description: string | null;
+    narration: string | null;
   }>(
-    `SELECT id, direction, amount_paise, payee, vpa, note, narration FROM transactions
+    `SELECT id, direction, amount_paise, payee, vpa, note, description, narration FROM transactions
      WHERE ${CANDIDATE_WHERE} ORDER BY txn_date DESC`,
     [FALLBACK.category, FALLBACK.subcategory],
   );
@@ -276,7 +339,8 @@ export async function listReclassifyCandidates(): Promise<ReclassifyCandidate[]>
     payee: r.payee,
     vpa: r.vpa,
     note: r.note,
-    narration: r.narration,
+    description: r.description,
+    narration: r.narration ?? "",
   }));
 }
 
@@ -295,7 +359,7 @@ export async function applyClassifications(
 ): Promise<void> {
   if (updates.length === 0) return;
   const db = await getDb();
-  await db.withExclusiveTransactionAsync(async (txn) => {
+  await inTransaction(db, async (txn) => {
     for (const { id, classification } of updates) {
       await txn.runAsync(
         `UPDATE transactions SET category = ?, subcategory = ?, classified_by = ?, updated_at = datetime('now')

@@ -54,6 +54,18 @@ test("the user prompt carries note, payee and amount in rupees", () => {
   assert.deepEqual(buildSchema(["A"]).required, ["results"]);
 });
 
+test("a hand entry is sent with its description and without an empty bank narration", () => {
+  const hand = row({ payee: "Ravi Stores", vpa: null, note: null, narration: "", description: "vegetables" });
+  const prompt = buildUserPrompt([hand], "debit");
+  assert.match(prompt, /"description":"vegetables"/);
+  assert.match(prompt, /"payee":"Ravi Stores"/);
+  assert.doesNotMatch(prompt, /narration/);
+  assert.match(buildSystemPrompt(DEFAULT_CATEGORIES, "debit"), /"description" is a remark/);
+  assert.match(buildSystemPrompt(DEFAULT_CATEGORIES, "credit"), /"description" is a remark/);
+  // bank rows have no description field at all
+  assert.doesNotMatch(buildUserPrompt([row()], "debit"), /description/);
+});
+
 test("model answers are validated against the current categories", async () => {
   const rows = Array.from({ length: 7 }, () => row());
   const call: LlmCall = async () => ({

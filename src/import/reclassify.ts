@@ -8,7 +8,8 @@ export interface ReclassifyCandidate {
   payee: string | null;
   vpa: string | null;
   note: string | null;
-  narration: string;
+  description?: string | null; // hand entries
+  narration: string; // empty for hand entries
 }
 
 export interface ReclassifyDeps {

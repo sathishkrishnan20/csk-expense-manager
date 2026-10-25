@@ -185,7 +185,8 @@ transaction on the phone and a plain transaction on web (expo-sqlite web has no 
 ones), and WAL is not requested on web. `expo-sqlite` on web runs wa-sqlite in a worker with
 `SharedArrayBuffer`, so the page must be cross-origin isolated: `metro.config.js` adds the
 `wasm` asset type and the COOP/COEP headers for the dev server (any host would need the
-same headers). `app.json` uses `web.output: "single"` (not static rendering, which cannot
+same headers; `public/_headers`, `_redirects` and `serve.json` carry them into `dist/` for
+`npm run web:build`, and `npm run web:serve` serves it locally). `app.json` uses `web.output: "single"` (not static rendering, which cannot
 run SQLite). Layout in a browser follows the web Expense Manager: below 768px wide it is the phone layout
 (bottom bar and + button) as a centred column of at most 480px; from 768px up the bottom bar
 is hidden (`Footer` returns null) and `src/ui/Sidebar.tsx` shows the permanent left drawer

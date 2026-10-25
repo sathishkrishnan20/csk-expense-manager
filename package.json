@@ -42,7 +42,11 @@
     "start": "expo start",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "web:build": "expo export --platform web",
+    "deploy": "npm run web:build -- --output-dir build",
+    "web:serve": "npx serve dist",
     "ios:device": "expo run:ios --device --configuration Release",
+    "ipa": "bash scripts/build-ipa.sh",
     "test": "tsx --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
   },

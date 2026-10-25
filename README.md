@@ -56,13 +56,52 @@ renewed by building again. It runs without your Mac or the dev server.
 6. Every 7 days run `npm run ios:device` again; installing over the top keeps your data (do not
    delete the app first). EAS cloud builds cannot make an iPhone install without the paid program.
 
+### Keep it installed with AltStore or SideStore (free, renews itself)
+
+Apple's free signing lasts 7 days. AltStore and SideStore are third-party tools (not endorsed by
+Apple, and they use your Apple ID) that re-sign the app every week automatically.
+Do not mix this with the Xcode install above: a re-signed app gets its own bundle id and
+its own data, so pick one and move data between them with Export and Import.
+
+1. Export your data first, then delete any copy installed through Xcode.
+2. Build an unsigned `.ipa` (needs Xcode and CocoaPods; the first run creates `ios/`):
+
+   ```bash
+   npm run ipa
+   ```
+
+   The file is `build/ipa/<AppName>.ipa`. AirDrop it to the iPhone, or put it in iCloud Drive.
+3. **AltStore** (the computer must be on the same Wi-Fi about once a week): install AltServer
+   for Mac from altstore.io, plug in the iPhone, turn on "Show this iPhone when on Wi-Fi" in
+   Finder, and choose AltServer menu > Install AltStore. Sign in with your Apple ID, then on the
+   phone trust it (Settings > General > VPN & Device Management) and turn on Developer Mode
+   (Settings > Privacy & Security). In AltStore open My Apps > +, pick the `.ipa`.
+   Or **SideStore** (refreshes on the phone, no computer needed each week): follow
+   docs.sidestore.io (LocalDevVPN on the phone and iloader on the computer), then open the `.ipa`
+   in SideStore.
+4. An expired app keeps its data: refresh it from AltStore or SideStore, do not delete it.
+   If AltStore itself expired, reinstall it from AltServer over the cable.
+
 ### In a browser (untested)
 
 ```bash
 npm run web
 ```
 
-The code is written to run on web too, but that build has not been run yet. Things to know:
+The code is written to run on web too, but that build has not been run yet.
+
+To make a production build and try it locally:
+
+```bash
+npm run web:build
+npm run web:serve
+```
+
+`web:build` writes the site to `dist/`. The SQLite engine needs the page to send the headers
+`Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`, and
+every path must fall back to `index.html`. `public/` holds those settings (it is copied into
+`dist/`): `serve.json` for `npm run web:serve`, `_headers` and `_redirects` for Netlify and
+Cloudflare Pages. Any other host has to be set up the same way. Things to know:
 
 - Data lives in the browser's own storage (SQLite in the browser's private file system for
   that address). It is separate from the data on your phone: use **Config > Export and Import**

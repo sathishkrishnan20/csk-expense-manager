@@ -38,6 +38,9 @@ yarn-error.*
 
 # generated native folders
 /ios
+
+# unsigned .ipa built by scripts/build-ipa.sh
+/build
 /android
 
 # Personal data exports (never commit)

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { helpTopics, type HelpBlock } from "./helpContent";
+import { helpTopics, type HelpBlock } from "../../src/domain/helpContent";
 
 const textOf = (blocks: HelpBlock[]): string =>
   blocks

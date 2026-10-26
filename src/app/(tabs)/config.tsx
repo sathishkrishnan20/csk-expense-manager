@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { addPaymentMethod, loadPaymentMethods, removePaymentMethod } from "../../db/config";
-import { countReclassifyCandidates } from "../../db/transactions";
+import { countReclassifyCandidates, countUnresolved, retryUnresolved } from "../../db/transactions";
 import { runReclassify } from "../../import/services";
 import { DEFAULT_OLLAMA_URL, PROVIDER_LABEL, providerNeedsKey, type Provider } from "../../llm/providers";
 import { confirmAction } from "../../platform/dialogs";
@@ -22,14 +22,15 @@ import {
 } from "../../settings/settings";
 import { CategoriesSection } from "../../ui/CategoriesSection";
 import { DataBackupSection } from "../../ui/DataBackupSection";
+import { StatementPasswordsSection } from "../../ui/StatementPasswordsSection";
 import { AiStatus, ActiveAiLine } from "../../ui/ActiveAi";
 import { AppHeader } from "../../ui/Header";
 import { T } from "../../ui/Text";
-import { Button, OutlinedInput } from "../../ui/forms";
+import { Button, OutlinedInput, TextButton } from "../../ui/forms";
 import { UnlockGate } from "../../ui/UnlockGate";
 import { colors } from "../../ui/theme";
 
-type Section = "payments" | "category" | "ai" | "backup" | "reclassify" | "";
+type Section = "payments" | "category" | "ai" | "passwords" | "backup" | "reclassify" | "";
 
 export default function Config() {
   const router = useRouter();
@@ -48,6 +49,9 @@ export default function Config() {
         </Accordion>
         <Accordion title="AI" open={expanded === "ai"} onToggle={() => toggle("ai")}>
           <AiSection />
+        </Accordion>
+        <Accordion title="Statement passwords" open={expanded === "passwords"} onToggle={() => toggle("passwords")}>
+          <StatementPasswordsSection />
         </Accordion>
         <Accordion title="Export and Import" open={expanded === "backup"} onToggle={() => toggle("backup")}>
           <DataBackupSection />
@@ -266,6 +270,7 @@ function AiSection() {
 
 function ReclassifySection() {
   const [pending, setPending] = useState(0);
+  const [unresolved, setUnresolved] = useState(0);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const [result, setResult] = useState<{ text: string; isError: boolean } | null>(null);
@@ -273,6 +278,7 @@ function ReclassifySection() {
   useFocusEffect(
     useCallback(() => {
       countReclassifyCandidates().then(setPending);
+      countUnresolved().then(setUnresolved);
     }, []),
   );
 
@@ -293,7 +299,14 @@ function ReclassifySection() {
       setBusy(false);
       setProgress("");
       countReclassifyCandidates().then(setPending);
+      countUnresolved().then(setUnresolved);
     }
+  };
+
+  const retry = async () => {
+    await retryUnresolved();
+    countReclassifyCandidates().then(setPending);
+    countUnresolved().then(setUnresolved);
   };
 
   return (
@@ -311,6 +324,14 @@ function ReclassifySection() {
         />
       </UnlockGate>
       {busy && progress ? <T style={styles.muted}>{progress}</T> : null}
+      <T style={styles.note}>
+        {
+          "If the AI cannot place a transaction after 3 attempts (the import counts as the first), it stops asking and moves the transaction to the Couldn't categorise list: on Home, or Transactions > Filters. Choose a category there yourself."
+        }
+      </T>
+      {unresolved > 0 ? (
+        <TextButton label={`Try the ${unresolved} it couldn't categorise again`} onPress={retry} />
+      ) : null}
       {result ? <T style={result.isError ? styles.error : styles.muted}>{result.text}</T> : null}
     </View>
   );

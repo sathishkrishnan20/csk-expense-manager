@@ -13,7 +13,34 @@
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         },
-        "NSLocalNetworkUsageDescription": "Expense Manager connects to an Ollama server on your network to categorise transactions, if you choose Ollama."
+        "NSLocalNetworkUsageDescription": "Expense Manager connects to an Ollama server on your network to categorise transactions, if you choose Ollama.",
+        "CFBundleDocumentTypes": [
+          {
+            "CFBundleTypeName": "Bank statement (PDF)",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": [
+              "com.adobe.pdf"
+            ]
+          },
+          {
+            "CFBundleTypeName": "Bank statement (Excel)",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": [
+              "com.microsoft.excel.xls",
+              "org.openxmlformats.spreadsheetml.sheet"
+            ]
+          },
+          {
+            "CFBundleTypeName": "Bank statement (CSV)",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": [
+              "public.comma-separated-values-text"
+            ]
+          }
+        ]
       }
     },
     "plugins": [

@@ -8,7 +8,7 @@ import {
   monthRange,
   parseAmountInput,
   toISODate,
-} from "./format";
+} from "../../src/domain/format";
 
 test("rupees use Indian grouping and two decimals", () => {
   assert.equal(formatRupees(135500), "₹1,355.00");

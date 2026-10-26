@@ -30,10 +30,12 @@ Press `i` for the iOS simulator, or open the project in Expo Go on your iPhone. 
    the address of your server (on an iPhone: your computer's address on the same Wi-Fi, with
    Ollama started using `OLLAMA_HOST=0.0.0.0`). You can change the model name too. Only the
    selected AI is used; each keeps its own key and model.
-2. **+ > Import**: choose the statement CSV. The summary shows how many rows were saved,
+2. **+ > Import**: choose the statement (CSV, Excel or PDF), or in Mail or Files tap the statement, then Share, then Expense Manager. For a locked PDF, first save its password in **Config > Statement passwords**. The summary shows how many rows were saved,
    skipped as already imported, or not saved.
 3. After adding categories in Config, use **Config > Re-classify Uncategorised** to
-   re-run AI on imported rows that ended up in Others : Uncategorised.
+   re-run AI on imported rows that ended up in Others : Uncategorised. A transaction the AI cannot place
+   after 3 attempts (the import is the first) goes to a **Couldn't categorise** list, shown as a card on
+   Home and as a filter on Transactions, and is not sent to the AI again until you choose "try again".
 
 ### Install on your iPhone (free Apple ID, standalone)
 
@@ -126,7 +128,11 @@ npm test
 
 ## Things to know
 
-- Bank statements can be CSV or Excel (.xls, .xlsx).
+- Bank statements can be CSV, Excel (.xls, .xlsx) or PDF. PDFs are read on the device (the ICICI savings-account
+  layout was built and checked against a real statement). Every PDF is verified before anything is saved: the
+  balance after each row must follow from the one before, and the sums must match the statement's own TOTAL
+  row. If they do not, nothing is imported. The share-to-app entry needs a rebuilt app (it adds file types to
+  `app.json`), so it does not work in Expo Go.
 - Each new transaction's payee, UPI note, narration and amount is sent to the AI provider
   you chose. Nothing else leaves the phone. The key stays in the iOS Keychain.
 - If an import stops partway (bad key, quota), fix the cause and upload the same file

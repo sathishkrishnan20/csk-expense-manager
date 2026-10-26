@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { FlatList, StyleSheet, View } from "react-native";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { loadCategories } from "../../db/config";
 import { listTransactions, type TransactionRecord } from "../../db/transactions";
 import type { CategoryDef } from "../../domain/masterData";
@@ -17,6 +17,11 @@ export default function Transactions() {
   const [items, setItems] = useState<TransactionRecord[] | null>(null);
   const [categories, setCategories] = useState<CategoryDef[]>([]);
   const [filters, setFilters] = useState<TransactionFilters>(NO_FILTERS);
+  // Home's "couldn't categorise" card links here; the value changes on every press so it applies each time.
+  const { review } = useLocalSearchParams<{ review?: string }>();
+  useEffect(() => {
+    if (review) setFilters({ ...NO_FILTERS, uncategorised: "unresolved" });
+  }, [review]);
 
   useFocusEffect(
     useCallback(() => {

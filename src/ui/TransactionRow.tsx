@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, View } from "react-native";
 import { formatLongDate, formatRupees } from "../domain/format";
 import type { TransactionRecord } from "../db/transactions";
+import { UNRESOLVED } from "../domain/classificationOutcome";
 import { PENDING_AI } from "../domain/taxonomy";
 import { T } from "./Text";
 import { colors } from "./theme";
@@ -24,7 +25,11 @@ export function TransactionRow({ item, onPress }: { item: TransactionRecord; onP
 
       <View style={styles.line}>
         <T style={styles.left} numberOfLines={1}>
-          {item.classifiedBy === PENDING_AI ? "Waiting for AI" : `${item.category} : ${item.subcategory}`}
+          {item.classifiedBy === PENDING_AI
+            ? "Waiting for AI"
+            : item.classifiedBy === UNRESOLVED
+              ? "Couldn't categorise · tap to choose"
+              : `${item.category} : ${item.subcategory}`}
         </T>
         {item.balancePaise !== null ? <T weight="bold">{formatRupees(item.balancePaise)}</T> : null}
       </View>

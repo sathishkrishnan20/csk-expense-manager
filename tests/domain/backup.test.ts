@@ -9,7 +9,7 @@ import {
   serializeBackup,
   type Backup,
   type BackupTransaction,
-} from "./backup";
+} from "../../src/domain/backup";
 
 const tx = (over: Partial<BackupTransaction> = {}): BackupTransaction => ({
   id: "upi:629618527541:D",

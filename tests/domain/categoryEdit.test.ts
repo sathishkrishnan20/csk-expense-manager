@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validateCategoryEdit, validateNewName, type CategoryEdit } from "./categoryEdit";
-import { DEFAULT_CATEGORIES } from "./masterData";
+import { validateCategoryEdit, validateNewName, type CategoryEdit } from "../../src/domain/categoryEdit";
+import { DEFAULT_CATEGORIES } from "../../src/domain/masterData";
 
 const sub = (name: string, original: string | null = name) => ({ original, name });
 

@@ -3,7 +3,7 @@ This is an Expo/React Native mobile application. Prioritize mobile-first pattern
 ## Working rules (set by the owner; these override anything below)
 
 - **Make code changes only. Do not run or test the app.** Do not start the dev server, open the iOS simulator or Expo Go, run `expo run:ios`, build the app, take screenshots, or otherwise launch it to check a change. The owner tests the app on their own iPhone.
-- The quick static checks are allowed but not required: `npm run typecheck`, and `npm test` (unit tests that run under Node, not in the app).
+- The quick static checks are allowed but not required: `npm run typecheck`, and `npm test` (unit tests that run under Node, not in the app). Tests live in `tests/`, mirroring `src/`; do not put test files under `src/` (Expo Router would treat files in `src/app` as routes).
 - When you finish, say plainly what you changed and that the change was not run in the app, so the owner knows what to test.
 
 ## Expo has changed — do not trust your training data

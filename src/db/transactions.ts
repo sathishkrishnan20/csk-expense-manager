@@ -2,6 +2,7 @@ import type { ImportedTransaction, TransactionStore } from "../import/importStat
 import type { ReclassifyCandidate } from "../import/reclassify";
 import type { Classification, Direction } from "../domain/taxonomy";
 import { FALLBACK } from "../domain/masterData";
+import { UNRESOLVED, aiAttemptOutcome } from "../domain/classificationOutcome";
 import { PENDING_AI, fallbackFor } from "../domain/taxonomy";
 import { getDb, inTransaction } from "./database";
 
@@ -280,11 +281,13 @@ export const sqliteStore: TransactionStore = {
     const db = await getDb();
     await inTransaction(db, async (txn) => {
       for (const r of rows) {
+        // The import is the AI's first attempt at this transaction.
+        const outcome = aiAttemptOutcome(0, couldNotPlace(r.direction, r));
         await txn.runAsync(
           `INSERT OR IGNORE INTO transactions
              (id, dedupe_key, source, txn_date, direction, amount_paise, balance_paise, category, subcategory,
-              payee, payment_method, description, narration, vpa, note, payee_bank, upi_ref, classified_by)
-           VALUES (?, ?, 'import', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              payee, payment_method, description, narration, vpa, note, payee_bank, upi_ref, classified_by, ai_attempts)
+           VALUES (?, ?, 'import', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             r.dedupeKey,
             r.dedupeKey,
@@ -302,7 +305,8 @@ export const sqliteStore: TransactionStore = {
             r.note,
             r.payeeBank,
             r.upiRef,
-            r.classifiedBy,
+            outcome.unresolved ? UNRESOLVED : r.classifiedBy,
+            outcome.attempts,
           ],
         );
       }
@@ -311,7 +315,11 @@ export const sqliteStore: TransactionStore = {
 };
 
 
-const CANDIDATE_WHERE = `status = 'ACTIVE' AND classified_by != 'manual'
+// Debits the AI answered with the fallback; counts as one failed attempt (credits have a real fallback, Income : Others).
+const couldNotPlace = (direction: Direction, c: Classification): boolean =>
+  direction === "debit" && c.category === FALLBACK.category && c.subcategory === FALLBACK.subcategory;
+
+const CANDIDATE_WHERE = `status = 'ACTIVE' AND classified_by NOT IN ('manual', '${UNRESOLVED}')
   AND (classified_by IN ('${PENDING_AI}', 'migrated') OR (direction = 'debit' AND category = ? AND subcategory = ?))`;
 
 // Rows the AI left in the fallback, rows that came from the earlier version of the app, and
@@ -361,11 +369,41 @@ export async function applyClassifications(
   const db = await getDb();
   await inTransaction(db, async (txn) => {
     for (const { id, classification } of updates) {
+      const row = await txn.getFirstAsync<{ direction: Direction; ai_attempts: number }>(
+        "SELECT direction, ai_attempts FROM transactions WHERE id = ? AND classified_by != 'manual'",
+        [id],
+      );
+      if (!row) continue;
+      // Each failed answer is an attempt; after MAX_AI_ATTEMPTS the AI stops being asked and the
+      // owner is shown the transaction in the "Couldn't categorise" list.
+      const outcome = aiAttemptOutcome(row.ai_attempts, couldNotPlace(row.direction, classification));
       await txn.runAsync(
-        `UPDATE transactions SET category = ?, subcategory = ?, classified_by = ?, updated_at = datetime('now')
+        `UPDATE transactions SET category = ?, subcategory = ?, classified_by = ?, ai_attempts = ?,
+           updated_at = datetime('now')
          WHERE id = ? AND classified_by != 'manual'`,
-        [classification.category, classification.subcategory, label, id],
+        [classification.category, classification.subcategory, outcome.unresolved ? UNRESOLVED : label, outcome.attempts, id],
       );
     }
   });
+}
+
+// How many transactions the AI gave up on and that wait for the owner.
+export async function countUnresolved(): Promise<number> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ n: number }>(
+    "SELECT COUNT(*) AS n FROM transactions WHERE status = 'ACTIVE' AND classified_by = ?",
+    [UNRESOLVED],
+  );
+  return row?.n ?? 0;
+}
+
+// Gives the AI another go at them: they count as waiting again, with fresh attempts.
+export async function retryUnresolved(): Promise<number> {
+  const db = await getDb();
+  const r = await db.runAsync(
+    `UPDATE transactions SET classified_by = ?, ai_attempts = 0, updated_at = datetime('now')
+     WHERE status = 'ACTIVE' AND classified_by = ?`,
+    [PENDING_AI, UNRESOLVED],
+  );
+  return r.changes;
 }

@@ -4,7 +4,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { getTotals, listTransactions, type Totals, type TransactionRecord } from "../../db/transactions";
+import { countUnresolved, getTotals, listTransactions, type Totals, type TransactionRecord } from "../../db/transactions";
 import { formatRupees } from "../../domain/format";
 import { T } from "../../ui/Text";
 import { Button, Chip } from "../../ui/forms";
@@ -18,14 +18,16 @@ export default function Home() {
   const insets = useSafeAreaInsets();
   const [totals, setTotals] = useState<Totals>({ incomePaise: 0, expensePaise: 0 });
   const [recent, setRecent] = useState<TransactionRecord[] | null>(null);
+  const [unresolved, setUnresolved] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
       let alive = true;
-      Promise.all([getTotals(), listTransactions(RECENT_COUNT)]).then(([t, r]) => {
+      Promise.all([getTotals(), listTransactions(RECENT_COUNT), countUnresolved()]).then(([t, r, n]) => {
         if (!alive) return;
         setTotals(t);
         setRecent(r);
+        setUnresolved(n);
       });
       return () => {
         alive = false;
@@ -84,6 +86,23 @@ export default function Home() {
         </View>
       </View>
 
+      {unresolved > 0 ? (
+        <Pressable
+          style={styles.review}
+          onPress={() => router.navigate({ pathname: "/transactions", params: { review: String(Date.now()) } })}
+          accessibilityRole="button"
+        >
+          <MaterialIcons name="help-outline" size={24} color={colors.error} />
+          <View style={{ flex: 1 }}>
+            <T weight="medium" style={{ fontSize: 14 }}>
+              {unresolved} transaction{unresolved === 1 ? "" : "s"} the AI couldn't categorise
+            </T>
+            <T style={{ fontSize: 13, color: colors.textSecondary }}>Tap to choose a category for them.</T>
+          </View>
+          <MaterialIcons name="chevron-right" size={24} color={colors.textSecondary} />
+        </Pressable>
+      ) : null}
+
       {recent && recent.length === 0 ? <WelcomeCard onHelp={() => router.push("/help")} /> : null}
 
       <View style={styles.recentHeader}>
@@ -132,6 +151,7 @@ function WelcomeCard({ onHelp }: { onHelp: () => void }) {
 }
 
 const styles = StyleSheet.create({
+  review: { flexDirection: "row", alignItems: "center", gap: 10, margin: 12, padding: 12, borderRadius: 8, backgroundColor: "#fdecea" },
   welcome: { margin: 12, padding: 16, gap: 8, borderRadius: 8, backgroundColor: colors.primaryTint },
   welcomeStep: { flexDirection: "row", gap: 8 },
   welcomeNumber: { width: 20, fontSize: 15, lineHeight: 22, color: colors.textSecondary },

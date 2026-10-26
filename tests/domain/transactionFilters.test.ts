@@ -11,20 +11,21 @@ import {
   withCategory,
   type Filterable,
   type TransactionFilters,
-} from "./transactionFilters";
+} from "../../src/domain/transactionFilters";
 
-const t = (id: string, txnDate: string, direction: "debit" | "credit", category: string, subcategory: string) => ({
+const t = (id: string, txnDate: string, direction: "debit" | "credit", category: string, subcategory: string, classifiedBy?: string) => ({
   id,
   txnDate,
   direction,
   category,
   subcategory,
+  classifiedBy,
 });
 
 const ROWS = [
   t("a", "2026-10-01", "debit", "Food", "Groceries"),
   t("b", "2026-10-10", "debit", "Food", "Snacks"),
-  t("c", "2026-10-15", "debit", "Others", "Uncategorised"),
+  t("c", "2026-10-15", "debit", "Others", "Uncategorised", "unresolved"),
   t("d", "2026-10-20", "credit", "Income", "Salary"),
   t("e", "2026-10-31", "debit", "Travel", "Taxi"),
   t("f", "2026-11-02", "credit", "Income", "Others"),
@@ -103,4 +104,12 @@ test("options: current categories in Config order, then labels that only exist o
   assert.deepEqual(subcategoryOptions(config, rows, "Food"), ["Restaurant", "Groceries", "Others", "Chat items"]);
   assert.deepEqual(subcategoryOptions(config, rows, "Transport"), ["Taxi"]);
   assert.deepEqual(subcategoryOptions(config, rows, "Nothing"), []);
+});
+
+test("the \"couldn't categorise\" list holds only what the AI gave up on", () => {
+  const rows = [...ROWS, t("g", "2026-10-16", "debit", "Others", "Uncategorised", "gemini-3.5-flash-lite")];
+  // g is uncategorised but the AI has not given up yet; c has used up its attempts
+  assert.equal(ids(applyFilters(rows, filters({ uncategorised: "unresolved" }))), "c");
+  assert.equal(ids(applyFilters(rows, filters({ uncategorised: "uncategorised" }))), "cg");
+  assert.equal(activeFilterCount(filters({ uncategorised: "unresolved" })), 1);
 });

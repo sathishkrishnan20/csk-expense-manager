@@ -1,9 +1,11 @@
+import { UNRESOLVED } from "./classificationOutcome";
 import { FALLBACK, sortOthersLast, type CategoryDef } from "./masterData";
 
 export type DirectionFilter = "all" | "debit" | "credit";
 
-// "categorised" hides the Others : Uncategorised rows, "uncategorised" shows only those.
-export type UncategorisedMode = "all" | "categorised" | "uncategorised";
+// "categorised" hides the Others : Uncategorised rows, "uncategorised" shows only those, and "unresolved"
+// shows only the ones the AI gave up on after several attempts (the "Couldn't categorise" list).
+export type UncategorisedMode = "all" | "categorised" | "uncategorised" | "unresolved";
 
 export interface TransactionFilters {
   start: string | null; // inclusive, ISO yyyy-mm-dd
@@ -28,12 +30,18 @@ export interface Filterable {
   direction: "debit" | "credit";
   category: string;
   subcategory: string;
+  classifiedBy?: string;
 }
 
 // "Uncategorised" is the fallback the AI uses for debits that fit none of the owner's
 // categories (the fallback for credits, Income : Others, is a normal Income entry).
 export function isUncategorised(t: Pick<Filterable, "category" | "subcategory">): boolean {
   return t.category === FALLBACK.category && t.subcategory === FALLBACK.subcategory;
+}
+
+// The AI tried several times and could not place it (and the owner has not yet).
+export function isUnresolved(t: Pick<Filterable, "classifiedBy">): boolean {
+  return t.classifiedBy === UNRESOLVED;
 }
 
 export function applyFilters<T extends Filterable>(rows: T[], f: TransactionFilters): T[] {
@@ -45,6 +53,7 @@ export function applyFilters<T extends Filterable>(rows: T[], f: TransactionFilt
     if (f.category && f.subcategory && t.subcategory !== f.subcategory) return false;
     if (f.uncategorised === "categorised" && isUncategorised(t)) return false;
     if (f.uncategorised === "uncategorised" && !isUncategorised(t)) return false;
+    if (f.uncategorised === "unresolved" && !isUnresolved(t)) return false;
     return true;
   });
 }

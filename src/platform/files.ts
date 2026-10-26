@@ -2,11 +2,14 @@ import type { DocumentPickerAsset } from "expo-document-picker";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 
-export async function readPickedBytes(asset: DocumentPickerAsset): Promise<Uint8Array> {
+// What the import needs from a chosen or shared file: where it is (and, in a browser, the file itself).
+export type PickedFile = Pick<DocumentPickerAsset, "uri" | "file">;
+
+export async function readPickedBytes(asset: PickedFile): Promise<Uint8Array> {
   return new Uint8Array(await new File(asset.uri).arrayBuffer());
 }
 
-export async function readPickedText(asset: DocumentPickerAsset): Promise<string> {
+export async function readPickedText(asset: PickedFile): Promise<string> {
   return new File(asset.uri).text();
 }
 

@@ -1,16 +1,18 @@
 import type { DocumentPickerAsset } from "expo-document-picker";
 
 // On web the picker hands back the browser's File object.
-function browserFile(asset: DocumentPickerAsset): Blob {
+export type PickedFile = Pick<DocumentPickerAsset, "uri" | "file">;
+
+function browserFile(asset: PickedFile): Blob {
   if (!asset.file) throw new Error("Could not read the chosen file.");
   return asset.file;
 }
 
-export async function readPickedBytes(asset: DocumentPickerAsset): Promise<Uint8Array> {
+export async function readPickedBytes(asset: PickedFile): Promise<Uint8Array> {
   return new Uint8Array(await browserFile(asset).arrayBuffer());
 }
 
-export async function readPickedText(asset: DocumentPickerAsset): Promise<string> {
+export async function readPickedText(asset: PickedFile): Promise<string> {
   return browserFile(asset).text();
 }
 

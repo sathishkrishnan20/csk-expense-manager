@@ -46,3 +46,7 @@ yarn-error.*
 # Personal data exports (never commit)
 expense.tsv
 .history/
+
+# real bank statements must never be committed
+Statement_*.pdf
+real_statement*.pdf

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { reclassify, type ReclassifyCandidate } from "./reclassify";
-import type { Classification, Direction } from "../domain/taxonomy";
+import { reclassify, type ReclassifyCandidate } from "../../src/import/reclassify";
+import type { Classification, Direction } from "../../src/domain/taxonomy";
 
 const cand = (id: string, direction: Direction = "debit"): ReclassifyCandidate => ({
   id,

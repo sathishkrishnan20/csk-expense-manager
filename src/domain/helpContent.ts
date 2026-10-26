@@ -48,7 +48,8 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
       blocks: [
         {
           bullets: [
-            "Works with the CSV, XLS or XLSX file your bank lets you download (UPI narrations are read for the payee and your note).",
+            "Works with the CSV, XLS, XLSX or PDF statement from your bank (UPI narrations are read for the payee and your note). In Mail or Files you can tap a statement, then Share, then Expense Manager.",
+            "For a locked PDF, save its password under Config > Statement passwords first. The app tries every saved password, and checks that the balances and totals on the statement add up before saving anything; if they do not, nothing is imported.",
             "Rows you imported before are skipped, so importing an overlapping statement is safe. A row you deleted is not added again on its own: the import summary lists such rows and offers Add them back and categorise, so you decide. That restores them and asks the AI again (a category you set by hand is kept).",
             "Debits go to your expense categories; credits go to the subcategories under Income.",
             "Anything the AI cannot place goes to Others : Uncategorised. It never invents a category.",
@@ -80,6 +81,7 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
             "Add, rename or delete categories and subcategories in Config > Categories. Existing transactions keep their old labels.",
             "Config > Re-classify Uncategorised asks the AI again for imported rows left in Others : Uncategorised and for entries waiting for AI.",
             "A category you choose yourself is never changed by the AI. Changing a category on any transaction makes it yours.",
+            "If the AI cannot place a transaction after 3 attempts (the import is the first), it stops asking and moves the transaction to a Couldn't categorise list. Home shows a red card with the count; tap it to choose a category for each one, or find them under Transactions, Filters.",
           ],
         },
       ],

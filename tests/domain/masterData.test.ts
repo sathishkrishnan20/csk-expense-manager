@@ -8,7 +8,7 @@ import {
   isProtectedCategory,
   isProtectedSubcategory,
   sortOthersLast,
-} from "./masterData";
+} from "../../src/domain/masterData";
 
 test("default categories mirror the web app's live list, Income first, fallback last", () => {
   assert.equal(DEFAULT_CATEGORIES[0].category, "Income");

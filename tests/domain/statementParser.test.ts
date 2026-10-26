@@ -7,7 +7,7 @@ import {
   parseAmountPaise,
   inferPaymentMethod,
   StatementParseError,
-} from "./statementParser";
+} from "../../src/domain/statementParser";
 
 // Rows exactly as exported by the bank: no header, tab separated.
 const SAMPLE_ROWS = [

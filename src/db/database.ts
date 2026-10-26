@@ -2,7 +2,7 @@ import { Platform } from "react-native";
 import * as SQLite from "expo-sqlite";
 import { DEFAULT_CATEGORIES, DEFAULT_PAYMENT_METHODS, FALLBACK } from "../domain/masterData";
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS categories (
@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS transactions (
   payee_bank     TEXT,
   upi_ref        TEXT,
   classified_by  TEXT NOT NULL,
+  -- how many times the AI answered "could not place it" (see domain/classificationOutcome.ts)
+  ai_attempts    INTEGER NOT NULL DEFAULT 0,
   created_at     TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -90,6 +92,12 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
     if (isV1) await txn.execAsync("ALTER TABLE transactions RENAME TO transactions_v1");
 
     await txn.execAsync(SCHEMA);
+
+    // Version 3 added ai_attempts; a table created by an older version does not have it yet.
+    const now = await txn.getAllAsync<{ name: string }>("SELECT name FROM pragma_table_info('transactions')");
+    if (!now.some((c) => c.name === "ai_attempts")) {
+      await txn.execAsync("ALTER TABLE transactions ADD COLUMN ai_attempts INTEGER NOT NULL DEFAULT 0");
+    }
 
     const seeded = await txn.getFirstAsync<{ n: number }>("SELECT COUNT(*) AS n FROM categories");
     if (!seeded?.n) {

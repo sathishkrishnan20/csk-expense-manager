@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildSchema, buildSystemPrompt, buildUserPrompt, classifyBatch, type ClassifiableRow } from "./classify";
-import { DEFAULT_CATEGORIES, type CategoryDef } from "../domain/masterData";
-import type { JsonSchema, LlmCall } from "./providers";
+import { buildSchema, buildSystemPrompt, buildUserPrompt, classifyBatch, type ClassifiableRow } from "../../src/llm/classify";
+import { DEFAULT_CATEGORIES, type CategoryDef } from "../../src/domain/masterData";
+import type { JsonSchema, LlmCall } from "../../src/llm/providers";
 
 const row = (over: Partial<ClassifiableRow> = {}): ClassifiableRow => ({
   amountPaise: 12500,

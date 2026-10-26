@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createLlmCall, MODELS, normalizeOllamaUrl, providerNeedsKey } from "./providers";
-import { buildSchema } from "./classify";
+import { createLlmCall, MODELS, normalizeOllamaUrl, providerNeedsKey } from "../../src/llm/providers";
+import { buildSchema } from "../../src/llm/classify";
 
 const SCHEMA = buildSchema(["Food", "Others"]);
 const RESULTS = { results: [{ id: 0, category: "Food", subcategory: "Groceries" }] };

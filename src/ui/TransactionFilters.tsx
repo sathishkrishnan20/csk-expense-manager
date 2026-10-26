@@ -16,7 +16,7 @@ import {
 } from "../domain/transactionFilters";
 import { notify } from "../platform/dialogs";
 import { T } from "./Text";
-import { DateField, Segmented, SelectField, TextButton } from "./forms";
+import { CheckOption, DateField, Segmented, SelectField, TextButton } from "./forms";
 import { colors } from "./theme";
 
 const ALL_CATEGORIES = "All categories";
@@ -134,6 +134,12 @@ export function TransactionFiltersPanel({ filters, onChange, categories, rows, s
               options={UNCATEGORISED}
               value={filters.uncategorised}
               onChange={(uncategorised) => onChange({ ...filters, uncategorised })}
+            />
+            <CheckOption
+              label="Only those the AI couldn't categorise"
+              hint="Transactions the AI gave up on after several tries, waiting for you to choose a category."
+              checked={filters.uncategorised === "unresolved"}
+              onPress={() => onChange({ ...filters, uncategorised: filters.uncategorised === "unresolved" ? "all" : "unresolved" })}
             />
           </View>
         </View>

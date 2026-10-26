@@ -1,5 +1,5 @@
 import type { ParsedTransaction } from "../domain/statementParser";
-import { inferPaymentMethod, parseStatement } from "../domain/statementParser";
+import { inferPaymentMethod, parseStatement, type ParseResult } from "../domain/statementParser";
 import type { Classification, Direction } from "../domain/taxonomy";
 
 export interface ImportedTransaction extends ParsedTransaction, Classification {
@@ -37,9 +37,14 @@ export interface ImportSummary {
 
 const DEFAULT_BATCH_SIZE = 20;
 
+// Text of a CSV (or a spreadsheet saved as CSV) from the bank.
 export async function importStatement(text: string, deps: ImportDeps): Promise<ImportSummary> {
-  const { rows, skippedLines } = parseStatement(text);
+  return importParsed(parseStatement(text), deps);
+}
 
+// Rows already read from any source (CSV, spreadsheet, PDF): drops the ones already stored, categorises
+// the rest and saves them.
+export async function importParsed({ rows, skippedLines }: ParseResult, deps: ImportDeps): Promise<ImportSummary> {
   const unique = new Map<string, ParsedTransaction>();
   for (const row of rows) if (!unique.has(row.dedupeKey)) unique.set(row.dedupeKey, row);
 

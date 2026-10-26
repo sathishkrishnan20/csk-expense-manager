@@ -112,7 +112,7 @@ export function inferPaymentMethod(narration: string): string | null {
   return /^UPI\b/i.test(narration.trim()) ? "UPI" : null;
 }
 
-function buildDedupeKey(t: Omit<ParsedTransaction, "dedupeKey">): string {
+export function buildDedupeKey(t: Omit<ParsedTransaction, "dedupeKey">): string {
   const dir = t.direction === "debit" ? "D" : "C";
   if (t.upiRef) return `upi:${t.upiRef}:${dir}`;
   const narration = t.narration.toLowerCase().replace(/\s+/g, " ");

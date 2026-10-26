@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import type { ImportSummary } from "../import/importStatement";
 import { formatLongDate, formatRupees } from "../domain/format";
 import { MissingApiKeyError, restoreDeletedRows, runImport } from "../import/services";
+import type { PickedFile } from "../platform/files";
+import { PdfPasswordError } from "../pdf/errors";
 import { ActiveAiLine } from "../ui/ActiveAi";
 import { AppHeader } from "../ui/Header";
 import { T } from "../ui/Text";
@@ -14,6 +16,8 @@ import { colors, shadow } from "../ui/theme";
 
 export default function ImportStatement() {
   const router = useRouter();
+  // Set when a statement was shared to the app from Mail or Files (see +native-intent.tsx).
+  const { file: sharedFile } = useLocalSearchParams<{ file?: string }>();
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const [summary, setSummary] = useState<ImportSummary | null>(null);
@@ -21,26 +25,42 @@ export default function ImportStatement() {
   const [needsKey, setNeedsKey] = useState(false);
   const [restoreNote, setRestoreNote] = useState<string | null>(null);
 
-  const pick = async () => {
-    setError(null);
-    setNeedsKey(false);
-    setSummary(null);
-    setRestoreNote(null);
-
-    const picked = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true });
-    if (picked.canceled) return;
-
+  const start = async (file: PickedFile) => {
     setBusy(true);
     try {
-      setSummary(await runImport(picked.assets[0], setProgress));
+      setSummary(await runImport(file, setProgress));
     } catch (err) {
-      setNeedsKey(err instanceof MissingApiKeyError);
+      setNeedsKey(err instanceof MissingApiKeyError || err instanceof PdfPasswordError);
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
       setProgress("");
     }
   };
+
+  const reset = () => {
+    setError(null);
+    setNeedsKey(false);
+    setSummary(null);
+    setRestoreNote(null);
+  };
+
+  const pick = async () => {
+    reset();
+    const picked = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true });
+    if (picked.canceled) return;
+    await start(picked.assets[0]);
+  };
+
+  // A statement shared to the app starts importing straight away, once per shared file.
+  const handled = useRef<string | null>(null);
+  useEffect(() => {
+    if (!sharedFile || handled.current === sharedFile) return;
+    handled.current = sharedFile;
+    reset();
+    void start({ uri: sharedFile });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sharedFile]);
 
   const restore = async () => {
     if (!summary) return;
@@ -70,9 +90,9 @@ export default function ImportStatement() {
       <AppHeader title="Import Statement" onBack={() => router.back()} />
       <ScrollView contentContainerStyle={styles.body}>
         <T style={styles.text}>
-          Choose the CSV or Excel file (.xls, .xlsx) you downloaded from your bank. New transactions are categorised
-          with AI from their UPI notes, using your own categories (anything that does not fit goes to Others :
-          Uncategorised). Rows you have already imported are skipped.
+          {
+            "Choose the CSV, Excel (.xls, .xlsx) or PDF statement from your bank, or share it to this app from Mail or Files. For a locked PDF, save its password first under Config > Statement passwords. New transactions are categorised with AI from their UPI notes, using your own categories (anything that does not fit goes to Others : Uncategorised). Rows you have already imported are skipped."
+          }
         </T>
 
         <ActiveAiLine />

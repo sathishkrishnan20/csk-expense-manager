@@ -43,7 +43,7 @@ Screens (src/app, Expo Router) read SQLite.
 Layout: `src/domain` (categories, parser, formatting; pure), `src/llm`, `src/import`,
 `src/db`, `src/settings`, `src/ui` (shared components), `src/app` (routes).
 Everything under `domain`, `llm`, and `import` (except `services.ts`) is plain
-TypeScript with unit tests that run under Node.
+TypeScript with unit tests that run under Node. All tests live in `tests/`, mirroring `src/` (for example `src/domain/backup.ts` is tested by `tests/domain/backup.test.ts`); fixtures are in `tests/fixtures/`.
 
 ## 3. Decisions and why
 
@@ -126,11 +126,46 @@ the owner's own server. iOS needs `NSAllowsLocalNetworking` and a local-network 
 allow the page's origin (`OLLAMA_ORIGINS`). Not built, possible later: a cascade (Ollama first,
 a cloud AI only for rows it leaves uncategorised).
 
+**"Couldn't categorise" list.** The AI is not asked forever. Each time it answers a debit with the
+fallback (Others : Uncategorised) that is one failed attempt, counted in `transactions.ai_attempts`
+(schema version 3, added by `migrate`); the import is attempt 1 and each Re-classify another. At
+`MAX_AI_ATTEMPTS` (3, in `src/domain/classificationOutcome.ts`) the row gets
+`classified_by = 'unresolved'`: Re-classify no longer selects it, the transaction list shows "Couldn't
+categorise · tap to choose", Home shows a card with the count that opens Transactions with the filter
+`uncategorised: "unresolved"`, and the filter panel has a matching option. Choosing a category by hand
+makes the row `'manual'`, which removes it from the list. Config > Re-classify offers "try again", which
+sets the rows back to `pending` with fresh attempts. Rows the AI did not answer for (errors, omitted
+ids) are not counted. Credits are never unresolved (their fallback, Income : Others, is a real
+category). `ai_attempts` is not exported in the CSV backup; `Classified By = unresolved` is, so the
+list survives a restore.
+
+**PDF statements** (import, on the device). A PDF statement is read with `pdfjs-dist` 3.11 (legacy
+CommonJS build; version pinned) in `src/pdf/readPdf.ts`: it opens the file with each saved password in
+turn (`PdfPasswordError` says "needed" or "wrong"), then returns every piece of text with its x/y position.
+`src/pdf/polyfills.ts` adds the four things React Native's engine lacks (`DOMException`,
+`Promise.withResolvers`, `structuredClone`, `ReadableStream`); `metro.config.js` maps pdf.js's Node-only
+`require`s (`canvas`, `fs`, `http`, `https`, `url`, `zlib`, `path2d-polyfill`) to empty modules; pdf.js's
+worker code runs on the main thread (`globalThis.pdfjsWorker`). The reader is loaded lazily, so CSV and Excel
+imports never touch it. `src/domain/pdfStatement.ts` (`parseStatementPdf`) turns the positioned text into the
+same `ParsedTransaction` rows the CSV importer produces, so dedupe keys match across sources (checked: the
+same bank rows give the same `upi:<ref>:D` keys from PDF and CSV). Columns come from the header row
+(DATE, PARTICULARS, DEPOSITS, WITHDRAWALS, BALANCE; amounts are matched by right edge); one transaction is
+several text lines with the date and amounts in the middle, so lines are shared out between the dated rows
+by a small dynamic program that centres each group on its row. **Trust checks:** each balance must follow
+from the previous one and the sums must equal the printed TOTAL row, otherwise the import is refused with
+the reasons (`services.ts`); nothing is half-saved. Saved PDF passwords live in
+`src/settings/statementPasswords.ts` (same secure storage as the AI key) and Config > Statement passwords.
+A statement shared from Mail/Files ("Open in") arrives through `CFBundleDocumentTypes` in `app.json` and
+`src/app/+native-intent.tsx`, which redirects to `/import?file=...`; this needs a rebuilt app, not Expo Go.
+Not verified: pdf.js under real Hermes (speed, memory, bundling through Metro), the share sheet, other banks.
+Fixtures: `tests/fixtures/*.pdf` are synthetic (invented data); never commit a real statement.
+Layouts for other banks are added the same way (a header row with these column names works as is).
+
 **In-app guide** (its own page, `src/app/help.tsx`, opened from a "How it works" row at the bottom of Config, a menu item in the browser sidebar, and a button on a first-run welcome card on Home that shows only while there are no transactions): collapsible topics (what it does, getting
 started, importing, adding by hand, categories, views, where data is stored, what leaves the
 device, whether the API key is safe, backup, troubleshooting). Text is plain data in
 `src/domain/helpContent.ts` (`helpTopics(platform)`, wording differs for iPhone and web,
-tested in `helpContent.test.ts`), rendered by `src/ui/HelpSection.tsx`. It is a root-stack screen like `add` and `import`. When behaviour
+tested in `tests/domain/helpContent.test.ts`), rendered by `src/ui/HelpSection.tsx`. It is a root-stack screen like `add` and `import`. When behaviour
 changes (storage, key handling, what is sent to the AI), update that file too.
 
 **"Categorise later" for hand entries.** On the Add form the category is optional: tick

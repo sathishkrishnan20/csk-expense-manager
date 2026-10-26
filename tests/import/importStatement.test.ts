@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { importStatement, type ImportedTransaction, type TransactionStore } from "./importStatement";
-import type { ParsedTransaction } from "../domain/statementParser";
-import type { Classification, Direction } from "../domain/taxonomy";
+import { importStatement, type ImportedTransaction, type TransactionStore } from "../../src/import/importStatement";
+import type { ParsedTransaction } from "../../src/domain/statementParser";
+import type { Classification, Direction } from "../../src/domain/taxonomy";
 
 const STATEMENT = [
   "131\t23/10/2026\t23/10/2026\t\tUPI/SATHISH KR/XX20-1@okhdfcb/for dresse/AXIS BANK/629618527541/ICI1\t1355.00\t0.00\t2553.65",

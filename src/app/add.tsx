@@ -3,23 +3,38 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "re
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { loadCategories, loadPaymentMethods } from "../db/config";
-import { addTransaction, deleteTransaction, getTransaction, updateTransaction } from "../db/transactions";
+import { getGroup, listGroupsWithBalances } from "../db/groups";
+import { addEntries, addTransaction, deleteTransaction, getTransaction, updateTransaction } from "../db/transactions";
 import { parseAmountInput, toISODate } from "../domain/format";
-import { INCOME_CATEGORY, isIncomeCategory, sortOthersLast, type CategoryDef } from "../domain/masterData";
+import { incomeClassFor, openingIncomeFor, suggestGroup, validateNewGroups, type GroupPlan } from "../domain/entryGroup";
+import { MAIN_GROUP_ID, isMainGroup } from "../domain/groups";
+import {
+  FALLBACK,
+  INCOME_CATEGORY,
+  RECATEGORISE,
+  isIncomeCategory,
+  isRecategorise,
+  sortOthersLast,
+  type CategoryDef,
+} from "../domain/masterData";
 import { PENDING_AI, type Direction } from "../domain/taxonomy";
 import { confirmAction } from "../platform/dialogs";
 import { AppHeader, HeaderTextButton } from "../ui/Header";
+import { T } from "../ui/Text";
 import { Button, CheckOption, DateField, OutlinedInput, RadioOption, SelectField, useSnackbar } from "../ui/forms";
 import { colors, shadow } from "../ui/theme";
 
 // Add a transaction by hand (meant for cash), or edit/delete an existing one when ?id= is given.
+// ?group= adds it to that group instead of Main; an edit keeps the row in its own group.
 export default function AddTransaction() {
-  const { type, id } = useLocalSearchParams<{ type?: string; id?: string }>();
+  const { type, id, group } = useLocalSearchParams<{ type?: string; id?: string; group?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const snackbar = useSnackbar();
 
   const editing = typeof id === "string" && id !== "";
+  const [groupId, setGroupId] = useState(group || MAIN_GROUP_ID);
+  const [groupName, setGroupName] = useState("");
   const [direction, setDirection] = useState<Direction>(type === "CREDIT" ? "credit" : "debit");
   const [date, setDate] = useState(toISODate(new Date()));
   const [amount, setAmount] = useState("");
@@ -32,6 +47,13 @@ export default function AddTransaction() {
   const [categoriseLater, setCategoriseLater] = useState(false);
   const [wasPending, setWasPending] = useState(false);
 
+  // "Create a group for this entry": a new entry in Main can also create a group. Its name and dates are prefilled from the
+  // entry (until the owner edits them) and the entry stays in Main.
+  const [createGroup, setCreateGroup] = useState(false);
+  const [openingIncome, setOpeningIncome] = useState(true);
+  const [groupEdits, setGroupEdits] = useState<{ name?: string; startDate?: string | null; endDate?: string | null }>({});
+  const [groupNames, setGroupNames] = useState<string[]>([]);
+
   const [categories, setCategories] = useState<CategoryDef[]>([]);
   const [methods, setMethods] = useState<string[]>([]);
 
@@ -43,6 +65,7 @@ export default function AddTransaction() {
       setCategories(cats);
       setMethods(pms);
 
+      let owner = group || MAIN_GROUP_ID;
       if (editing) {
         const record = await getTransaction(id);
         if (!alive) return;
@@ -50,6 +73,8 @@ export default function AddTransaction() {
           router.back();
           return;
         }
+        owner = record.groupId;
+        setGroupId(owner);
         setDirection(record.direction);
         setDate(record.txnDate);
         setAmount(String(record.amountPaise / 100));
@@ -65,6 +90,10 @@ export default function AddTransaction() {
         // Hand entries are meant for cash, so start there.
         setMethod(pms.includes("Cash") ? "Cash" : "");
       }
+      const g = await getGroup(owner);
+      if (alive) setGroupName(g?.name ?? "");
+      const all = await listGroupsWithBalances();
+      if (alive) setGroupNames(all.map((x) => x.name));
     })();
     return () => {
       alive = false;
@@ -83,8 +112,11 @@ export default function AddTransaction() {
 
   const subcategoryOptions = useMemo(() => {
     const subs = sortOthersLast(categories.find((c) => c.category === category)?.subcategories ?? []);
+    // Only an expense being updated can be handed back to the AI.
+    if (editing && direction === "debit" && category === FALLBACK.category) subs.push(RECATEGORISE.subcategory);
     return subcategory && !subs.includes(subcategory) ? [...subs, subcategory] : subs;
-  }, [categories, category, subcategory]);
+  }, [categories, category, subcategory, editing, direction]);
+  const recategorise = editing && direction === "debit" && isRecategorise(category, subcategory);
 
   const changeDirection = (next: Direction) => {
     setDirection(next);
@@ -97,7 +129,29 @@ export default function AddTransaction() {
     setSubcategory("");
   };
 
-  const canSave = !!amount && !!payee.trim() && (categoriseLater || (!!category && !!subcategory));
+  const canCreateGroup = !editing && isMainGroup(groupId);
+  const suggestion = useMemo(
+    () =>
+      suggestGroup({
+        category: categoriseLater ? "" : category,
+        subcategory: categoriseLater ? "" : subcategory,
+        description: description.trim() || null,
+        payee: payee.trim() || null,
+        txnDate: date,
+      }),
+    [categoriseLater, category, subcategory, description, payee, date],
+  );
+  const plan: GroupPlan = {
+    name: groupEdits.name ?? suggestion.name,
+    startDate: groupEdits.startDate !== undefined ? groupEdits.startDate : suggestion.startDate,
+    endDate: groupEdits.endDate !== undefined ? groupEdits.endDate : suggestion.endDate,
+  };
+  const makingGroup = createGroup && canCreateGroup;
+  const groupProblem = makingGroup ? validateNewGroups([plan], groupNames)[0] : null;
+  // An empty name is not shown as an error until the owner has touched the field.
+  const shownGroupProblem = groupProblem && (plan.name.trim() !== "" || groupEdits.name !== undefined) ? groupProblem : null;
+
+  const canSave = !!amount && !!payee.trim() && (categoriseLater || (!!category && !!subcategory)) && !groupProblem;
   // Hand entries can be left for the AI; imported and already-categorised rows cannot.
   const canCategoriseLater = !editing || wasPending;
 
@@ -108,12 +162,14 @@ export default function AddTransaction() {
       return;
     }
     const input = {
+      groupId,
       txnDate: date,
       direction,
       amountPaise,
-      category: categoriseLater ? "" : category,
-      subcategory: categoriseLater ? "" : subcategory,
-      categoriseLater,
+      category: categoriseLater || recategorise ? "" : category,
+      subcategory: categoriseLater || recategorise ? "" : subcategory,
+      categoriseLater: categoriseLater || recategorise,
+      recategorise,
       payee: payee.trim(),
       paymentMethod: method || null,
       description: description.trim() || null,
@@ -124,8 +180,27 @@ export default function AddTransaction() {
       router.back();
       return;
     }
-    await addTransaction(input);
-    snackbar.show("Added Successfully");
+    if (makingGroup) {
+      const name = plan.name.trim();
+      await addEntries([
+        {
+          input,
+          group: {
+            name,
+            startDate: plan.startDate,
+            endDate: plan.endDate,
+            opening: openingIncome ? openingIncomeFor(input, incomeClassFor(categories)) : null,
+          },
+        },
+      ]);
+      setGroupNames((names) => [...names, name]);
+      setCreateGroup(false);
+      setGroupEdits({});
+      snackbar.show(`Added, and group "${name}" created`, 3000);
+    } else {
+      await addTransaction(input);
+      snackbar.show("Added Successfully");
+    }
     setCategory(direction === "credit" ? INCOME_CATEGORY : "");
     setSubcategory("");
     setAmount("");
@@ -143,7 +218,13 @@ export default function AddTransaction() {
   return (
     <KeyboardAvoidingView style={styles.page} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <AppHeader
-        title={editing ? "Update Transaction" : "Add Transactions"}
+        title={
+          editing
+            ? "Update Transaction"
+            : isMainGroup(groupId) || !groupName
+              ? "Add Transactions"
+              : `Add to ${groupName}`
+        }
         onBack={() => router.back()}
         right={canSave ? <HeaderTextButton label="Done" onPress={submit} /> : undefined}
       />
@@ -177,6 +258,12 @@ export default function AddTransaction() {
           onChange={setSubcategory}
           disabled={categoriseLater}
         />
+        {recategorise ? (
+          <T style={styles.note}>
+            The AI will try again the next time you run Re-classify, using your current categories. If it still cannot place this, it goes back to
+            Others : Uncategorised.
+          </T>
+        ) : null}
         <OutlinedInput
           label={direction === "credit" ? "Payer" : "Payee"}
           value={payee}
@@ -185,6 +272,34 @@ export default function AddTransaction() {
         />
         <SelectField label="Payment Method" value={method} options={methods} onChange={setMethod} />
         <OutlinedInput label="Description" value={description} onChangeText={setDescription} />
+        {canCreateGroup ? (
+          <>
+            <CheckOption
+              label="Create a group for this entry"
+              hint="Makes a separate group with its own balance. This entry stays in Main. The name and dates are filled in from the entry; change them if you like."
+              checked={createGroup}
+              onPress={() => setCreateGroup(!createGroup)}
+            />
+            {createGroup ? (
+              <>
+                <OutlinedInput
+                  label="Group name"
+                  value={plan.name}
+                  onChangeText={(name) => setGroupEdits({ ...groupEdits, name })}
+                  autoCapitalize="words"
+                />
+                <DateField label="Group start date" value={plan.startDate} onChange={(startDate) => setGroupEdits({ ...groupEdits, startDate })} />
+                <DateField label="Group end date" value={plan.endDate} onChange={(endDate) => setGroupEdits({ ...groupEdits, endDate })} />
+                <CheckOption
+                  label="Start the group with this amount as income"
+                  checked={openingIncome}
+                  onPress={() => setOpeningIncome(!openingIncome)}
+                />
+                {shownGroupProblem ? <T style={styles.error}>{shownGroupProblem}</T> : null}
+              </>
+            ) : null}
+          </>
+        ) : null}
         <View style={{ height: 80 }} />
       </ScrollView>
 
@@ -201,6 +316,8 @@ export default function AddTransaction() {
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.background },
   form: { padding: 8, gap: 12 },
+  error: { color: colors.error, fontSize: 14, paddingHorizontal: 4 },
+  note: { color: colors.textSecondary, fontSize: 13, lineHeight: 19, paddingHorizontal: 4 },
   radios: { flexDirection: "row", paddingVertical: 4, paddingLeft: 4 },
   actions: { flexDirection: "row", gap: 4, paddingTop: 8, paddingHorizontal: 8, backgroundColor: "#fff", ...shadow.high },
 });

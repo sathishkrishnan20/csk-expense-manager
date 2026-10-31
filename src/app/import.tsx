@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { listGroupsWithBalances } from "../db/groups";
+import { MAIN_GROUP_ID, type Group } from "../domain/groups";
 import type { ImportSummary } from "../import/importStatement";
 import { formatLongDate, formatRupees } from "../domain/format";
 import { MissingApiKeyError, restoreDeletedRows, runImport } from "../import/services";
@@ -10,14 +12,18 @@ import { PdfPasswordError } from "../pdf/errors";
 import { ActiveAiLine } from "../ui/ActiveAi";
 import { AppHeader } from "../ui/Header";
 import { T } from "../ui/Text";
-import { Button } from "../ui/forms";
+import { Button, SelectField } from "../ui/forms";
 import { UnlockGate } from "../ui/UnlockGate";
 import { colors, shadow } from "../ui/theme";
 
 export default function ImportStatement() {
   const router = useRouter();
   // Set when a statement was shared to the app from Mail or Files (see +native-intent.tsx).
-  const { file: sharedFile } = useLocalSearchParams<{ file?: string }>();
+  // ?group= comes from a group's own Import button; a shared file goes to Main unless the owner picks another group.
+  const { file: sharedFile, group } = useLocalSearchParams<{ file?: string; group?: string }>();
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [groupId, setGroupId] = useState(group || MAIN_GROUP_ID);
+  const [importedInto, setImportedInto] = useState("");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const [summary, setSummary] = useState<ImportSummary | null>(null);
@@ -25,10 +31,23 @@ export default function ImportStatement() {
   const [needsKey, setNeedsKey] = useState(false);
   const [restoreNote, setRestoreNote] = useState<string | null>(null);
 
+  useEffect(() => {
+    let alive = true;
+    listGroupsWithBalances().then((all) => {
+      if (alive) setGroups(all.filter((g) => g.status === "ACTIVE" || g.id === groupId));
+    });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const groupName = groups.find((g) => g.id === groupId)?.name ?? "Main";
+
   const start = async (file: PickedFile) => {
     setBusy(true);
     try {
-      setSummary(await runImport(file, setProgress));
+      setImportedInto(groupName);
+      setSummary(await runImport(file, setProgress, groupId));
     } catch (err) {
       setNeedsKey(err instanceof MissingApiKeyError || err instanceof PdfPasswordError);
       setError(err instanceof Error ? err.message : String(err));
@@ -67,7 +86,7 @@ export default function ImportStatement() {
     setError(null);
     setBusy(true);
     try {
-      const r = await restoreDeletedRows(summary.deletedEarlier, setProgress);
+      const r = await restoreDeletedRows(summary.deletedEarlier, setProgress, groupId);
       const parts = [`${r.restored} deleted transaction${r.restored === 1 ? "" : "s"} added back`];
       if (r.summary) {
         parts.push(`${r.summary.moved} categorised, ${r.summary.stillUncategorised} still uncategorised`);
@@ -91,11 +110,18 @@ export default function ImportStatement() {
       <ScrollView contentContainerStyle={styles.body}>
         <T style={styles.text}>
           {
-            "Choose the CSV, Excel (.xls, .xlsx) or PDF statement from your bank, or share it to this app from Mail or Files. For a locked PDF, save its password first under Config > Statement passwords. New transactions are categorised with AI from their UPI notes, using your own categories (anything that does not fit goes to Others : Uncategorised). Rows you have already imported are skipped."
+            "Choose the CSV, Excel (.xls, .xlsx) or PDF statement from your bank, or share it to this app from Mail or Files. For a locked PDF, save its password first under Config > Statement passwords. New transactions are categorised with AI from their UPI notes, using your own categories (anything that does not fit goes to Others : Uncategorised). Rows you have already imported into the same group are skipped. Every row in the file goes into the group chosen below."
           }
         </T>
 
         <ActiveAiLine />
+        <SelectField
+          label="Import into"
+          value={groupName}
+          options={groups.map((g) => g.name)}
+          onChange={(name) => setGroupId(groups.find((g) => g.name === name)?.id ?? MAIN_GROUP_ID)}
+          disabled={busy}
+        />
         <UnlockGate>
           <Button label={busy ? "Working…" : "Choose statement file"} onPress={pick} disabled={busy} />
         </UnlockGate>
@@ -113,7 +139,9 @@ export default function ImportStatement() {
         {summary ? (
           <View style={styles.card}>
             <T weight="bold">{summary.error ? "Import stopped" : "Import finished"}</T>
-            <T style={styles.text}>New transactions saved: {summary.imported}</T>
+            <T style={styles.text}>
+              New transactions saved: {summary.imported} (into {importedInto})
+            </T>
             <T style={styles.text}>Already imported (skipped): {summary.alreadyStored}</T>
             {summary.deletedEarlier.length > 0 ? (
               <View style={styles.deleted}>
@@ -154,7 +182,11 @@ export default function ImportStatement() {
               </T>
             ) : null}
             <View style={styles.cardAction}>
-              <Button label="Continue to Home" onPress={() => router.navigate("/")} />
+              {groupId === MAIN_GROUP_ID ? (
+                <Button label="Continue to Home" onPress={() => router.navigate("/")} />
+              ) : (
+                <Button label={`Open ${importedInto}`} onPress={() => router.replace(`/groups/${groupId}`)} />
+              )}
             </View>
           </View>
         ) : null}

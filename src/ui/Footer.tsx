@@ -15,12 +15,28 @@ const FAB_BOTTOM = 20;
 const ACTION_SIZE = 40;
 const BAR_HEIGHT = 56;
 
-const TABS: ({ name: string; label: string; icon: IconName } | null)[] = [
+interface Tab {
+  name: string;
+  label: string;
+  icon: IconName;
+  exit?: boolean; // not a tab of this bar: leaves the group for Main
+}
+
+const TABS: (Tab | null)[] = [
   { name: "index", label: "Home", icon: "home" },
   { name: "transactions", label: "Transactions", icon: "dynamic-form" },
   null, // the centre slot belongs to the + button
   { name: "charts", label: "Charts", icon: "pie-chart" },
   { name: "config", label: "Config", icon: "settings" },
+];
+
+// A group's pages have the same shape as Main's, with a way back to Main where Config is.
+const GROUP_TABS: (Tab | null)[] = [
+  { name: "index", label: "Overview", icon: "account-balance-wallet" },
+  { name: "transactions", label: "Transactions", icon: "dynamic-form" },
+  null,
+  { name: "charts", label: "Charts", icon: "pie-chart" },
+  { name: "main", label: "Main", icon: "home", exit: true },
 ];
 
 interface Action {
@@ -43,8 +59,9 @@ function Fab({ open, onPress }: { open: boolean; onPress: () => void }) {
   );
 }
 
-// MUI BottomNavigation with a SpeedDial in the middle slot, as in the web app.
-export function Footer({ state, navigateToTab }: BottomTabBarProps) {
+// MUI BottomNavigation with a SpeedDial in the middle slot, as in the web app. Inside a group (groupId) the
+// tabs belong to that group and the + menu adds to it.
+export function Footer({ state, navigateToTab, groupId }: BottomTabBarProps & { groupId?: string }) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -62,15 +79,26 @@ export function Footer({ state, navigateToTab }: BottomTabBarProps) {
       label: "Credit",
       icon: "add-card",
       color: colors.income,
-      open: go(() => router.push({ pathname: "/add", params: { type: "CREDIT" } })),
+      open: go(() => router.push({ pathname: "/add", params: { type: "CREDIT", ...(groupId ? { group: groupId } : {}) } })),
     },
     {
       label: "Debit",
       icon: "credit-card-off",
       color: colors.expense,
-      open: go(() => router.push({ pathname: "/add", params: { type: "DEBIT" } })),
+      open: go(() => router.push({ pathname: "/add", params: { type: "DEBIT", ...(groupId ? { group: groupId } : {}) } })),
     },
-    { label: "Import", icon: "file-upload", color: colors.importAction, open: go(() => router.push("/import")) },
+    {
+      label: "Import",
+      icon: "file-upload",
+      color: colors.importAction,
+      open: go(() => router.push(groupId ? { pathname: "/import", params: { group: groupId } } : "/import")),
+    },
+    {
+      label: "Add list",
+      icon: "playlist-add",
+      color: colors.primaryLight,
+      open: go(() => router.push(groupId ? { pathname: "/bulk", params: { group: groupId } } : "/bulk")),
+    },
   ];
 
   // Wide browser windows use the side drawer instead.
@@ -79,15 +107,25 @@ export function Footer({ state, navigateToTab }: BottomTabBarProps) {
   return (
     <View pointerEvents="box-none" style={styles.wrapper}>
       <View style={[styles.bar, { height: BAR_HEIGHT + insets.bottom, paddingBottom: insets.bottom }]}>
-        {TABS.map((tab, i) => {
+        {(groupId ? GROUP_TABS : TABS).map((tab, i) => {
           if (!tab) return <View key={`slot-${i}`} style={styles.item} />;
-          const selected = active === tab.name;
+          const selected = !tab.exit && active === tab.name;
           const tint = selected ? colors.primary : colors.textSecondary;
           return (
             <Pressable
               key={tab.name}
               style={styles.item}
               onPress={() => {
+                if (tab.exit) {
+                  router.navigate("/");
+                  return;
+                }
+                // A group's tabs are opened by path: switching by route key can lose the group's id, which
+                // sent the Charts tab back to the Groups list.
+                if (groupId) {
+                  router.navigate(tab.name === "index" ? `/groups/${groupId}` : `/groups/${groupId}/${tab.name}`);
+                  return;
+                }
                 const route = state.routes.find((r) => r.name === tab.name);
                 if (route) navigateToTab(route.key);
               }}

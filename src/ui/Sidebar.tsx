@@ -11,6 +11,7 @@ type IconName = keyof typeof MaterialIcons.glyphMap;
 const PAGES: { label: string; icon: IconName; path: string }[] = [
   { label: "Home", icon: "home", path: "/" },
   { label: "Transactions", icon: "dynamic-form", path: "/transactions" },
+  { label: "Groups", icon: "folder", path: "/groups" },
   { label: "Charts", icon: "pie-chart", path: "/charts" },
   { label: "Config", icon: "settings", path: "/config" },
   { label: "How it works", icon: "help-outline", path: "/help" },
@@ -22,10 +23,37 @@ export function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
 
+  // Inside a group (/groups/<id>/...) the menu shows that group's pages and adds to it.
+  const groupId = /^\/groups\/([^/]+)/.exec(pathname)?.[1];
+  const inGroup = groupId !== undefined && groupId !== "edit";
+  const group = inGroup ? { group: groupId } : {};
+  const pages = inGroup
+    ? [
+        { label: "Overview", icon: "account-balance-wallet" as IconName, path: `/groups/${groupId}` },
+        { label: "Transactions", icon: "dynamic-form" as IconName, path: `/groups/${groupId}/transactions` },
+        { label: "Charts", icon: "pie-chart" as IconName, path: `/groups/${groupId}/charts` },
+        { label: "Groups", icon: "folder" as IconName, path: "/groups" },
+        { label: "Main", icon: "home" as IconName, path: "/" },
+      ]
+    : PAGES;
+
   const actions: { label: string; icon: IconName; color: string; open: () => void; path: string }[] = [
-    { label: "Credit", icon: "add-card", color: colors.income, path: "/add", open: () => router.push({ pathname: "/add", params: { type: "CREDIT" } }) },
-    { label: "Debit", icon: "credit-card-off", color: colors.expense, path: "/add", open: () => router.push({ pathname: "/add", params: { type: "DEBIT" } }) },
-    { label: "Import", icon: "file-upload", color: colors.importAction, path: "/import", open: () => router.push("/import") },
+    { label: "Credit", icon: "add-card", color: colors.income, path: "/add", open: () => router.push({ pathname: "/add", params: { type: "CREDIT", ...group } }) },
+    { label: "Debit", icon: "credit-card-off", color: colors.expense, path: "/add", open: () => router.push({ pathname: "/add", params: { type: "DEBIT", ...group } }) },
+    {
+      label: "Import",
+      icon: "file-upload",
+      color: colors.importAction,
+      path: "/import",
+      open: () => router.push(inGroup ? { pathname: "/import", params: group } : "/import"),
+    },
+    {
+      label: "Add list",
+      icon: "playlist-add",
+      color: colors.primaryLight,
+      path: "/bulk",
+      open: () => router.push(inGroup ? { pathname: "/bulk", params: group } : "/bulk"),
+    },
   ];
 
   return (
@@ -41,7 +69,7 @@ export function Sidebar() {
       <View style={styles.rule} />
 
       <ScrollView contentContainerStyle={styles.menu}>
-        {PAGES.map((p) => (
+        {pages.map((p) => (
           <MenuButton
             key={p.label}
             label={p.label}
@@ -58,7 +86,7 @@ export function Sidebar() {
             label={a.label}
             icon={a.icon}
             iconColor={a.color}
-            selected={a.path === "/import" && pathname === "/import"}
+            selected={(a.path === "/import" || a.path === "/bulk") && pathname === a.path}
             onPress={a.open}
           />
         ))}

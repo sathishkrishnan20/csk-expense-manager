@@ -73,12 +73,55 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
       ],
     },
     {
+      id: "list",
+      title: "Adding many entries at once",
+      blocks: [
+        {
+          text: web
+            ? "Use Add list in the left menu. Paste rows copied from Excel (a payee and an amount on each line), or choose a CSV or Excel file. Download template gives you a CSV to fill in."
+            : "Open the + menu and choose Add list. Paste rows copied from Excel (a payee and an amount on each line), or choose a CSV or Excel file. Download template gives you a CSV to fill in.",
+        },
+        {
+          bullets: [
+            "Only Payee and Amount are needed. The template's header row is Payee, Amount, Date, Category, Subcategory, Description; all but Payee and Amount are optional, so a line with only a payee and an amount is complete. The header is always shown above the rows box, so pasting never removes it. Without a header row of your own the columns follow that order; paste your own header row first and its columns can be in any order.",
+            "Pick a default date and type for rows that have none, and the group the entries go into. Opened from inside a group, it is already set to that group.",
+            "A preview lists every row. Rows with a problem (no amount, an amount of 0, an unknown category or a bad date) are marked and left out; untick any row you do not want, or fix the text and the preview updates.",
+            "Rows with no category are saved as Categorise later and the AI places them when you run Re-classify. Date is optional too: rows without one get the date you pick on the screen.",
+            "Adding a planned month to Main with future dates and importing the bank statement later counts those rows twice, so add planned lists to a group.",
+          ],
+        },
+      ],
+    },
+    {
+      id: "groups",
+      title: "Groups",
+      blocks: [
+        {
+          text: "Everything you have so far is in Main. A group is a separate ledger with its own incomes and expenses and its own balance, for a trip, an event, or a second bank account. Create one from Home (New group) or the Groups page; give it a name and, if you like, a start and end date (they are only labels).",
+        },
+        {
+          bullets: [
+            "Open a group from the Groups strip on Home. It works like Main: its own bottom tabs (Overview, Transactions, Charts), the same + button for Credit, Debit and Import, and a Main tab to go back. Everything you add or import there goes into that group.",
+            "When you import, the Import screen shows which group it is going into: every row in the file goes into that group, whether it is an expense, an income or a transfer.",
+            "A group's balance is its incomes minus its expenses. Groups never mix with Main or with each other, and Main's Account Balance covers Main only.",
+            "Adding an entry in Main? Tick \"Create a group for this entry\" to make a group at the same time. The entry stays in Main; the group is named Category - Subcategory (or the description), starts on the entry's date, ends on the last day of that month, and starts with an income equal to the amount. Everything is filled in for you and can be changed, and the group can be edited later from its options button.",
+            "Importing the same statement again into the same group skips rows already there. The same file imported into two groups is kept in both.",
+            "Close a group to hide it from Home and the pickers (it stays under Closed and can be reopened). Delete removes the group and its transactions.",
+          ],
+        },
+        {
+          text: "To repeat entries, such as monthly rent or EMIs: touch and hold a row in Transactions (or in a group), tick more rows, use Select all to take everything the filters show, then Duplicate. Choose how many months later, or one date for all; the copies go into the same group unless you pick another. You can change each amount or leave a row out before creating them. If the original entry created a group, each copy can create a new group too: its name (with the new month added), dates and starting income are shown for you to change, and a name that already exists must be changed first. Untick it to copy only the entry. Copies are hand entries; if you duplicate into Main with a future date and import the bank statement later, the real rows are added as well.",
+        },
+      ],
+    },
+    {
       id: "categories",
       title: "Categories and Re-classify",
       blocks: [
         {
           bullets: [
             "Add, rename or delete categories and subcategories in Config > Categories. Existing transactions keep their old labels.",
+            "Each subcategory has a \"What goes here\" box in its edit form. Write the things that belong in it, such as local dish or product names (for example, Chaats: Dikky poori, Panipoori, roadside food). The AI reads it with the names and places entries much better. It is saved in your backup file too.",
             "Config > Re-classify Uncategorised asks the AI again for imported rows left in Others : Uncategorised and for entries waiting for AI.",
             "A category you choose yourself is never changed by the AI. Changing a category on any transaction makes it yours.",
             "If the AI cannot place a transaction after 3 attempts (the import is the first), it stops asking and moves the transaction to a Couldn't categorise list. Home shows a red card with the count; tap it to choose a category for each one, or find them under Transactions, Filters.",
@@ -92,7 +135,7 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
       blocks: [
         {
           bullets: [
-            "Home: Account Balance is income minus expenses, with your recent transactions below.",
+            "Home: Account Balance is income minus expenses of Main, your groups with their balances, and your recent transactions below.",
             "Transactions: every entry, newest first. Tap Filters to narrow by date range, credit or debit, category, subcategory, or categorised and uncategorised. Tap a row to edit or delete it.",
             "Charts: pick a date range and group your expenses by category, subcategory, payment method or payer.",
           ],
@@ -158,9 +201,9 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
       blocks: [
         {
           bullets: [
-            "Config > Export and Import > Export saves everything (transactions, categories, payment modes) as one CSV file" +
+            "Config > Export and Import > Export saves everything (transactions, groups, categories, payment modes) as one CSV file" +
               (web ? ", downloaded by the browser." : ", using the share sheet (Save to Files, AirDrop)."),
-            "Open it in Excel: your transactions are on the left, then your category list, then your payment modes, separated by empty columns. Keep the column headings as they are.",
+            "Open it in Excel: your transactions are on the left, then your category list, then your payment modes, then your groups, separated by empty columns. Each transaction's Group Id says which group it belongs to. Keep the column headings as they are.",
             "Import adds whatever is missing from such a file. It never changes or removes what is already here, so it is safe to run twice. You can add rows in Excel before importing; leave Category and Subcategory empty to have the AI fill them in later.",
             "Your API key is not part of the file. Enter it again on the new device.",
             "Export now and then. It is the only backup, and it is also how you move data between the phone and a browser.",
@@ -178,6 +221,7 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
             "Import stopped or some rows were not saved: usually no internet, a wrong key, or the provider's free-tier limit. Wait or fix the key, then import the same file again.",
             "Many transactions in Others : Uncategorised: add categories that match your spending, then run Re-classify. Payees that are private people, with no note, often cannot be placed.",
             "A category looks wrong: tap the transaction and change it. The AI will not overrule you.",
+            'Added categories since, and want the AI to try an entry again? Tap the entry, set Category to Others and Sub Category to "Recategorise with AI", then run Re-classify. If the AI still cannot place it, it goes back to Others : Uncategorised.',
           ],
         },
       ],

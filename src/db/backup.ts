@@ -1,4 +1,13 @@
-import { BACKUP_FORMAT, BACKUP_VERSION, type Backup, type BackupTransaction } from "../domain/backup";
+import {
+  BACKUP_FORMAT,
+  BACKUP_VERSION,
+  type Backup,
+  type BackupCategory,
+  type BackupGroup,
+  type BackupTransaction,
+} from "../domain/backup";
+import { MAIN_GROUP_ID } from "../domain/groups";
+import { cleanDescription } from "../domain/masterData";
 import { getDb, inTransaction } from "./database";
 
 interface TransactionRow {
@@ -21,8 +30,18 @@ interface TransactionRow {
   payee_bank: string | null;
   upi_ref: string | null;
   classified_by: string;
+  group_id: string;
+  created_group_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface GroupRow {
+  id: string;
+  name: string;
+  start_date: string | null;
+  end_date: string | null;
+  status: "ACTIVE" | "CLOSED" | "DELETED";
 }
 
 function toBackupTransaction(r: TransactionRow): BackupTransaction {
@@ -46,6 +65,8 @@ function toBackupTransaction(r: TransactionRow): BackupTransaction {
     payeeBank: r.payee_bank,
     upiRef: r.upi_ref,
     classifiedBy: r.classified_by,
+    groupId: r.group_id,
+    createdGroupId: r.created_group_id,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -55,17 +76,29 @@ function toBackupTransaction(r: TransactionRow): BackupTransaction {
 // from coming back on the next statement import.
 export async function exportBackup(): Promise<Backup> {
   const db = await getDb();
-  const [categories, methods, transactions] = await Promise.all([
-    db.getAllAsync<{ category: string; subcategory: string }>("SELECT category, subcategory FROM categories ORDER BY sort, id"),
+  const [categories, methods, transactions, groups] = await Promise.all([
+    db.getAllAsync<{ category: string; subcategory: string; description: string | null }>(
+      "SELECT category, subcategory, description FROM categories ORDER BY sort, id",
+    ),
     db.getAllAsync<{ name: string }>("SELECT name FROM payment_methods ORDER BY sort"),
     db.getAllAsync<TransactionRow>("SELECT * FROM transactions ORDER BY txn_date, created_at, rowid"),
+    db.getAllAsync<GroupRow>("SELECT id, name, start_date, end_date, status FROM expense_groups ORDER BY created_at, rowid"),
   ]);
   return {
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
-    categories,
+    categories: categories.map(
+      (c): BackupCategory => ({
+        category: c.category,
+        subcategory: c.subcategory,
+        ...(cleanDescription(c.description ?? "") ? { description: cleanDescription(c.description ?? "") } : {}),
+      }),
+    ),
     paymentMethods: methods.map((m) => m.name),
+    groups: groups.map(
+      (g): BackupGroup => ({ id: g.id, name: g.name, startDate: g.start_date, endDate: g.end_date, status: g.status }),
+    ),
     transactions: transactions.map(toBackupTransaction),
   };
 }
@@ -75,6 +108,7 @@ export interface RestoreSummary {
   transactionsAlreadyPresent: number;
   categoriesAdded: number;
   paymentMethodsAdded: number;
+  groupsAdded: number;
   skipped: number;
 }
 
@@ -87,17 +121,25 @@ export async function restoreBackup(backup: Backup, skipped: number): Promise<Re
     transactionsAlreadyPresent: 0,
     categoriesAdded: 0,
     paymentMethodsAdded: 0,
+    groupsAdded: 0,
     skipped,
   };
 
   await inTransaction(db, async (txn) => {
     for (const c of backup.categories) {
       const r = await txn.runAsync(
-        `INSERT OR IGNORE INTO categories (category, subcategory, sort)
-         VALUES (?, ?, (SELECT COALESCE(MAX(sort), 0) + 1 FROM categories))`,
-        [c.category, c.subcategory],
+        `INSERT OR IGNORE INTO categories (category, subcategory, sort, description)
+         VALUES (?, ?, (SELECT COALESCE(MAX(sort), 0) + 1 FROM categories), ?)`,
+        [c.category, c.subcategory, c.description ?? null],
       );
       summary.categoriesAdded += r.changes;
+      // A subcategory that is already here keeps its own description; only an empty one is filled in.
+      if (r.changes === 0 && c.description) {
+        await txn.runAsync(
+          "UPDATE categories SET description = ? WHERE category = ? AND subcategory = ? AND (description IS NULL OR description = '')",
+          [c.description, c.category, c.subcategory],
+        );
+      }
     }
 
     for (const name of backup.paymentMethods) {
@@ -108,13 +150,23 @@ export async function restoreBackup(backup: Backup, skipped: number): Promise<Re
       summary.paymentMethodsAdded += r.changes;
     }
 
+    // Groups first, so the transactions that belong to them have somewhere to go. Existing groups are left as they are.
+    for (const g of backup.groups) {
+      const r = await txn.runAsync(
+        "INSERT OR IGNORE INTO expense_groups (id, name, start_date, end_date, status) VALUES (?, ?, ?, ?, ?)",
+        [g.id, g.name, g.startDate, g.endDate, g.status],
+      );
+      summary.groupsAdded += r.changes;
+    }
+    const known = new Set((await txn.getAllAsync<{ id: string }>("SELECT id FROM expense_groups")).map((g) => g.id));
+
     for (const t of backup.transactions) {
       const r = await txn.runAsync(
         `INSERT OR IGNORE INTO transactions
            (id, dedupe_key, source, status, txn_date, direction, amount_paise, balance_paise, category, subcategory,
-            payee, payment_method, description, narration, vpa, note, payee_bank, upi_ref, classified_by,
-            created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+            payee, payment_method, description, narration, vpa, note, payee_bank, upi_ref, classified_by, group_id,
+            created_group_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                  COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))`,
         [
           t.id,
@@ -136,6 +188,8 @@ export async function restoreBackup(backup: Backup, skipped: number): Promise<Re
           t.payeeBank,
           t.upiRef,
           t.classifiedBy,
+          known.has(t.groupId) ? t.groupId : MAIN_GROUP_ID, // a group missing from the file falls back to Main
+          t.createdGroupId && known.has(t.createdGroupId) ? t.createdGroupId : null,
           t.createdAt,
           t.updatedAt,
         ],

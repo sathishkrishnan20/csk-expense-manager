@@ -1,4 +1,4 @@
-import type { CategoryDef } from "../domain/masterData";
+import { cleanDescription, type CategoryDef } from "../domain/masterData";
 import type { ParsedTransaction } from "../domain/statementParser";
 import {
   allowedCategories,
@@ -16,9 +16,20 @@ export type ClassifiableRow = Pick<ParsedTransaction, "amountPaise" | "payee" | 
   description?: string | null;
 };
 
+// A subcategory the owner described is listed as `Name (what belongs here)`.
 function listCategories(categories: CategoryDef[]): string {
-  return categories.map((c) => `- ${c.category}: ${c.subcategories.join(", ")}`).join("\n");
+  return categories
+    .map((c) => {
+      const subs = c.subcategories.map((s) => {
+        const note = cleanDescription(c.descriptions?.[s] ?? "");
+        return note ? `${s} (${note})` : s;
+      });
+      return `- ${c.category}: ${subs.join(", ")}`;
+    })
+    .join("\n");
 }
+
+const DESCRIPTION_HINT = "- A subcategory followed by text in brackets is described by the account holder; treat that text as a strong hint for what belongs in it, including local-language names of dishes or products.";
 
 export function buildSystemPrompt(allCategories: CategoryDef[], direction: Direction): string {
   const categories = allowedCategories(allCategories, direction);
@@ -37,6 +48,7 @@ ${listCategories(categories)}
 How to decide:
 - "note" is what the sender typed and is the strongest signal. It can be truncated.
 - "description" is a remark the account holder typed when adding the entry by hand; treat it like "note".
+${DESCRIPTION_HINT}
 - Otherwise use the payee (the sender) and the narration, for example a salary credit, interest, a refund or a transfer between accounts.
 - If none of the subcategories fit, answer category "${fallback.category}" and subcategory "${fallback.subcategory}". Never invent names.
 
@@ -51,6 +63,7 @@ ${listCategories(categories)}
 How to decide:
 - "note" is what the account holder typed when paying and is the strongest signal. It can be truncated ("dresse" means dress).
 - "description" is a remark the account holder typed when adding the entry by hand (often a cash payment); treat it like "note". Entries added by hand have no bank narration.
+${DESCRIPTION_HINT}
 - If there is no note, use the payee name. Businesses and brands (shops, restaurants, apps, utilities) point to a category; credit card bill payments and EMIs belong to a matching payment or loan category if one exists.
 - A payee that looks like a private person, with no useful note, does not fit any category.
 - "amount" is in rupees; use it only as a weak hint.

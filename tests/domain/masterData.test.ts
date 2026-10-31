@@ -4,34 +4,34 @@ import {
   DEFAULT_CATEGORIES,
   DEFAULT_PAYMENT_METHODS,
   FALLBACK,
+  RECATEGORISE,
+  isRecategorise,
   INCOME_FALLBACK,
   isProtectedCategory,
   isProtectedSubcategory,
   sortOthersLast,
 } from "../../src/domain/masterData";
 
-test("default categories mirror the web app's live list, Income first, fallback last", () => {
+test("default categories are the owner's own list, Income first, fallback last", () => {
   assert.equal(DEFAULT_CATEGORIES[0].category, "Income");
   assert.deepEqual(
     DEFAULT_CATEGORIES.map((c) => c.category),
     [
       "Income",
       "Entertainment",
-      "Family",
+      "Family Support",
       "Automobile",
-      "Food",
+      "Food & Groceries",
       "Health Care",
-      "Home Office",
-      "Household",
+      "Home office",
+      "Households",
       "Insurance",
       "Loans",
-      "Personal",
-      "Tax",
+      "Personal and Family Care",
       "Travel",
-      "Utilities",
-      "Payment",
+      "Utilities and Bills",
+      "Credit Card Bills",
       "Savings",
-      "Car",
       "Others",
     ],
   );
@@ -60,4 +60,22 @@ test("protected entries", () => {
 
 test("Other and Others sort to the end of a dropdown", () => {
   assert.deepEqual(sortOthersLast(["Others", "Fuel", "Other", "Tax"]), ["Fuel", "Tax", "Others", "Other"]);
+});
+
+test("Recategorise with AI is an option under Others, never a stored or AI-chosen category", () => {
+  assert.equal(RECATEGORISE.category, FALLBACK.category);
+  assert.ok(isRecategorise(RECATEGORISE.category, RECATEGORISE.subcategory));
+  assert.ok(!isRecategorise(FALLBACK.category, FALLBACK.subcategory));
+  const others = DEFAULT_CATEGORIES.find((c) => c.category === FALLBACK.category);
+  assert.ok(!others?.subcategories.includes(RECATEGORISE.subcategory));
+});
+
+test("Chaats is a default Food & Groceries subcategory with a description", () => {
+  const food = DEFAULT_CATEGORIES.find((c) => c.category === "Food & Groceries");
+  assert.ok(food?.subcategories.includes("Chaats"));
+  assert.ok(!food?.subcategories.includes("Charts"));
+  assert.match(food?.descriptions?.Chaats ?? "", /Panipoori/);
+  for (const c of DEFAULT_CATEGORIES) {
+    for (const [sub, text] of Object.entries(c.descriptions ?? {})) assert.ok(c.subcategories.includes(sub), `${c.category}: ${sub}`);
+  }
 });

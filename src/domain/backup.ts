@@ -2,16 +2,21 @@
 // The AI API key is deliberately not part of it.
 //
 // Layout (one header row, then one row per line of data, blocks side by side):
-//   [ transactions ... ] 5 empty columns [ Category List | Subcategory List ] 5 empty columns [ Payment Mode List ]
+//   [ transactions ... ] 5 empty columns [ Category List | Subcategory List | Subcategory Description ] 5 empty columns [ Payment Mode List ]
+//   5 empty columns [ Groups Id | Name | Start Date | End Date | Status ]
+// Files without a Subcategory Description column (made before descriptions existed) simply have none.
+// Version 1 files have no Group Id column and no groups block; their transactions all go to Main.
 // Columns are found by their header names, so reordering them in Excel does not matter.
 // Files from the first version of the app were JSON; those are still read.
 
 import Papa from "papaparse";
+import { MAIN_GROUP_ID, type GroupStatus } from "./groups";
+import { cleanDescription } from "./masterData";
 import { parseAmountPaise, parseDate } from "./statementParser";
 import { PENDING_AI, fallbackFor } from "./taxonomy";
 
 export const BACKUP_FORMAT = "expense-manager-backup";
-export const BACKUP_VERSION = 1;
+export const BACKUP_VERSION = 2;
 
 export interface BackupTransaction {
   id: string;
@@ -33,16 +38,33 @@ export interface BackupTransaction {
   payeeBank: string | null;
   upiRef: string | null;
   classifiedBy: string;
+  groupId: string;
+  createdGroupId: string | null; // the group this entry was used to create
   createdAt: string | null;
   updatedAt: string | null;
+}
+
+export interface BackupGroup {
+  id: string;
+  name: string;
+  startDate: string | null;
+  endDate: string | null;
+  status: GroupStatus;
+}
+
+export interface BackupCategory {
+  category: string;
+  subcategory: string;
+  description?: string; // what belongs in the subcategory (for the AI); absent when there is none
 }
 
 export interface Backup {
   format: typeof BACKUP_FORMAT;
   version: number;
   exportedAt: string;
-  categories: { category: string; subcategory: string }[];
+  categories: BackupCategory[];
   paymentMethods: string[];
+  groups: BackupGroup[];
   transactions: BackupTransaction[];
 }
 
@@ -75,13 +97,17 @@ function readTransaction(raw: unknown): BackupTransaction | null {
     note: optionalString(t.note),
     payeeBank: optionalString(t.payeeBank),
     upiRef: optionalString(t.upiRef),
+    createdGroupId: optionalString(t.createdGroupId),
     createdAt: optionalString(t.createdAt),
     updatedAt: optionalString(t.updatedAt),
   };
   if (Object.values(strings).some((v) => v === undefined)) return null;
+  const groupId = optionalString(t.groupId);
+  if (groupId === undefined) return null;
 
   return {
     id: t.id,
+    groupId: groupId || MAIN_GROUP_ID,
     source: t.source,
     status: t.status,
     txnDate: t.txnDate,
@@ -93,6 +119,19 @@ function readTransaction(raw: unknown): BackupTransaction | null {
     classifiedBy: t.classifiedBy,
     ...(strings as Record<keyof typeof strings, string | null>),
   };
+}
+
+const GROUP_STATUSES: GroupStatus[] = ["ACTIVE", "CLOSED", "DELETED"];
+const isoDateOrNull = (v: unknown): string | null | undefined =>
+  v === undefined || v === null || v === "" ? null : typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined;
+
+function readGroup(raw: unknown): BackupGroup | null {
+  if (!isObject(raw) || !nonEmpty(raw.id) || !nonEmpty(raw.name)) return null;
+  const status = GROUP_STATUSES.find((s) => s === raw.status) ?? "ACTIVE";
+  const startDate = isoDateOrNull(raw.startDate);
+  const endDate = isoDateOrNull(raw.endDate);
+  if (startDate === undefined || endDate === undefined) return null;
+  return { id: raw.id, name: raw.name.trim(), startDate, endDate, status };
 }
 
 export interface ParsedBackup {
@@ -136,13 +175,21 @@ function parseJsonBackup(text: string): ParsedBackup {
   const categories: Backup["categories"] = [];
   for (const item of raw.categories) {
     if (isObject(item) && nonEmpty(item.category) && nonEmpty(item.subcategory)) {
-      categories.push({ category: item.category, subcategory: item.subcategory });
+      const description = typeof item.description === "string" ? cleanDescription(item.description) : "";
+      categories.push({ category: item.category, subcategory: item.subcategory, ...(description ? { description } : {}) });
     } else skipped++;
   }
 
   const paymentMethods: string[] = [];
   for (const item of raw.paymentMethods) {
     if (nonEmpty(item)) paymentMethods.push(item);
+    else skipped++;
+  }
+
+  const groups: BackupGroup[] = [];
+  for (const item of Array.isArray(raw.groups) ? raw.groups : []) {
+    const g = readGroup(item);
+    if (g) groups.push(g);
     else skipped++;
   }
 
@@ -153,6 +200,7 @@ function parseJsonBackup(text: string): ParsedBackup {
       exportedAt: typeof raw.exportedAt === "string" ? raw.exportedAt : "",
       categories,
       paymentMethods,
+      groups,
       transactions,
     },
     skipped,
@@ -210,6 +258,8 @@ const COLUMNS: Column[] = [
   { header: "Note", write: (t) => guard(t.note) },
   { header: "Payee Bank", write: (t) => guard(t.payeeBank) },
   { header: "Bank Narration", write: (t) => guard(t.narration) },
+  { header: "Group Id", write: (t) => guard(t.groupId) },
+  { header: "Created Group Id", write: (t) => guard(t.createdGroupId) },
   { header: "Id", write: (t) => guard(t.id) },
   { header: "Bank Key", write: (t) => guard(t.dedupeKey) },
   { header: "Created", write: (t) => t.createdAt ?? "" },
@@ -218,7 +268,17 @@ const COLUMNS: Column[] = [
 
 const CATEGORY_LIST = "Category List";
 const SUBCATEGORY_LIST = "Subcategory List";
+const SUBCATEGORY_DESCRIPTION = "Subcategory Description";
 const PAYMENT_LIST = "Payment Mode List";
+
+// The groups block, after the payment modes.
+const GROUP_COLUMNS = [
+  { header: "Groups Id", write: (g: BackupGroup) => guard(g.id) },
+  { header: "Groups Name", write: (g: BackupGroup) => guard(g.name) },
+  { header: "Groups Start Date", write: (g: BackupGroup) => (g.startDate ? csvDate(g.startDate) : "") },
+  { header: "Groups End Date", write: (g: BackupGroup) => (g.endDate ? csvDate(g.endDate) : "") },
+  { header: "Groups Status", write: (g: BackupGroup) => cap(g.status) },
+];
 
 export function serializeBackup(backup: Backup): string {
   const blanks = (n: number) => Array<string>(n).fill("");
@@ -227,22 +287,34 @@ export function serializeBackup(backup: Backup): string {
     ...blanks(GAP_COLUMNS),
     CATEGORY_LIST,
     SUBCATEGORY_LIST,
+    SUBCATEGORY_DESCRIPTION,
     ...blanks(GAP_COLUMNS),
     PAYMENT_LIST,
+    ...blanks(GAP_COLUMNS),
+    ...GROUP_COLUMNS.map((c) => c.header),
   ];
 
-  const count = Math.max(backup.transactions.length, backup.categories.length, backup.paymentMethods.length);
+  const count = Math.max(
+    backup.transactions.length,
+    backup.categories.length,
+    backup.paymentMethods.length,
+    backup.groups.length,
+  );
   const rows: string[][] = [header];
   for (let i = 0; i < count; i++) {
     const t = backup.transactions[i];
     const c = backup.categories[i];
+    const g = backup.groups[i];
     rows.push([
       ...(t ? COLUMNS.map((col) => col.write(t)) : blanks(COLUMNS.length)),
       ...blanks(GAP_COLUMNS),
       c ? guard(c.category) : "",
       c ? guard(c.subcategory) : "",
+      c?.description ? guard(c.description) : "",
       ...blanks(GAP_COLUMNS),
       guard(backup.paymentMethods[i] ?? null),
+      ...blanks(GAP_COLUMNS),
+      ...(g ? GROUP_COLUMNS.map((col) => col.write(g)) : blanks(GROUP_COLUMNS.length)),
     ]);
   }
   // The BOM makes Excel read the file as UTF-8 (names and notes in other scripts).
@@ -281,13 +353,16 @@ function parseCsvBackup(text: string): ParsedBackup {
   const idx = Object.fromEntries(COLUMNS.map((c) => [c.header, at(c.header)])) as Record<string, number>;
   const categoryList = at(CATEGORY_LIST);
   const subcategoryList = at(SUBCATEGORY_LIST);
+  const descriptionList = at(SUBCATEGORY_DESCRIPTION);
   const paymentList = at(PAYMENT_LIST);
+  const groupCols = GROUP_COLUMNS.map((c) => at(c.header));
   const cell = (row: string[], i: number) => (i < 0 ? "" : unguard((row[i] ?? "").trim()));
 
   let skipped = 0;
   const transactions: BackupTransaction[] = [];
   const categories: Backup["categories"] = [];
   const paymentMethods: string[] = [];
+  const groups: BackupGroup[] = [];
   const seen = new Map<string, number>();
 
   for (const row of rows.slice(1)) {
@@ -300,15 +375,31 @@ function parseCsvBackup(text: string): ParsedBackup {
 
     const cat = cell(row, categoryList);
     const sub = cell(row, subcategoryList);
-    if (cat && sub) categories.push({ category: cat, subcategory: sub });
+    const note = cleanDescription(cell(row, descriptionList));
+    if (cat && sub) categories.push({ category: cat, subcategory: sub, ...(note ? { description: note } : {}) });
     else if (cat || sub) skipped++;
 
     const method = cell(row, paymentList);
     if (method) paymentMethods.push(method);
+
+    const [gId, gName, gStart, gEnd, gStatus] = groupCols.map((i) => cell(row, i));
+    if (gId || gName) {
+      const startDate = gStart ? parseDate(gStart) : null;
+      const endDate = gEnd ? parseDate(gEnd) : null;
+      if (gId && gName && (!gStart || startDate) && (!gEnd || endDate)) {
+        groups.push({
+          id: gId,
+          name: gName,
+          startDate,
+          endDate,
+          status: /^deleted$/i.test(gStatus) ? "DELETED" : /^closed$/i.test(gStatus) ? "CLOSED" : "ACTIVE",
+        });
+      } else skipped++;
+    }
   }
 
   return {
-    backup: { format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: "", categories, paymentMethods, transactions },
+    backup: { format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: "", categories, paymentMethods, groups, transactions },
     skipped,
   };
 }
@@ -349,6 +440,8 @@ function readCsvTransaction(get: (column: string) => string, seen: Map<string, n
 
   return {
     id,
+    groupId: get("Group Id") || MAIN_GROUP_ID,
+    createdGroupId: orNull(get("Created Group Id")),
     dedupeKey,
     source: /^import$/i.test(get("Source")) ? "import" : "manual",
     status: /^deleted$/i.test(get("Status")) ? "DELETED" : "ACTIVE",
@@ -365,7 +458,8 @@ function readCsvTransaction(get: (column: string) => string, seen: Map<string, n
     vpa: orNull(get("UPI Id")),
     note: orNull(get("Note")),
     payeeBank: orNull(get("Payee Bank")),
-    upiRef: dedupeKey?.match(/^upi:(\d{12}):/)?.[1] ?? null,
+    // A key imported into a group carries the group id in front (see scopedKey).
+    upiRef: dedupeKey?.match(/(?:^|\|)upi:(\d{12}):/)?.[1] ?? null,
     classifiedBy: pending ? PENDING_AI : get("Classified By") || "manual",
     createdAt: TIMESTAMP.test(created) ? created : null,
     updatedAt: TIMESTAMP.test(updated) ? updated : null,

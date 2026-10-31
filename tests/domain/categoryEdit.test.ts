@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { validateCategoryEdit, validateNewName, type CategoryEdit } from "../../src/domain/categoryEdit";
-import { DEFAULT_CATEGORIES } from "../../src/domain/masterData";
+import { DEFAULT_CATEGORIES, MAX_SUBCATEGORY_DESCRIPTION } from "../../src/domain/masterData";
 
 const sub = (name: string, original: string | null = name) => ({ original, name });
 
@@ -23,7 +23,7 @@ test("adding a new category with one subcategory is valid", () => {
 
 test("names are required and categories cannot repeat (case-insensitive)", () => {
   assert.match(validateCategoryEdit(DEFAULT_CATEGORIES, edit({ name: "  " }))!, /category name/);
-  assert.match(validateCategoryEdit(DEFAULT_CATEGORIES, { original: null, name: "food", subs: [sub("x", null)] })!, /already exists/);
+  assert.match(validateCategoryEdit(DEFAULT_CATEGORIES, { original: null, name: "food & groceries", subs: [sub("x", null)] })!, /already exists/);
   assert.equal(validateCategoryEdit(DEFAULT_CATEGORIES, edit({ name: "FOOD" })), null); // only changing case of itself
 });
 
@@ -84,4 +84,10 @@ test("simple names for payment methods", () => {
   assert.equal(validateNewName(["Cash", "UPI"], "Wallet"), null);
   assert.match(validateNewName(["Cash", "UPI"], "upi")!, /already exists/);
   assert.match(validateNewName([], "  ")!, /Enter a name/);
+});
+
+test("a subcategory description can be up to the limit, no longer", () => {
+  const edit = (description: string): CategoryEdit => ({ original: null, name: "Pets", subs: [{ original: null, name: "Vet", description }] });
+  assert.equal(validateCategoryEdit(DEFAULT_CATEGORIES, edit("x".repeat(MAX_SUBCATEGORY_DESCRIPTION))), null);
+  assert.match(validateCategoryEdit(DEFAULT_CATEGORIES, edit("x".repeat(MAX_SUBCATEGORY_DESCRIPTION + 1)))!, /longer than/);
 });

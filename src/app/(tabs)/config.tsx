@@ -278,7 +278,7 @@ function ReclassifySection() {
   useFocusEffect(
     useCallback(() => {
       countReclassifyCandidates().then(setPending);
-      countUnresolved().then(setUnresolved);
+      countUnresolved(null).then(setUnresolved);
     }, []),
   );
 
@@ -299,14 +299,14 @@ function ReclassifySection() {
       setBusy(false);
       setProgress("");
       countReclassifyCandidates().then(setPending);
-      countUnresolved().then(setUnresolved);
+      countUnresolved(null).then(setUnresolved);
     }
   };
 
   const retry = async () => {
     await retryUnresolved();
     countReclassifyCandidates().then(setPending);
-    countUnresolved().then(setUnresolved);
+    countUnresolved(null).then(setUnresolved);
   };
 
   return (

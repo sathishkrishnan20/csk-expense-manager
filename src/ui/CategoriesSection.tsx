@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { deleteCategory, loadCategories, saveCategory } from "../db/config";
 import { validateCategoryEdit, type CategoryEdit } from "../domain/categoryEdit";
-import { isProtectedCategory, isProtectedSubcategory, type CategoryDef } from "../domain/masterData";
+import { MAX_SUBCATEGORY_DESCRIPTION, isProtectedCategory, isProtectedSubcategory, type CategoryDef } from "../domain/masterData";
 import { confirmAction } from "../platform/dialogs";
 import { T } from "./Text";
 import { Button, OutlinedInput, TextButton } from "./forms";
@@ -13,6 +13,7 @@ interface EditRow {
   key: number;
   original: string | null;
   name: string;
+  description: string;
 }
 
 interface Editing {
@@ -39,14 +40,14 @@ export function CategoriesSection() {
     setEdit({
       original: def.category,
       name: def.category,
-      rows: def.subcategories.map((s, i) => ({ key: i, original: s, name: s })),
+      rows: def.subcategories.map((s, i) => ({ key: i, original: s, name: s, description: def.descriptions?.[s] ?? "" })),
       nextKey: def.subcategories.length,
     });
   };
 
   const startNew = () => {
     setError(null);
-    setEdit({ original: null, name: "", rows: [{ key: 0, original: null, name: "" }], nextKey: 1 });
+    setEdit({ original: null, name: "", rows: [{ key: 0, original: null, name: "", description: "" }], nextKey: 1 });
   };
 
   const save = async () => {
@@ -54,7 +55,7 @@ export function CategoriesSection() {
     const payload: CategoryEdit = {
       original: edit.original,
       name: edit.name,
-      subs: edit.rows.map(({ original, name }) => ({ original, name })),
+      subs: edit.rows.map(({ original, name, description }) => ({ original, name, description })),
     };
     const problem = validateCategoryEdit(categories, payload);
     if (problem) {
@@ -107,7 +108,7 @@ export function CategoriesSection() {
           <Button
             label="Add"
             onPress={() =>
-              setEdit({ ...edit, rows: [...edit.rows, { key: edit.nextKey, original: null, name: "" }], nextKey: edit.nextKey + 1 })
+              setEdit({ ...edit, rows: [...edit.rows, { key: edit.nextKey, original: null, name: "", description: "" }], nextKey: edit.nextKey + 1 })
             }
           />
         </View>
@@ -115,28 +116,45 @@ export function CategoriesSection() {
         {edit.rows.map((row, index) => {
           const locked = row.original !== null && edit.original !== null && isProtectedSubcategory(edit.original, row.original);
           return (
-            <View key={row.key} style={[styles.row, { marginLeft: 24 }]}>
-              <View style={{ flex: 1 }}>
-                <OutlinedInput
-                  label={`Sub Category ${index + 1}`}
-                  value={row.name}
-                  editable={!locked}
-                  onChangeText={(name) =>
-                    setEdit({ ...edit, rows: edit.rows.map((r) => (r.key === row.key ? { ...r, name } : r)) })
-                  }
-                />
+            <View key={row.key} style={{ gap: 8 }}>
+              <View style={[styles.row, { marginLeft: 24 }]}>
+                <View style={{ flex: 1 }}>
+                  <OutlinedInput
+                    label={`Sub Category ${index + 1}`}
+                    value={row.name}
+                    editable={!locked}
+                    onChangeText={(name) =>
+                      setEdit({ ...edit, rows: edit.rows.map((r) => (r.key === row.key ? { ...r, name } : r)) })
+                    }
+                  />
+                </View>
+                {locked ? (
+                  <View style={styles.removeSlot} />
+                ) : (
+                  <Pressable
+                    hitSlop={8}
+                    style={styles.removeSlot}
+                    onPress={() => setEdit({ ...edit, rows: edit.rows.filter((r) => r.key !== row.key) })}
+                    accessibilityLabel="Remove subcategory"
+                  >
+                    <MaterialIcons name="highlight-off" size={26} color={colors.error} />
+                  </Pressable>
+                )}
               </View>
-              {locked ? (
-                <View style={styles.removeSlot} />
-              ) : (
-                <Pressable
-                  hitSlop={8}
-                  style={styles.removeSlot}
-                  onPress={() => setEdit({ ...edit, rows: edit.rows.filter((r) => r.key !== row.key) })}
-                  accessibilityLabel="Remove subcategory"
-                >
-                  <MaterialIcons name="highlight-off" size={26} color={colors.error} />
-                </Pressable>
+              {locked ? null : (
+                <View style={[styles.row, { marginLeft: 24 }]}>
+                  <View style={{ flex: 1 }}>
+                    <OutlinedInput
+                      label="What goes here (helps the AI)"
+                      value={row.description}
+                      maxLength={MAX_SUBCATEGORY_DESCRIPTION}
+                      onChangeText={(description) =>
+                        setEdit({ ...edit, rows: edit.rows.map((r) => (r.key === row.key ? { ...r, description } : r)) })
+                      }
+                    />
+                  </View>
+                  <View style={styles.removeSlot} />
+                </View>
               )}
             </View>
           );
@@ -173,6 +191,7 @@ export function CategoriesSection() {
                   <View key={s}>
                     <View style={styles.subRow}>
                       <T>{s}</T>
+                      {c.descriptions?.[s] ? <T style={styles.subNote}>{c.descriptions[s]}</T> : null}
                     </View>
                     <View style={styles.subDivider} />
                   </View>
@@ -200,6 +219,7 @@ const styles = StyleSheet.create({
   error: { color: colors.error, fontSize: 14 },
   categoryRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12 },
   subRow: { paddingLeft: 32, paddingRight: 16, paddingVertical: 12 },
+  subNote: { color: colors.textSecondary, fontSize: 13, marginTop: 2 },
   subDivider: { height: 1, backgroundColor: "#e0e0e0", marginHorizontal: 32 },
   addRow: { flexDirection: "row", justifyContent: "flex-end", marginTop: 12, marginRight: 8 },
   addButton: {

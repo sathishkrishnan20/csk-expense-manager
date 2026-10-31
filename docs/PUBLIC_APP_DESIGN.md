@@ -146,8 +146,8 @@ Needed because the server cannot read them. Three steps:
 - No analytics by default. Crash reports opt-in and scrubbed.
 
 ### 4.7 What must change in the app before strangers use it
-- **Neutral default categories.** `DEFAULT_CATEGORIES` in `src/domain/masterData.ts` still
-  contains the owner's own entries ("Dinesh", "Fertility Care", "Marriage"). Replace with a
+- **Neutral default categories.** `DEFAULT_CATEGORIES` in `src/domain/masterData.ts` is the
+  owner's own list (for example "Fertility Care", "Marriage", "Karthika Allowance"). Replace with a
   generic Indian set. Same review for `DEFAULT_PAYMENT_METHODS`.
 - Onboarding (what it does, privacy, AI setup), an optional app lock (Face ID), and clear
   empty/error states. Rupee formatting already uses Indian grouping.

@@ -1,8 +1,9 @@
-import { applyClassifications, listReclassifyCandidates, restoreDeleted, sqliteStore } from "../db/transactions";
+import { applyClassifications, createSqliteStore, listReclassifyCandidates, restoreDeleted } from "../db/transactions";
 import { loadCategories } from "../db/config";
 import { classifyBatch, type ClassifiableRow } from "../llm/classify";
 import { createLlmCall, providerNeedsKey } from "../llm/providers";
 import { loadSettings } from "../settings/settings";
+import { scopedKey } from "../domain/groups";
 import type { ParsedTransaction } from "../domain/statementParser";
 import type { Classification, Direction } from "../domain/taxonomy";
 import { importParsed, importStatement, type ImportSummary } from "./importStatement";
@@ -30,13 +31,18 @@ async function createClassifier() {
   };
 }
 
-export async function runImport(asset: PickedFile, onProgress: (message: string) => void): Promise<ImportSummary> {
+// Every row of the file goes into the given group.
+export async function runImport(
+  asset: PickedFile,
+  onProgress: (message: string) => void,
+  groupId: string,
+): Promise<ImportSummary> {
   const classifier = await createClassifier();
 
   onProgress("Reading file…");
   const bytes = await readPickedBytes(asset);
   const deps = {
-    store: sqliteStore,
+    store: createSqliteStore(groupId),
     classify: classifier.classify,
     classifierLabel: classifier.label,
     onProgress,
@@ -78,14 +84,16 @@ export interface RestoreOutcome {
 export async function restoreDeletedRows(
   rows: ParsedTransaction[],
   onProgress: (message: string) => void,
+  groupId: string,
 ): Promise<RestoreOutcome> {
-  const { restored, reclassifiable } = await restoreDeleted(rows.map((r) => r.dedupeKey));
+  // Rows are stored under the group's scoped key, which is also their id.
+  const { restored, reclassifiable } = await restoreDeleted(rows.map((r) => scopedKey(groupId, r.dedupeKey)));
   const outcome: RestoreOutcome = { restored, keptManual: restored - reclassifiable.size, summary: null, error: null };
 
   const candidates: ReclassifyCandidate[] = rows
-    .filter((r) => reclassifiable.has(r.dedupeKey))
+    .filter((r) => reclassifiable.has(scopedKey(groupId, r.dedupeKey)))
     .map((r) => ({
-      id: r.dedupeKey, // imported rows use their bank key as id
+      id: scopedKey(groupId, r.dedupeKey), // imported rows use their (scoped) bank key as id
       direction: r.direction,
       amountPaise: r.amountPaise,
       payee: r.payee,

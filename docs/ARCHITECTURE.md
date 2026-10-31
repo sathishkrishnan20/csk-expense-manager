@@ -34,7 +34,7 @@ Screens (src/app, Expo Router) read SQLite.
 | App | Expo SDK 58, React Native 0.88, TypeScript. iOS is the target; a web build is supported in code but untested (see "Web" in section 3) |
 | Navigation | Expo Router 58. Tabs come from `expo-router/js-tabs` with a custom `tabBar`; Add/Edit and Import are root-stack screens above the tabs |
 | Look | Theme values copied from the web app (`src/ui/theme.ts`): primary `#7F3DFF`, gradient `#9061ed` to `#5d3ba2`, income `#00A86B`, expense `#FD3C4A`, Roboto, Georgia for the Home numbers, MUI-style outlined fields and bottom bar |
-| Storage | `expo-sqlite`, file `expenses.db`, schema version 2 |
+| Storage | `expo-sqlite`, file `expenses.db`, schema version 4 |
 | Money | Integer paise; `amount_paise` is always positive and `direction` says which way |
 | API key | iOS Keychain via `expo-secure-store`; AES-GCM-encrypted in browser `localStorage` on web, with the key derived from a passkey (WebAuthn PRF) (`src/platform/secureStorage*.ts`) |
 | LLM | One active provider chosen in Config > AI: Gemini (default, `gemini-3.5-flash-lite`), Claude (`claude-haiku-5-5`), ChatGPT / OpenAI (`gpt-6-luna`, Chat Completions with strict `json_schema`) or Ollama (`llama3.2`, `POST {address}/api/chat` with the schema in `format`, no key). The model name is editable per provider; defaults live in `src/llm/providers.ts` (`MODELS`) |
@@ -60,7 +60,14 @@ payee, note, narration and amount of new transactions go to the chosen provider
 categories including Payment, Savings and Car, spelling kept as-is; some entries
 are personal, so review `src/domain/masterData.ts` before publishing the repo).
 Config lets the owner add, rename, edit and delete categories and subcategories
-and payment modes. Renaming also updates existing transactions; deleting leaves
+and payment modes. Each subcategory can also carry an optional **description** (what
+belongs in it, at most `MAX_SUBCATEGORY_DESCRIPTION` = 200 characters, one line; schema version 6,
+`categories.description`, `CategoryDef.descriptions` keyed by subcategory). `listCategories` in
+`src/llm/classify.ts` sends it as `Name (description)` and the prompt tells the model to treat bracketed
+text as a strong hint, so local-language product names can be placed; subcategories without one cost
+nothing extra. It is edited in Config > Categories, carried in the backup file (the "Subcategory
+Description" column after "Subcategory List"; JSON `description`), and on restore fills only a
+description that is empty here. Renaming also updates existing transactions; deleting leaves
 existing transactions with their old label.
 
 **Fallback.** `Others : Uncategorised` is always present and cannot be renamed or
@@ -139,6 +146,17 @@ ids) are not counted. Credits are never unresolved (their fallback, Income : Oth
 category). `ai_attempts` is not exported in the CSV backup; `Classified By = unresolved` is, so the
 list survives a restore.
 
+**"Recategorise with AI".** The Update form (not Add) lists a built-in extra subcategory under Others,
+"Recategorise with AI" (`RECATEGORISE` in `src/domain/masterData.ts`). It is not in the `categories`
+table, so it is not in Config, filters, charts or the prompt, and the AI can never answer with it
+(`normalizeClassification` would turn it into the fallback). Choosing it on an expense (credits always
+stay in Income) saves the row as pending (`categoriseLater`) with `ai_attempts` set to
+`RECATEGORISE_ATTEMPTS_USED` (`MAX_AI_ATTEMPTS - 1`, `updateTransaction`'s `recategorise` flag). The
+next Re-classify sends it with the user's current categories; one failed answer reaches `MAX_AI_ATTEMPTS`,
+so the row returns to Others : Uncategorised as `unresolved` (the "Couldn't categorise" list) and is not
+sent again until the owner chooses the option again. Because `ai_attempts` is not in the CSV backup, a
+pending row restored from a backup gets the normal 3 attempts.
+
 **PDF statements** (import, on the device). A PDF statement is read with `pdfjs-dist` 3.11 (legacy
 CommonJS build; version pinned) in `src/pdf/readPdf.ts`: it opens the file with each saved password in
 turn (`PdfPasswordError` says "needed" or "wrong"), then returns every piece of text with its x/y position.
@@ -187,7 +205,7 @@ opens the iOS share sheet (Save to Files, AirDrop) or downloads it in a browser.
 row, then blocks side by side: **transactions** (readable columns first: Date as `23-Oct-2026`,
 Type, Amount in rupees, Category, Subcategory, Payee, Payment Method, Description, Balance,
 Status; then Classified By, Source and the bank details; then Id, Bank Key, Created,
-Updated, which restore needs), **5 empty columns**, **Category List / Subcategory List**,
+Updated, which restore needs), **5 empty columns**, **Category List / Subcategory List / Subcategory Description**,
 **5 empty columns**, **Payment Mode List**. It includes soft-deleted rows (Status =
 Deleted) so a restore keeps deleted bank rows from coming back. The AI key is never
 included. Import finds columns by header name (order does not matter), accepts day-first
@@ -203,6 +221,66 @@ Known limit: if the file is saved from Excel with a regional date style that is 
 and has no month name (for example `10/05/2026`), it is read day-first. Code:
 `src/domain/backup.ts` (format and validation, tested), `src/db/backup.ts`,
 `src/ui/DataBackupSection.tsx`, `src/platform/files*.ts`. Uses `papaparse` and `expo-sharing`.
+
+**Groups** (schema version 4; design and reasoning in `docs/GROUPS_DESIGN.md`). A group is a separate ledger with
+its own incomes and expenses and balance. `Main` (id `main`) is the built-in group that holds everything from before
+groups existed; every transaction has a `group_id` (default `main`), and `expense_groups` holds `name`, optional
+`start_date` / `end_date` (labels only, they never limit what a group can hold) and `status` (`ACTIVE`, `CLOSED`,
+`DELETED`; deleting a group soft-deletes its transactions). Groups are created only by the owner. **A group is used exactly like Main**: Home, Transactions and Charts are
+shared views (`src/ui/HomeView.tsx`, `TransactionsView.tsx`, `ChartsView.tsx`) that take a `groupId`; Main's tab
+files render them with `main`, and a group's pages (`src/app/groups/[id]/`, its own `js-tabs` navigator with the same
+`Footer`) render the same views with the group's id. The group's Overview has no title bar, like Main's Home: its purple block carries a
+back button, the name and an options button (edit name and dates, close or reopen, delete; `useGroupActions` in
+`src/ui/GroupHeader.tsx`); its Transactions and Charts have a title bar (`GroupHeader`) with the same back and options. A group's
+tabs are opened by path, because switching by route key lost the group's id and sent Charts back to the Groups list. The
+`Footer` and the web `Sidebar` take the group from the route, so the + menu (Credit, Debit, Import) adds to the group
+you are in. Totals are per group and `groupId` is a **required** parameter of the db queries, so a missed call
+site is a type error; Home's Account Balance is Main only and there is deliberately no combined total (a transfer
+from Main to a group is a debit in one and a credit in the other). **Importing goes into a chosen group**: the
+Import screen has an "Import into" picker (a group's own Import button presets it) and every row of the file goes
+there, whatever it is. The importer itself is unchanged; `src/import/scopedStore.ts` wraps the store so the dedupe
+key (which is also the row id) is `<groupId>|<bankKey>` for a group and the plain bank key for Main, so existing
+data is untouched and the same file can be imported into Main and a group without colliding. The key is fixed at
+import time. `scopedKey` is in `src/domain/groups.ts`; the CSV backup derives the UPI reference from a key with or
+without that prefix. Migration: `ALTER TABLE ... ADD COLUMN group_id` guarded by `pragma_table_info`, and the index
+on `group_id` is created after it (not in `SCHEMA`, which also runs on old databases). Backup version 2 adds a
+`Group Id` column and a Groups block; version 1 files restore into Main, and a transaction whose group is missing
+from the file falls back to Main. Not built: moving existing rows to another group, and a "Reopen and import"
+prompt (importing into a closed group simply works).
+
+**Create a group for an entry** (schema version 5). A new entry in Main (Add form; not edits, not inside a group) has a "Create a
+group for this entry" option. The entry stays in Main, and `addEntries` (`src/db/transactions.ts`) saves, in one db transaction,
+the group, an opening income in it equal to the amount (Income : Account Transfer if the owner still has it, otherwise
+Income : Others; `src/domain/entryGroup.ts`) and the entry, which remembers the group in `transactions.created_group_id`
+(also in the CSV backup as `Created Group Id`). The group is prefilled, all editable: name `Category - Subcategory` (else
+the description, else the payee), start = the entry's date, end = the last day of that month. Duplicate uses the link:
+a copy of an entry that created a group offers its own new group (only for copies going into Main), with the name, dates
+and income shown upfront in the preview; the name is the original group's name with the copy's month added
+(`copyGroupName`), a name that already exists, or repeats within the copies, is an error to fix before creating, and
+a banner warns that N groups will be created. Unticking it copies just the entry. The entry creating its group does not
+delete or change the group if the entry is later edited or deleted.
+
+**Add a list** (`src/app/bulk.tsx`, "Add list" in the + menu and the web sidebar; opened inside a group it is preset to that group).
+Many hand entries from rows pasted out of Excel, or from a CSV or Excel file (`excelToCSV`, as for statements), plus a downloadable
+CSV template (`saveCsvFile`). `src/domain/bulkList.ts` (`parseBulkList`, tested) reads the text: only Payee and Amount are needed; a
+header row (default: Payee, Amount, Date, Category, Subcategory, Description; also Type and Payment Method if present) maps columns by
+name in any order, a header without a Payee or Amount column flags every row, otherwise (no header of their own) the columns follow the default order, so a line of just payee and amount is complete. The default header is shown as a fixed strip above the paste box, so pasting can never replace it. A lone cell "Room Rent 24000" is split at the amount. Tabs, commas and semicolons are all accepted
+(an unquoted thousands comma in a comma-separated line is ambiguous; quote it, as Excel does). A row with a missing or zero amount, a
+bad date or type, or a category that is not one of the owner's is flagged and left out. The screen has a default date, type and group
+for rows without their own, a preview with a tick per row, and saves with `addEntries`; rows without a category are Categorise
+later. Like duplicates they are hand entries, so future-dated ones added to Main are counted twice once the real statement is imported
+(the screen warns; a group avoids it). Not built: choosing one category for all rows without one.
+
+**Duplicate** (select, then copy with new dates). Touch and hold a row in Transactions or a group page to start
+selecting; "Select all" takes everything the filters show. Duplicate opens `src/app/duplicate.tsx` (a screen, not a
+dialog, so the date and group pickers are not nested modals): a date rule (`shiftMonths` by N months, clamped to the
+month's last day, or one date for all), a target group (the original's group by default), and a preview where each
+amount can be edited and a row left out. The rows travel through `src/ui/pendingDuplicate.ts` (memory only; bank keys
+can be too long for a route). A copy is a new **hand entry** (`src/domain/duplicate.ts`, `addTransactions` in one
+db transaction): category and readable fields are copied, bank-only fields are not, and a source row that is
+uncategorised, pending or unresolved is copied as "Categorise later" so Re-classify can place it. Hand entries are never
+matched against a statement import, so a future-dated copy in Main would be counted twice once the real statement is
+imported; the screen warns about it, and duplicating into a group avoids it.
 
 **Embeddings, vector search and RAG were dropped** (an earlier learning goal; not
 needed for classifying a short note into a list). They can return later, for example
@@ -337,8 +415,7 @@ leave-one-out comparison above.
 
 ## 8. Possible next steps
 
-Spending trends by month, budgets, export/backup of the local database, a
-"transfer to self" rule, and a natural-language question box over the local data.
+Spending trends by month, a "transfer to self" rule, move existing transactions into a group, and a natural-language question box over the local data.
 
 ## 9. Working agreement with the owner
 

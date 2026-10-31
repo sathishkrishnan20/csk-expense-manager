@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MAX_AI_ATTEMPTS, aiAttemptOutcome } from "../../src/domain/classificationOutcome";
+import { MAX_AI_ATTEMPTS, RECATEGORISE_ATTEMPTS_USED, aiAttemptOutcome } from "../../src/domain/classificationOutcome";
 
 test("a placed transaction is never counted against the AI", () => {
   assert.deepEqual(aiAttemptOutcome(0, false), { attempts: 0, unresolved: false });
@@ -17,4 +17,9 @@ test("each failed answer is an attempt, and the last one hands the transaction t
   }
   assert.equal(attempts, MAX_AI_ATTEMPTS);
   assert.deepEqual(seen, [false, false, true]);
+});
+
+test("a row sent back with Recategorise with AI gets one attempt, then returns to the owner", () => {
+  assert.deepEqual(aiAttemptOutcome(RECATEGORISE_ATTEMPTS_USED, true), { attempts: MAX_AI_ATTEMPTS, unresolved: true });
+  assert.equal(aiAttemptOutcome(RECATEGORISE_ATTEMPTS_USED, false).unresolved, false);
 });

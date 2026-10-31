@@ -5,6 +5,10 @@ export const MAX_AI_ATTEMPTS = 3;
 // in the "Couldn't categorise" list, is not sent to the AI again, and leaves the list when the owner picks a category.
 export const UNRESOLVED = "unresolved";
 
+// A row the owner sends back with "Recategorise with AI" starts with all but one attempt used, so a single
+// failed answer returns it to Others : Uncategorised (the "Couldn't categorise" list) instead of waiting for three.
+export const RECATEGORISE_ATTEMPTS_USED = MAX_AI_ATTEMPTS - 1;
+
 // Called each time the AI answers for a transaction. `couldNotPlace` means the answer was the fallback
 // ("Others : Uncategorised") for a debit. An import counts as the first attempt, then each Re-classify.
 export function aiAttemptOutcome(previousAttempts: number, couldNotPlace: boolean): { attempts: number; unresolved: boolean } {

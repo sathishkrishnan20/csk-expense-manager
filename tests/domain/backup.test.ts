@@ -31,6 +31,8 @@ const tx = (over: Partial<BackupTransaction> = {}): BackupTransaction => ({
   payeeBank: "AXIS BANK",
   upiRef: "629618527541",
   classifiedBy: "gemini-3.5-flash-lite",
+  groupId: "main",
+  createdGroupId: null,
   createdAt: "2026-10-25 06:00:00",
   updatedAt: "2026-10-25 06:00:00",
   ...over,
@@ -42,6 +44,7 @@ const backup = (over: Partial<Backup> = {}): Backup => ({
   exportedAt: "2026-10-25T06:00:00.000Z",
   categories: [{ category: "Food", subcategory: "Groceries" }],
   paymentMethods: ["Cash", "UPI"],
+  groups: [],
   transactions: [tx()],
   ...over,
 });
@@ -133,15 +136,19 @@ test("CSV layout: transactions, 5 empty columns, category list, 5 empty columns,
   assert.ok(list > 0);
   assert.deepEqual(header.slice(list - 5, list), ["", "", "", "", ""]);
   assert.equal(header[list + 1], "Subcategory List");
-  assert.deepEqual(header.slice(list + 2, list + 7), ["", "", "", "", ""]);
-  assert.equal(header[list + 7], "Payment Mode List");
-  assert.equal(header.length, list + 8);
+  assert.equal(header[list + 2], "Subcategory Description");
+  assert.deepEqual(header.slice(list + 3, list + 8), ["", "", "", "", ""]);
+  assert.equal(header[list + 8], "Payment Mode List");
+  // then 5 empty columns and the five columns of the groups block
+  assert.deepEqual(header.slice(list + 9, list + 14), ["", "", "", "", ""]);
+  assert.equal(header[list + 14], "Groups Id");
+  assert.equal(header.length, list + 19);
   assert.deepEqual(header.slice(0, 5), ["Date", "Type", "Amount", "Category", "Subcategory"]);
 
   // 1 transaction but 3 payment modes: later rows have empty transaction cells.
   assert.equal(lines.length, 1 + 3); // header + one row per payment mode
   assert.match(lines[1], /^23-Oct-2026,Debit,1355\.00,Personal,Clothing,SATHISH KR,UPI,for dresse,2553\.65,Active,/);
-  assert.match(lines[3], new RegExp(`^,{${list + 7}}Card$`));
+  assert.match(lines[3], new RegExp(`^,{${list + 8}}Card,{10}$`));
 });
 
 test("CSV: text that Excel would run as a formula is protected and restored", () => {
@@ -210,4 +217,92 @@ test("CSV: semicolon-separated files (some Excel regions) and a BOM are read", (
   const { backup: read, skipped } = parseBackup(csv);
   assert.equal(skipped, 0);
   assert.equal(read.transactions[0].payee, "Tea");
+});
+
+// --- groups ----------------------------------------------------------------------------------
+
+test("CSV: groups, their dates and status, and each transaction's group survive a write and read", () => {
+  const original = backup({
+    groups: [
+      { id: "main", name: "Main", startDate: null, endDate: null, status: "ACTIVE" },
+      { id: "g-abc", name: "Ooty trip", startDate: "2026-11-01", endDate: "2026-11-05", status: "CLOSED" },
+      { id: "g-def", name: "Bengaluru", startDate: "2026-12-01", endDate: null, status: "ACTIVE" },
+    ],
+    transactions: [tx(), tx({ id: "g-abc|upi:629618527541:D", dedupeKey: "g-abc|upi:629618527541:D", groupId: "g-abc" })],
+  });
+  const { backup: read, skipped } = parseBackup(serializeBackup(original));
+  assert.equal(skipped, 0);
+  assert.deepEqual(read, { ...original, exportedAt: "" });
+});
+
+test("JSON: groups round-trip too", () => {
+  const original = backup({
+    groups: [{ id: "g-abc", name: "Ooty trip", startDate: "2026-11-01", endDate: null, status: "ACTIVE" }],
+    transactions: [tx({ groupId: "g-abc" })],
+  });
+  assert.deepEqual(parseBackup(JSON.stringify(original)).backup, original);
+});
+
+test("a version 1 file (no groups, no Group Id) restores everything into Main", () => {
+  const v1 = { format: BACKUP_FORMAT, version: 1, exportedAt: "", categories: [], paymentMethods: [], transactions: [{ ...tx(), groupId: undefined }] };
+  const { backup: fromJson } = parseBackup(JSON.stringify(v1));
+  assert.equal(fromJson.transactions[0].groupId, "main");
+  assert.deepEqual(fromJson.groups, []);
+
+  const csv = "Date,Type,Amount,Category,Subcategory\r\n05-Oct-2026,Debit,10.00,Food,Groceries";
+  const { backup: fromCsv } = parseBackup(csv);
+  assert.equal(fromCsv.transactions[0].groupId, "main");
+  assert.deepEqual(fromCsv.groups, []);
+});
+
+test("a damaged group row is skipped and counted", () => {
+  const csv = serializeBackup(
+    backup({ groups: [{ id: "g-abc", name: "Ooty trip", startDate: null, endDate: null, status: "ACTIVE" }] }),
+  );
+  const broken = csv.replace("Ooty trip", "");
+  const { backup: read, skipped } = parseBackup(broken);
+  assert.deepEqual(read.groups, []);
+  assert.equal(skipped, 1);
+});
+
+test("the group an entry created survives a CSV and a JSON round trip", () => {
+  const original = backup({
+    groups: [{ id: "g-abc", name: "Bengaluru", startDate: "2026-10-01", endDate: "2026-10-31", status: "ACTIVE" }],
+    transactions: [tx({ id: "m-1", dedupeKey: null, source: "manual", upiRef: null, createdGroupId: "g-abc" })],
+  });
+  assert.equal(parseBackup(serializeBackup(original)).backup.transactions[0].createdGroupId, "g-abc");
+  assert.equal(parseBackup(JSON.stringify(original)).backup.transactions[0].createdGroupId, "g-abc");
+});
+
+test("CSV: subcategory descriptions survive a write and read, and a file without them still reads", () => {
+  const original = backup({
+    categories: [
+      { category: "Food & Groceries", subcategory: "Chaats", description: "Dikky poori, Panipoori, roadside food" },
+      { category: "Food & Groceries", subcategory: "Snacks" },
+      { category: "Others", subcategory: "x", description: "=SUM(A1)" },
+    ],
+  });
+  const text = serializeBackup(original);
+  assert.match(text, /'=SUM\(A1\)/); // a description starting like a formula is protected
+  const { backup: read, skipped } = parseBackup(text);
+  assert.equal(skipped, 0);
+  assert.deepEqual(read.categories, original.categories);
+
+  const old = ["Date,Type,Amount,Category,Subcategory,Category List,Subcategory List", ",,,,,Food,Snacks"].join("\n");
+  assert.deepEqual(parseBackup(old).backup.categories, [{ category: "Food", subcategory: "Snacks" }]);
+});
+
+test("a JSON backup's category description is read and tidied", () => {
+  const json = JSON.stringify({
+    format: BACKUP_FORMAT,
+    version: 2,
+    exportedAt: "",
+    categories: [{ category: "Food", subcategory: "Snacks", description: "  tea \n and  bakes " }, { category: "Food", subcategory: "Fruits" }],
+    paymentMethods: [],
+    transactions: [],
+  });
+  assert.deepEqual(parseBackup(json).backup.categories, [
+    { category: "Food", subcategory: "Snacks", description: "tea and bakes" },
+    { category: "Food", subcategory: "Fruits" },
+  ]);
 });

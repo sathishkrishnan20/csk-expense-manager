@@ -1,10 +1,14 @@
+import type { SQLiteDatabase } from "expo-sqlite";
 import type { ImportedTransaction, TransactionStore } from "../import/importStatement";
+import { scopeStore, type KeyedStore } from "../import/scopedStore";
 import type { ReclassifyCandidate } from "../import/reclassify";
 import type { Classification, Direction } from "../domain/taxonomy";
 import { FALLBACK } from "../domain/masterData";
-import { UNRESOLVED, aiAttemptOutcome } from "../domain/classificationOutcome";
+import { RECATEGORISE_ATTEMPTS_USED, UNRESOLVED, aiAttemptOutcome } from "../domain/classificationOutcome";
 import { PENDING_AI, fallbackFor } from "../domain/taxonomy";
 import { getDb, inTransaction } from "./database";
+import { insertGroup, type GroupInput } from "./groups";
+import type { OpeningIncome } from "../domain/entryGroup";
 
 export interface TransactionRecord {
   id: string;
@@ -19,9 +23,13 @@ export interface TransactionRecord {
   description: string | null;
   source: "import" | "manual";
   classifiedBy: string;
+  groupId: string;
+  createdGroupId: string | null; // the group this entry was used to create
 }
 
 export interface TransactionInput {
+  createdGroupId?: string | null;
+  groupId: string; // which group a new row goes into; an edit never moves a row
   txnDate: string;
   direction: Direction;
   amountPaise: number;
@@ -33,6 +41,8 @@ export interface TransactionInput {
   // Leave the category to the AI: the row is stored in the fallback category and marked
   // pending, and "Re-classify Uncategorised" labels it later (category/subcategory are ignored).
   categoriseLater?: boolean;
+  // With categoriseLater, on an edit: the owner chose "Recategorise with AI", so the AI gets one more attempt only.
+  recategorise?: boolean;
 }
 
 // What actually gets stored for the category columns and classified_by.
@@ -54,10 +64,12 @@ interface Row {
   description: string | null;
   source: "import" | "manual";
   classified_by: string;
+  group_id: string;
+  created_group_id: string | null;
 }
 
 const COLUMNS =
-  "id, txn_date, direction, amount_paise, balance_paise, category, subcategory, payee, payment_method, description, source, classified_by";
+  "id, txn_date, direction, amount_paise, balance_paise, category, subcategory, payee, payment_method, description, source, classified_by, group_id, created_group_id";
 
 function toRecord(r: Row): TransactionRecord {
   return {
@@ -73,16 +85,18 @@ function toRecord(r: Row): TransactionRecord {
     description: r.description,
     source: r.source,
     classifiedBy: r.classified_by,
+    groupId: r.group_id,
+    createdGroupId: r.created_group_id,
   };
 }
 
-// Newest first. Soft-deleted rows are never listed or counted.
-export async function listTransactions(limit?: number): Promise<TransactionRecord[]> {
+// One group's transactions, newest first. Soft-deleted rows are never listed or counted.
+export async function listTransactions(groupId: string, limit?: number): Promise<TransactionRecord[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<Row>(
-    `SELECT ${COLUMNS} FROM transactions WHERE status = 'ACTIVE'
+    `SELECT ${COLUMNS} FROM transactions WHERE status = 'ACTIVE' AND group_id = ?
      ORDER BY txn_date DESC, created_at DESC, rowid DESC ${limit ? "LIMIT ?" : ""}`,
-    limit ? [limit] : [],
+    limit ? [groupId, limit] : [groupId],
   );
   return rows.map(toRecord);
 }
@@ -97,15 +111,16 @@ function newId(): string {
   return `m-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export async function addTransaction(input: TransactionInput): Promise<void> {
-  const db = await getDb();
+async function insertManual(db: SQLiteDatabase, input: TransactionInput): Promise<void> {
   const stored = categoryFor(input);
   await db.runAsync(
     `INSERT INTO transactions
-       (id, source, txn_date, direction, amount_paise, category, subcategory, payee, payment_method, description, classified_by)
-     VALUES (?, 'manual', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, source, group_id, created_group_id, txn_date, direction, amount_paise, category, subcategory, payee, payment_method, description, classified_by)
+     VALUES (?, 'manual', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       newId(),
+      input.groupId,
+      input.createdGroupId ?? null,
       input.txnDate,
       input.direction,
       input.amountPaise,
@@ -117,6 +132,33 @@ export async function addTransaction(input: TransactionInput): Promise<void> {
       stored.pending ? PENDING_AI : "manual",
     ],
   );
+}
+
+export async function addTransaction(input: TransactionInput): Promise<void> {
+  await insertManual(await getDb(), input);
+}
+
+// A hand entry that may also create a group: the group (with its optional opening income) and the entry go in together,
+// and the entry remembers the group it created.
+export interface NewEntry {
+  input: TransactionInput;
+  group?: GroupInput & { opening: OpeningIncome | null };
+}
+
+// Several hand entries at once, all or none (used by Add and Duplicate).
+export async function addEntries(entries: NewEntry[]): Promise<void> {
+  if (entries.length === 0) return;
+  const db = await getDb();
+  await inTransaction(db, async (txn) => {
+    for (const { input, group } of entries) {
+      let createdGroupId: string | null = null;
+      if (group) {
+        createdGroupId = await insertGroup(txn, group);
+        if (group.opening) await insertManual(txn, { ...group.opening, groupId: createdGroupId, categoriseLater: false });
+      }
+      await insertManual(txn, { ...input, createdGroupId });
+    }
+  });
 }
 
 // Changing the category of an AI-labelled row marks it as the user's own choice,
@@ -132,6 +174,7 @@ export async function updateTransaction(id: string, input: TransactionInput): Pr
          WHEN ? THEN ?
          WHEN classified_by = ? OR category != ? OR subcategory != ? THEN 'manual'
          ELSE classified_by END,
+       ai_attempts = CASE WHEN ? THEN ? ELSE ai_attempts END,
        category = ?, subcategory = ?, payee = ?, payment_method = ?, description = ?,
        updated_at = datetime('now')
      WHERE id = ?`,
@@ -144,6 +187,8 @@ export async function updateTransaction(id: string, input: TransactionInput): Pr
       PENDING_AI,
       stored.category,
       stored.subcategory,
+      stored.pending && input.recategorise ? 1 : 0,
+      RECATEGORISE_ATTEMPTS_USED,
       stored.category,
       stored.subcategory,
       input.payee,
@@ -169,13 +214,13 @@ export interface DateRange {
   end: string;
 }
 
-export async function getTotals(range?: DateRange): Promise<Totals> {
+export async function getTotals(groupId: string, range?: DateRange): Promise<Totals> {
   const db = await getDb();
   const rows = await db.getAllAsync<{ direction: Direction; total: number }>(
     `SELECT direction, SUM(amount_paise) AS total FROM transactions
-     WHERE status = 'ACTIVE' ${range ? "AND txn_date BETWEEN ? AND ?" : ""}
+     WHERE status = 'ACTIVE' AND group_id = ? ${range ? "AND txn_date BETWEEN ? AND ?" : ""}
      GROUP BY direction`,
-    range ? [range.start, range.end] : [],
+    range ? [groupId, range.start, range.end] : [groupId],
   );
   const sum = (d: Direction) => rows.find((r) => r.direction === d)?.total ?? 0;
   return { incomePaise: sum("credit"), expensePaise: sum("debit") };
@@ -197,15 +242,15 @@ export interface GroupTotal {
 
 const MAX_GROUPS = 20;
 
-export async function getExpensesBy(grouping: ExpenseGrouping, range: DateRange): Promise<GroupTotal[]> {
+export async function getExpensesBy(groupId: string, grouping: ExpenseGrouping, range: DateRange): Promise<GroupTotal[]> {
   const column = GROUP_COLUMNS[grouping];
   const db = await getDb();
   const rows = await db.getAllAsync<{ label: string; total: number }>(
     `SELECT COALESCE(NULLIF(TRIM(${column}), ''), 'Not set') AS label, SUM(amount_paise) AS total
      FROM transactions
-     WHERE status = 'ACTIVE' AND direction = 'debit' AND txn_date BETWEEN ? AND ?
+     WHERE status = 'ACTIVE' AND group_id = ? AND direction = 'debit' AND txn_date BETWEEN ? AND ?
      GROUP BY label ORDER BY total DESC`,
-    [range.start, range.end],
+    [groupId, range.start, range.end],
   );
   const groups = rows.map((r) => ({ label: r.label, totalPaise: r.total }));
   if (groups.length <= MAX_GROUPS) return groups;
@@ -245,8 +290,9 @@ export async function restoreDeleted(dedupeKeys: string[]): Promise<{ restored: 
   return { restored, reclassifiable };
 }
 
-// Bank rows from a statement. existingKeys includes soft-deleted rows on purpose.
-export const sqliteStore: TransactionStore = {
+// Bank rows from a statement. existingKeys includes soft-deleted rows on purpose. The keys it sees are
+// already scoped to the group (see scopeStore), and the scoped key is also the row's id.
+const keyedSqliteStore: KeyedStore = {
   async existingKeys(keys) {
     const db = await getDb();
     const found = new Set<string>();
@@ -277,7 +323,7 @@ export const sqliteStore: TransactionStore = {
     return found;
   },
 
-  async insert(rows: ImportedTransaction[]) {
+  async insert(rows: ImportedTransaction[], groupId: string) {
     const db = await getDb();
     await inTransaction(db, async (txn) => {
       for (const r of rows) {
@@ -285,12 +331,13 @@ export const sqliteStore: TransactionStore = {
         const outcome = aiAttemptOutcome(0, couldNotPlace(r.direction, r));
         await txn.runAsync(
           `INSERT OR IGNORE INTO transactions
-             (id, dedupe_key, source, txn_date, direction, amount_paise, balance_paise, category, subcategory,
+             (id, dedupe_key, group_id, source, txn_date, direction, amount_paise, balance_paise, category, subcategory,
               payee, payment_method, description, narration, vpa, note, payee_bank, upi_ref, classified_by, ai_attempts)
-           VALUES (?, ?, 'import', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, 'import', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             r.dedupeKey,
             r.dedupeKey,
+            groupId,
             r.txnDate,
             r.direction,
             r.amountPaise,
@@ -314,6 +361,8 @@ export const sqliteStore: TransactionStore = {
   },
 };
 
+// The importer's store for one group: every row of the file goes into that group.
+export const createSqliteStore = (groupId: string): TransactionStore => scopeStore(keyedSqliteStore, groupId);
 
 // Debits the AI answered with the fallback; counts as one failed attempt (credits have a real fallback, Income : Others).
 const couldNotPlace = (direction: Direction, c: Classification): boolean =>
@@ -387,12 +436,12 @@ export async function applyClassifications(
   });
 }
 
-// How many transactions the AI gave up on and that wait for the owner.
-export async function countUnresolved(): Promise<number> {
+// How many transactions the AI gave up on and that wait for the owner; null counts every group.
+export async function countUnresolved(groupId: string | null): Promise<number> {
   const db = await getDb();
   const row = await db.getFirstAsync<{ n: number }>(
-    "SELECT COUNT(*) AS n FROM transactions WHERE status = 'ACTIVE' AND classified_by = ?",
-    [UNRESOLVED],
+    `SELECT COUNT(*) AS n FROM transactions WHERE status = 'ACTIVE' AND classified_by = ? ${groupId ? "AND group_id = ?" : ""}`,
+    groupId ? [UNRESOLVED, groupId] : [UNRESOLVED],
   );
   return row?.n ?? 0;
 }

@@ -63,6 +63,7 @@ export function OutlinedInput({
   secureTextEntry,
   autoCapitalize = "sentences",
   editable = true,
+  maxLength,
 }: {
   label: string;
   value: string;
@@ -71,12 +72,14 @@ export function OutlinedInput({
   secureTextEntry?: boolean;
   autoCapitalize?: "none" | "sentences" | "words";
   editable?: boolean;
+  maxLength?: number;
 }) {
   const [focused, setFocused] = useState(false);
   return (
     <FieldFrame label={label} floated={focused || value !== ""} focused={focused} disabled={!editable}>
       <TextInput
         value={value}
+        maxLength={maxLength}
         onChangeText={onChangeText}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}

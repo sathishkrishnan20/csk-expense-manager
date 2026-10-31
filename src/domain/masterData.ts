@@ -1,7 +1,14 @@
 export interface CategoryDef {
   category: string;
   subcategories: string[];
+  // Optional note per subcategory on what belongs in it, sent to the AI with the names (see llm/classify.ts).
+  descriptions?: Record<string, string>;
 }
+
+export const MAX_SUBCATEGORY_DESCRIPTION = 200;
+
+// One line, trimmed, as it is stored and sent to the AI.
+export const cleanDescription = (text: string): string => text.replace(/\s+/g, " ").trim();
 
 export interface Classification {
   category: string;
@@ -20,6 +27,14 @@ export function isIncomeCategory(name: string): boolean {
 // list like any other row but cannot be deleted or renamed.
 export const FALLBACK: Classification = { category: "Others", subcategory: "Uncategorised" };
 
+// Not a stored category: the Update form offers it under Others so the owner can hand a row back to the AI
+// (after adding categories, say). It is never sent to the AI as a choice and never saved on a row.
+export const RECATEGORISE: Classification = { category: FALLBACK.category, subcategory: "Recategorise with AI" };
+
+export function isRecategorise(category: string, subcategory: string): boolean {
+  return category === RECATEGORISE.category && subcategory === RECATEGORISE.subcategory;
+}
+
 // Used when a credit does not fit any Income subcategory.
 export const INCOME_FALLBACK: Classification = { category: INCOME_CATEGORY, subcategory: "Others" };
 
@@ -31,76 +46,94 @@ export function isProtectedCategory(category: string): boolean {
   return category === INCOME_CATEGORY || category === FALLBACK.category;
 }
 
-// Seeded on first run. Copied from the web Expense Manager's live Config
-// (spelling kept as-is so existing history lines up). Edit them in the app's Config.
+// Seeded on first run (a fresh install, or a new device with no categories yet). This is the owner's own
+// Config list, spelling kept as-is so existing history lines up. Income : Others is added to it because it is
+// the fallback for a credit the AI cannot place. Existing installs keep their categories; edit them in Config.
 export const DEFAULT_CATEGORIES: CategoryDef[] = [
+  { category: "Income", subcategories: ["Salary", "Personal Savings", "Part-time work", "Annuities", "Account Transfer", "Others"] },
   {
-    category: "Income",
+    category: "Entertainment",
     subcategories: [
-      "Salary",
-      "Equities",
-      "Personal Savings",
-      "Rents and Royalties",
-      "Home Equity",
-      "Part-time work",
-      "Pensions",
-      "Annuities",
-      "Social Securities",
-      "Account Transfer",
-      "Others",
+      "Concert",
+      "Party",
+      "Sports",
+      "Cinema theatre",
+      "OTT platforms",
+      "Cable TV",
+      "Amusement Park",
+      "Funtura",
     ],
   },
-  { category: "Entertainment", subcategories: ["Concert", "Party", "Sports", "Others"] },
-  { category: "Family", subcategories: ["Child Care", "Child Education", "Toy", "Others", "Dinesh"] },
-  { category: "Automobile", subcategories: ["Fuel", "Insurance", "Registration", "Road Tax", "Others"] },
-  { category: "Food", subcategories: ["Restaurant", "Groceries", "Snacks", "Others", "Fruits"] },
+  {
+    category: "Family Support",
+    subcategories: [
+      "Child Education",
+      "Others",
+      "Karthika Allowance",
+      "Manju College fee",
+      "Father allowances",
+    ],
+  },
+  {
+    category: "Automobile",
+    subcategories: [
+      "Fuel",
+      "Insurance",
+      "Registration",
+      "Toll charges",
+      "Parking",
+      "General Services",
+      "Accessories",
+    ],
+  },
+  {
+    category: "Food & Groceries",
+    subcategories: [
+      "Dining out & Food Delivery",
+      "Snacks",
+      "Fruits",
+      "Chaats",
+      "Groceries",
+      "Vegetables",
+      "Meat & Seafoods",
+    ],
+    descriptions: {
+      Chaats: "Dikky poori, Panipoori, bakery items, Gopimanjureean and other roadside foods.",
+    },
+  },
   {
     category: "Health Care",
     subcategories: [
       "Dental",
       "Eye Care",
       "Health Insurance",
-      "Medical",
+      "Medical / Pharmacy",
       "Prescription",
       "Nutrition",
       "Fertility Care",
-      "Other",
     ],
   },
   {
-    category: "Home Office",
-    subcategories: ["Computer", "Electronics", "Stationary", "Office Furniture", "Office Supply", "Other"],
-  },
-  {
-    category: "Household",
+    category: "Home office",
     subcategories: [
-      "Appliance",
-      "Consumables",
-      "HomeMaintenance",
-      "Homeowner Fees",
-      "Homeshold Tools",
-      "Miscellaneous Household Items",
-      "Postager",
-      "Rent",
-      "Other",
-      "Home loan repayment",
+      "Computer",
+      "Gadgets",
+      "Stationary",
+      "Office Furniture",
+      "Office Supply",
+      "Electronics",
+      "AI tool subscription",
+      "E-learnings",
     ],
   },
-  { category: "Insurance", subcategories: ["Auto", "Health", "Home", "Life", "Other"] },
-  { category: "Loans", subcategories: ["Auto", "Home Equity", "Mortgage", "Student", "Other", "Marriage"] },
-  { category: "Personal", subcategories: ["Clothing", "Donation", "Gift", "Personal Care", "Other"] },
-  { category: "Tax", subcategories: ["Propery Tax", "Other"] },
-  { category: "Travel", subcategories: ["Airplane", "Car Rental", "Taxi", "Bus", "Train", "Ship", "Other"] },
-  {
-    category: "Utilities",
-    subcategories: ["Cable TV", "Garbage", "Electric", "Gas", "Internet", "Telephone", "Water", "Other"],
-  },
-  {
-    category: "Payment",
-    subcategories: ["ICICI Credit Card", "HDFC Credit Card", "AXIS Credit Card", "Iphone Mobile EMI"],
-  },
-  { category: "Savings", subcategories: ["Mutual Fund", "Insurance", "Chitfund", "lIC & Post office"] },
-  { category: "Car", subcategories: ["Fuel", "General Service", "Accessories", "Car Damage Repair"] },
+  { category: "Households", subcategories: ["Appliance", "Consumables", "Maintenance", "Rent", "Gas Cylinder"] },
+  { category: "Insurance", subcategories: ["Car", "Health", "Home", "Life", "Bike", "Term"] },
+  { category: "Loans", subcategories: ["Marriage"] },
+  { category: "Personal and Family Care", subcategories: ["Clothing", "Donation", "Gift", "Child Care"] },
+  { category: "Travel", subcategories: ["Airplane", "Car Rental", "Bus", "Train", "Ship", "Auto", "Bike Taxi"] },
+  { category: "Utilities and Bills", subcategories: ["Garbage", "Internet", "Telephone", "Water", "Electricity"] },
+  { category: "Credit Card Bills", subcategories: ["ICICI Credit Card", "HDFC Credit Card", "AXIS Credit Card"] },
+  { category: "Savings", subcategories: ["Mutual Fund", "Chitfund", "lIC & Post office", "RD & FD", "Gold Savings"] },
   { category: FALLBACK.category, subcategories: [FALLBACK.subcategory] },
 ];
 

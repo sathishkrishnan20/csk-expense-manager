@@ -15,8 +15,8 @@ const row = (over: Partial<ClassifiableRow> = {}): ClassifiableRow => ({
 
 test("debit prompt lists the user's expense categories, never Income, and names the fallback", () => {
   const prompt = buildSystemPrompt(DEFAULT_CATEGORIES, "debit");
-  assert.match(prompt, /- Food: Restaurant, Groceries, Snacks, Others, Fruits/);
-  assert.match(prompt, /- Payment: ICICI Credit Card/);
+  assert.match(prompt, /- Food & Groceries: Dining out & Food Delivery, Snacks/);
+  assert.match(prompt, /- Credit Card Bills: ICICI Credit Card/);
   assert.match(prompt, /- Others: Uncategorised/);
   assert.doesNotMatch(prompt, /- Income:/);
   assert.match(prompt, /category "Others" and subcategory "Uncategorised"/);
@@ -24,8 +24,8 @@ test("debit prompt lists the user's expense categories, never Income, and names 
 
 test("credit prompt lists only Income and falls back to Income / Others", () => {
   const prompt = buildSystemPrompt(DEFAULT_CATEGORIES, "credit");
-  assert.match(prompt, /- Income: Salary, Equities/);
-  assert.doesNotMatch(prompt, /- Food:/);
+  assert.match(prompt, /- Income: Salary, Personal Savings/);
+  assert.doesNotMatch(prompt, /- Food & Groceries:/);
   assert.match(prompt, /category "Income" and subcategory "Others"/);
 });
 
@@ -70,22 +70,22 @@ test("model answers are validated against the current categories", async () => {
   const rows = Array.from({ length: 7 }, () => row());
   const call: LlmCall = async () => ({
     results: [
-      { id: 0, category: "food", subcategory: "restaurant" }, // case-insensitive match
+      { id: 0, category: "food & groceries", subcategory: "snacks" }, // case-insensitive match
       { id: 1, category: "Space Travel", subcategory: "Moon" }, // invented category -> Others / Uncategorised
-      { id: 2, category: "Food", subcategory: "Bakery" }, // known category, unknown sub -> that category's Others
-      { id: 3, category: "Health Care", subcategory: "Spa" }, // its sub is called "Other"
-      { id: 4, category: "Car", subcategory: "Wash" }, // no Others in Car -> Others / Uncategorised
+      { id: 2, category: "Family Support", subcategory: "Bakery" }, // known category, unknown sub -> that category's Others
+      { id: 3, category: "Health Care", subcategory: "Spa" }, // no Others in Health Care -> Others / Uncategorised
+      { id: 4, category: "Automobile", subcategory: "Wash" }, // no Others in Automobile -> Others / Uncategorised
       { id: 5, category: "Income", subcategory: "Salary" }, // debits can never be Income
-      { id: 99, category: "Food", subcategory: "Groceries" }, // out of range, ignored
+      { id: 99, category: "Food & Groceries", subcategory: "Groceries" }, // out of range, ignored
       { id: 0, category: "Health Care", subcategory: "Dental" }, // duplicate id, ignored
     ],
   });
 
   const out = await classifyBatch(rows, "debit", DEFAULT_CATEGORIES, call);
-  assert.deepEqual(out.get(0), { category: "Food", subcategory: "Restaurant" });
+  assert.deepEqual(out.get(0), { category: "Food & Groceries", subcategory: "Snacks" });
   assert.deepEqual(out.get(1), { category: "Others", subcategory: "Uncategorised" });
-  assert.deepEqual(out.get(2), { category: "Food", subcategory: "Others" });
-  assert.deepEqual(out.get(3), { category: "Health Care", subcategory: "Other" });
+  assert.deepEqual(out.get(2), { category: "Family Support", subcategory: "Others" });
+  assert.deepEqual(out.get(3), { category: "Others", subcategory: "Uncategorised" });
   assert.deepEqual(out.get(4), { category: "Others", subcategory: "Uncategorised" });
   assert.deepEqual(out.get(5), { category: "Others", subcategory: "Uncategorised" });
   assert.equal(out.has(6), false);
@@ -111,4 +111,18 @@ test("a malformed answer is rejected", async () => {
     () => classifyBatch([row()], "debit", DEFAULT_CATEGORIES, async () => ({ nope: true })),
     /results list/,
   );
+});
+
+test("a subcategory's description goes into the prompt next to its name, and others stay plain", () => {
+  const categories: CategoryDef[] = [
+    {
+      category: "Food",
+      subcategories: ["Chaats", "Snacks"],
+      descriptions: { Chaats: "Dikky poori,\n Panipoori and roadside food" },
+    },
+  ];
+  const debit = buildSystemPrompt(categories, "debit");
+  assert.match(debit, /- Food: Chaats \(Dikky poori, Panipoori and roadside food\), Snacks\n/);
+  assert.match(debit, /text in brackets/);
+  assert.doesNotMatch(buildSystemPrompt([{ category: "Food", subcategories: ["Snacks"] }], "debit"), /Snacks \(/);
 });

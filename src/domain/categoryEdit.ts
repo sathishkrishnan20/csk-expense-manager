@@ -1,8 +1,16 @@
-import { FALLBACK, isProtectedCategory, isProtectedSubcategory, type CategoryDef } from "./masterData";
+import {
+  FALLBACK,
+  MAX_SUBCATEGORY_DESCRIPTION,
+  cleanDescription,
+  isProtectedCategory,
+  isProtectedSubcategory,
+  type CategoryDef,
+} from "./masterData";
 
 export interface SubEdit {
   original: string | null; // null for a newly added row
   name: string;
+  description?: string; // what belongs here, for the AI; empty or missing means none
 }
 
 export interface CategoryEdit {
@@ -27,6 +35,9 @@ export function validateCategoryEdit(all: CategoryDef[], edit: CategoryEdit): st
   const subs = edit.subs.map((s) => ({ ...s, name: s.name.trim() })).filter((s) => s.name !== "" || s.original !== null);
   if (subs.some((s) => s.name === "")) return "A subcategory name cannot be empty.";
   if (subs.length === 0) return "Add at least one subcategory.";
+
+  const tooLong = subs.find((s) => cleanDescription(s.description ?? "").length > MAX_SUBCATEGORY_DESCRIPTION);
+  if (tooLong) return `The description for "${tooLong.name}" is longer than ${MAX_SUBCATEGORY_DESCRIPTION} characters.`;
 
   const seen = new Set<string>();
   for (const s of subs) {

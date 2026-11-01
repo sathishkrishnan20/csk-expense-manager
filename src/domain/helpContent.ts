@@ -97,16 +97,19 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
       title: "Groups",
       blocks: [
         {
-          text: "Everything you have so far is in Main. A group is a separate ledger with its own incomes and expenses and its own balance, for a trip, an event, or a second bank account. Create one from Home (New group) or the Groups page; give it a name and, if you like, a start and end date (they are only labels).",
+          text: "Everything you have so far is in Main. A group has its own incomes and expenses, for a month, a trip, an event, or a second bank account. Groups are made from an entry: add a credit or debit and tick \"Create a group for this entry\" (below). You can change a group's name, dates and the group it sits under later from its options button.",
         },
         {
           bullets: [
             "Open a group from the Groups strip on Home. It works like Main: its own bottom tabs (Overview, Transactions, Charts), the same + button for Credit, Debit and Import, and a Main tab to go back. Everything you add or import there goes into that group.",
             "When you import, the Import screen shows which group it is going into: every row in the file goes into that group, whether it is an expense, an income or a transfer.",
-            "A group's balance is its incomes minus its expenses. Groups never mix with Main or with each other, and Main's Account Balance covers Main only.",
-            "Adding an entry in Main? Tick \"Create a group for this entry\" to make a group at the same time. The entry stays in Main; the group is named Category - Subcategory (or the description), starts on the entry's date, ends on the last day of that month, and starts with an income equal to the amount. Everything is filled in for you and can be changed, and the group can be edited later from its options button.",
+            "A group's balance is its own incomes minus its own expenses, plus the balances of the groups under it. So a group inside \"Nov Month Expenses\" counts in Nov's balance, and Nov counts in Main's Account Balance. Put salary in Main and everything else in groups, and Main shows what is left. The Income and Expenses cards on a group also include everything under it, so an expense added in a subgroup shows in every group above it, and income minus expenses is the balance. (An entry that created a group counts as an expense in the parent and its opening income counts as income in the group, so both cards include that amount; the balance is unaffected.) The Transactions list of each group shows only its own entries. A group set to \"None (kept separate)\", such as a second bank account, stays out of Main's balance.",
+            "Adding an entry? Tick \"Create a group for this entry\" to make a group at the same time, in Main or inside any group. The entry stays where it is and the new group sits under it (a \"Day to day\" entry in Nov Month Expenses can create a Day to day group under Nov). The group is named Category - Subcategory (or the description), starts on the entry's date, ends on the last day of that month, and starts with an income equal to the amount. If the entry is an expense, that income cancels the expense in the group above. If the entry is an income, the group shows the amount to spend, but the group above still counts that money only once (so a ₹2.5 lakh income and a group made from it show ₹2.5 lakh in Main, not ₹5 lakh). Everything is filled in for you and can be changed, and the group can be edited later from its options button.",
             "Importing the same statement again into the same group skips rows already there. The same file imported into two groups is kept in both.",
-            "Close a group to hide it from Home and the pickers (it stays under Closed and can be reopened). Delete removes the group and its transactions.",
+            "Close a group to hide it from Home and the pickers (it stays under Closed and can be reopened). Delete removes the group and its transactions. Closing, reopening or deleting a group does the same to the groups under it, and deleting tells you how many first.",
+            "Choose which group the app opens on: on the Groups page tap the home icon on a group (or, in its options, Show on Home). Home, Transactions and Charts then show that group, the + button adds to it, and Main is just another group in the Groups section that you tap to open. Tap the home icon on that group again, or on Main, to go back. If that group is closed or deleted, the app opens on Main.",
+            "The Add form also has a Group field, so you can put one entry into a different group (a subgroup too) without opening it first. Added from inside a group, the entry goes into that group.",
+            "Pin a group (its options button, or the pin on the Groups page) to show it first in Home's Groups strip, at any depth. A group's own Overview shows its subgroups.",
           ],
         },
         {
@@ -136,9 +139,9 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
       blocks: [
         {
           bullets: [
-            "Home: Account Balance is income minus expenses of Main, your groups with their balances, and your recent transactions below.",
-            "Transactions: every entry, newest first. Tap Filters to narrow by date range, credit or debit, category, subcategory, or categorised and uncategorised. Tap a row to edit or delete it.",
-            "Charts: pick a date range and group your expenses by category, subcategory, payment method or payer.",
+            "Home: the group you chose as Home (Main unless you chose another): its balance, incomes and expenses (including the groups under it), the Groups section (pinned groups, Main and your other groups; tap one to open it), and its recent transactions.",
+            "Transactions: the entries of the Home group, newest first (the Group filter at the top changes that: tick one or several groups, or All groups, and each row then shows its group; See All on Home always starts on the Home group again). Tap Filters to narrow by date range, credit or debit, category, subcategory, or categorised and uncategorised. Tap a row to edit or delete it.",
+            "Charts: pick a date range and group your expenses by category, subcategory, payment method or payer. The Group filter at the top chooses which groups are charted: it starts on the Home group, and you can tick several groups or choose All groups.",
           ],
         },
       ],
@@ -149,8 +152,8 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
       blocks: [
         {
           text: web
-            ? "Your transactions, categories and payment modes are stored in this browser, in a private database for this web address. They are not uploaded anywhere unless you turn on Cloud backup. Clearing this site's data in the browser deletes them, and the phone app and other browsers have their own separate copies. Use Export and Import, or Cloud backup, to move data or keep a copy."
-            : "Your transactions, categories and payment modes are stored in a database file inside this app on your iPhone. They are not uploaded anywhere unless you turn on Cloud backup. Deleting the app deletes them. Use Export and Import, or Cloud backup, to keep a copy or to move data to another device.",
+            ? "Your transactions, categories and payment modes are stored in this browser, in a private database for this web address. They are not uploaded anywhere unless you use Cloud backup. Clearing this site's data in the browser deletes them, and the phone app and other browsers have their own separate copies. Use Export and Import, or Cloud backup, to move data or keep a copy."
+            : "Your transactions, categories and payment modes are stored in a database file inside this app on your iPhone. They are not uploaded anywhere unless you use Cloud backup. Deleting the app deletes them. Use Export and Import, or Cloud backup, to keep a copy or to move data to another device.",
         },
         {
           bullets: [
@@ -208,8 +211,8 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
             "Import adds whatever is missing from such a file. It never changes or removes what is already here, so it is safe to run twice. You can add rows in Excel before importing; leave Category and Subcategory empty to have the AI fill them in later.",
             "Your API key is not part of the file. Enter it again on the new device.",
             "Export now and then, or use Cloud backup below. Export is also how you move data between the phone and a browser.",
-            "Config > Cloud backup keeps an encrypted copy on a free backup server. Turn it on, write down the recovery code it shows, and press Back up now; backing up again replaces the earlier copy. The copy is encrypted on this phone before it is sent, so the server cannot read it and holds no name, email or phone number. To get it back on a new phone, open Cloud backup, choose I already have a recovery code, type the code and restore. Restore only adds what is missing.",
-            "Keep the recovery code away from this phone (a password manager or paper). Without it nobody can open your cloud copy, and anyone who has it can. Delete the cloud copy any time from the same screen.",
+            "Config > Cloud backup and restore keeps an encrypted copy on a free backup server. It is not automatic: press Back up to cloud when you want a copy. The first time it makes a recovery code and shows it; write it down. Backing up again replaces the earlier copy. The copy is encrypted on this phone before it is sent, so the server cannot read it and holds no name, email or phone number. To get it back on a new phone, open Cloud backup and restore, choose Restore from cloud and type the recovery code (it always asks). Restore only adds what is missing, and the copy you restored from stays as it was. The new phone makes its own recovery code the first time it backs up, so the two phones then back up separately.",
+            "Keep the recovery code away from this phone (a password manager or paper). Without it nobody can open your cloud copy, and anyone who has it can. You can show the code again on the phone that made it. Delete the cloud copy any time from the same screen.",
           ],
         },
       ],

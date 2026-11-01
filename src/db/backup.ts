@@ -42,6 +42,9 @@ interface GroupRow {
   start_date: string | null;
   end_date: string | null;
   status: "ACTIVE" | "CLOSED" | "DELETED";
+  parent_id: string | null;
+  pinned: number;
+  held_paise: number;
 }
 
 function toBackupTransaction(r: TransactionRow): BackupTransaction {
@@ -82,7 +85,7 @@ export async function exportBackup(): Promise<Backup> {
     ),
     db.getAllAsync<{ name: string }>("SELECT name FROM payment_methods ORDER BY sort"),
     db.getAllAsync<TransactionRow>("SELECT * FROM transactions ORDER BY txn_date, created_at, rowid"),
-    db.getAllAsync<GroupRow>("SELECT id, name, start_date, end_date, status FROM expense_groups ORDER BY created_at, rowid"),
+    db.getAllAsync<GroupRow>("SELECT id, name, start_date, end_date, status, parent_id, pinned, held_paise FROM expense_groups ORDER BY created_at, rowid"),
   ]);
   return {
     format: BACKUP_FORMAT,
@@ -97,7 +100,16 @@ export async function exportBackup(): Promise<Backup> {
     ),
     paymentMethods: methods.map((m) => m.name),
     groups: groups.map(
-      (g): BackupGroup => ({ id: g.id, name: g.name, startDate: g.start_date, endDate: g.end_date, status: g.status }),
+      (g): BackupGroup => ({
+        id: g.id,
+        name: g.name,
+        startDate: g.start_date,
+        endDate: g.end_date,
+        status: g.status,
+        parentId: g.parent_id,
+        pinned: g.pinned === 1,
+        heldPaise: g.held_paise,
+      }),
     ),
     transactions: transactions.map(toBackupTransaction),
   };
@@ -153,11 +165,13 @@ export async function restoreBackup(backup: Backup, skipped: number): Promise<Re
     // Groups first, so the transactions that belong to them have somewhere to go. Existing groups are left as they are.
     for (const g of backup.groups) {
       const r = await txn.runAsync(
-        "INSERT OR IGNORE INTO expense_groups (id, name, start_date, end_date, status) VALUES (?, ?, ?, ?, ?)",
-        [g.id, g.name, g.startDate, g.endDate, g.status],
+        "INSERT OR IGNORE INTO expense_groups (id, name, start_date, end_date, status, parent_id, pinned, held_paise) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [g.id, g.name, g.startDate, g.endDate, g.status, g.id === MAIN_GROUP_ID ? null : g.parentId, g.pinned ? 1 : 0, g.heldPaise],
       );
       summary.groupsAdded += r.changes;
     }
+    // A group whose parent is in neither the file nor this phone is kept separate, so nothing hangs under a group that is not there.
+    await txn.runAsync("UPDATE expense_groups SET parent_id = NULL WHERE parent_id IS NOT NULL AND parent_id NOT IN (SELECT id FROM expense_groups)");
     const known = new Set((await txn.getAllAsync<{ id: string }>("SELECT id FROM expense_groups")).map((g) => g.id));
 
     for (const t of backup.transactions) {

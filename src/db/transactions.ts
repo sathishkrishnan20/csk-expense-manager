@@ -7,6 +7,7 @@ import { FALLBACK, type Suggestion } from "../domain/masterData";
 import { RECATEGORISE_ATTEMPTS_USED, UNRESOLVED, aiAttemptOutcome } from "../domain/classificationOutcome";
 import { PENDING_AI, fallbackFor } from "../domain/taxonomy";
 import { addSuggestions } from "../import/suggestionStore";
+import type { GroupScope } from "../domain/groupScope";
 import { getDb, inTransaction } from "./database";
 import { insertGroup, type GroupInput } from "./groups";
 import type { OpeningIncome } from "../domain/entryGroup";
@@ -92,12 +93,22 @@ function toRecord(r: Row): TransactionRecord {
 }
 
 // One group's transactions, newest first. Soft-deleted rows are never listed or counted.
-export async function listTransactions(groupId: string, limit?: number): Promise<TransactionRecord[]> {
+// "AND group_id IN (...)" for one group, several groups, or nothing for every group (null).
+function scopeSql(scope: string | GroupScope): { sql: string; params: string[] } {
+  if (scope === null) return { sql: "", params: [] };
+  const ids = typeof scope === "string" ? [scope] : scope;
+  if (ids.length === 0) return { sql: "AND 0", params: [] };
+  return { sql: `AND group_id IN (${ids.map(() => "?").join(",")})`, params: [...ids] };
+}
+
+// One group's, several groups' or every group's transactions (the group filter), newest first.
+export async function listTransactions(scope: string | GroupScope, limit?: number): Promise<TransactionRecord[]> {
   const db = await getDb();
+  const where = scopeSql(scope);
   const rows = await db.getAllAsync<Row>(
-    `SELECT ${COLUMNS} FROM transactions WHERE status = 'ACTIVE' AND group_id = ?
+    `SELECT ${COLUMNS} FROM transactions WHERE status = 'ACTIVE' ${where.sql}
      ORDER BY txn_date DESC, created_at DESC, rowid DESC ${limit ? "LIMIT ?" : ""}`,
-    limit ? [groupId, limit] : [groupId],
+    limit ? [...where.params, limit] : where.params,
   );
   return rows.map(toRecord);
 }
@@ -215,13 +226,14 @@ export interface DateRange {
   end: string;
 }
 
-export async function getTotals(groupId: string, range?: DateRange): Promise<Totals> {
+export async function getTotals(scope: string | GroupScope, range?: DateRange): Promise<Totals> {
   const db = await getDb();
+  const where = scopeSql(scope);
   const rows = await db.getAllAsync<{ direction: Direction; total: number }>(
     `SELECT direction, SUM(amount_paise) AS total FROM transactions
-     WHERE status = 'ACTIVE' AND group_id = ? ${range ? "AND txn_date BETWEEN ? AND ?" : ""}
+     WHERE status = 'ACTIVE' ${where.sql} ${range ? "AND txn_date BETWEEN ? AND ?" : ""}
      GROUP BY direction`,
-    range ? [groupId, range.start, range.end] : [groupId],
+    range ? [...where.params, range.start, range.end] : where.params,
   );
   const sum = (d: Direction) => rows.find((r) => r.direction === d)?.total ?? 0;
   return { incomePaise: sum("credit"), expensePaise: sum("debit") };
@@ -243,15 +255,16 @@ export interface GroupTotal {
 
 const MAX_GROUPS = 20;
 
-export async function getExpensesBy(groupId: string, grouping: ExpenseGrouping, range: DateRange): Promise<GroupTotal[]> {
+export async function getExpensesBy(scope: string | GroupScope, grouping: ExpenseGrouping, range: DateRange): Promise<GroupTotal[]> {
   const column = GROUP_COLUMNS[grouping];
   const db = await getDb();
+  const where = scopeSql(scope);
   const rows = await db.getAllAsync<{ label: string; total: number }>(
     `SELECT COALESCE(NULLIF(TRIM(${column}), ''), 'Not set') AS label, SUM(amount_paise) AS total
      FROM transactions
-     WHERE status = 'ACTIVE' AND group_id = ? AND direction = 'debit' AND txn_date BETWEEN ? AND ?
+     WHERE status = 'ACTIVE' ${where.sql} AND direction = 'debit' AND txn_date BETWEEN ? AND ?
      GROUP BY label ORDER BY total DESC`,
-    [groupId, range.start, range.end],
+    [...where.params, range.start, range.end],
   );
   const groups = rows.map((r) => ({ label: r.label, totalPaise: r.total }));
   if (groups.length <= MAX_GROUPS) return groups;

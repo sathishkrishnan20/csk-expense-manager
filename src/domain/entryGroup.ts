@@ -1,5 +1,5 @@
-// "Create a group for this entry": the group a Main entry can create, its prefilled name and dates, the income it starts
-// with, and the same for a duplicate of such an entry.
+// "Create a group for this entry": the group an entry can create (it sits under the group the entry is in), its prefilled
+// name and dates, the income it starts with, and the same for a duplicate of such an entry.
 
 import type { Direction } from "./taxonomy";
 import { FALLBACK, INCOME_CATEGORY, type CategoryDef, type Classification } from "./masterData";
@@ -58,6 +58,12 @@ export function validateNewGroups(plans: readonly GroupPlan[], existingNames: re
   });
 }
 
+// How much of a new group's opening income is money its parent already has. An expense entry hands money over (the parent's expense
+// cancels the group's opening income), so none. An income entry stays in the parent, so the group's opening income is held: the
+// group shows it to spend, but the parent does not count it a second time.
+export const heldOpening = (direction: Direction, amountPaise: number, hasOpening: boolean): number =>
+  direction === "credit" && hasOpening ? amountPaise : 0;
+
 // The income a new group starts with. The group id is filled in when it is saved.
 export interface OpeningIncome {
   txnDate: string;
@@ -79,9 +85,11 @@ export function incomeClassFor(categories: readonly CategoryDef[]): Classificati
   return first ? { category: INCOME_CATEGORY, subcategory: first } : FALLBACK;
 }
 
+// `fromName` is the group the entry is in (Main, or the group it is a subgroup of): the money comes from there.
 export function openingIncomeFor(
   entry: { txnDate: string; amountPaise: number; paymentMethod: string | null; payee: string; description: string | null },
   incomeClass: Classification,
+  fromName = "Main",
 ): OpeningIncome {
   return {
     txnDate: entry.txnDate,
@@ -89,7 +97,7 @@ export function openingIncomeFor(
     amountPaise: entry.amountPaise,
     category: incomeClass.category,
     subcategory: incomeClass.subcategory,
-    payee: "Main",
+    payee: fromName,
     paymentMethod: entry.paymentMethod,
     description: entry.description || entry.payee || null,
   };

@@ -17,8 +17,12 @@ export function TransactionRow({
   onLongPress,
   selecting = false,
   selected = false,
+  createdGroup = null,
+  groupName,
 }: {
   item: TransactionRecord;
+  createdGroup?: { name: string; balancePaise: number } | null; // the group this entry created, with what is left in it
+  groupName?: string; // the group the entry is in, shown when the list covers several groups
   onPress: () => void;
   onLongPress?: () => void;
   selecting?: boolean;
@@ -45,7 +49,10 @@ export function TransactionRow({
         />
       ) : null}
       <View style={styles.content}>
-        <T style={styles.date}>{formatLongDate(item.txnDate)}</T>
+        <T style={styles.date} numberOfLines={1}>
+          {formatLongDate(item.txnDate)}
+          {groupName ? ` · ${groupName}` : ""}
+        </T>
 
         <View style={styles.line}>
           <T style={styles.left} numberOfLines={1}>
@@ -66,6 +73,12 @@ export function TransactionRow({
           </T>
           {item.balancePaise !== null ? <T weight="bold">{formatRupees(item.balancePaise)}</T> : null}
         </View>
+
+        {createdGroup ? (
+          <T style={[styles.groupLine, createdGroup.balancePaise < 0 && { color: colors.error }]} numberOfLines={1}>
+            {createdGroup.name} · Balance {formatRupees(createdGroup.balancePaise)}
+          </T>
+        ) : null}
 
         <View style={styles.line}>
           <T weight="light" style={[styles.left, { fontSize: 14 }]} numberOfLines={1}>
@@ -89,5 +102,6 @@ export function TransactionRow({
     date: { color: colors.grayText },
     line: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12, minHeight: 24 },
     left: { flex: 1 },
+    groupLine: { color: colors.primary, fontSize: 13 },
     divider: { height: 1.5, backgroundColor: colors.rowDivider },
   });

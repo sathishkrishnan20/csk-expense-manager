@@ -36,9 +36,3 @@ export async function clearLastUpload(): Promise<void> {
   await plainStorage.remove(LAST_AT_KEY);
   await plainStorage.remove(LAST_FINGERPRINT_KEY);
 }
-
-// Takes this phone out of cloud backup. The copy on the server is not touched.
-export async function forgetRecoveryCode(): Promise<void> {
-  await secureStorage.remove(CODE_KEY);
-  await clearLastUpload();
-}

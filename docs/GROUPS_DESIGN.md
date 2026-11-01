@@ -34,7 +34,7 @@ A group is just a name. You create it yourself ("New group"); the app never crea
 | 2 | Main is a built-in group with id `main`. All existing rows belong to it. | No data change for the owner's current use. |
 | 3 | A group has a name, a start date, an end date and a status. No kind, no budget field. | Keeps it simple. The dates are optional labels for when the group runs; they do not limit which transactions the group can hold. A budget is just an income you add to the group. Balance = incomes minus expenses. |
 | 4 | Groups are created only by the owner (Groups screen > New group). | Nothing automatic. |
-| 5 | Groups are separate. No combined total, and no link between Main and a group. | Each group's balance is its own incomes minus its own expenses. A transfer is just an income or expense in whichever group it is imported or added. |
+| 5 | Groups are separate. No combined total, and no link between Main and a group. **Superseded by schema version 9: a group can sit under Main or another group and its balance then includes it; "None (kept separate)" keeps the original behaviour.** | Each group's balance is its own incomes minus its own expenses. A transfer is just an income or expense in whichever group it is imported or added. |
 | 6 | **Import goes into the group you pick first. Every row in the file goes there**, whether it is an expense, an income or a transfer. | No special handling. The importer is unchanged; only where it saves is chosen. |
 | 7 | Duplicate creates **new hand entries**; it never copies bank-only fields. | A copy is a repeat, not a second bank row (3.5, 4.5). |
 
@@ -302,7 +302,7 @@ Exact column names are fixed when `src/domain/backup.ts` is changed; header-name
 
 ## 6. What this does not do (on purpose)
 
-- No combined "everything" balance across groups.
+- (Superseded: balances now roll up through groups that sit inside other groups, see ARCHITECTURE.md, "Groups inside groups and pinning". A group kept separate still has no link to Main.)
 - No templates, plans or automatic group creation.
 - No per-group categories (categories stay global).
 

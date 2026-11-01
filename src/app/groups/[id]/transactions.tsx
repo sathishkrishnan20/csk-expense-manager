@@ -1,8 +1,8 @@
-import { useLocalSearchParams } from "expo-router";
 import { GroupHeader } from "../../../ui/GroupHeader";
 import { TransactionsView } from "../../../ui/TransactionsView";
+import { useRouteGroupId } from "../../../ui/useRouteGroupId";
 
 export default function GroupTransactions() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const id = useRouteGroupId();
   return <TransactionsView groupId={id} header={<GroupHeader groupId={id} />} />;
 }

@@ -142,13 +142,13 @@ test("CSV layout: transactions, 5 empty columns, category list, 5 empty columns,
   // then 5 empty columns and the five columns of the groups block
   assert.deepEqual(header.slice(list + 9, list + 14), ["", "", "", "", ""]);
   assert.equal(header[list + 14], "Groups Id");
-  assert.equal(header.length, list + 19);
+  assert.equal(header.length, list + 22);
   assert.deepEqual(header.slice(0, 5), ["Date", "Type", "Amount", "Category", "Subcategory"]);
 
   // 1 transaction but 3 payment modes: later rows have empty transaction cells.
   assert.equal(lines.length, 1 + 3); // header + one row per payment mode
   assert.match(lines[1], /^23-Oct-2026,Debit,1355\.00,Personal,Clothing,SATHISH KR,UPI,for dresse,2553\.65,Active,/);
-  assert.match(lines[3], new RegExp(`^,{${list + 8}}Card,{10}$`));
+  assert.match(lines[3], new RegExp(`^,{${list + 8}}Card,{13}$`));
 });
 
 test("CSV: text that Excel would run as a formula is protected and restored", () => {
@@ -224,9 +224,9 @@ test("CSV: semicolon-separated files (some Excel regions) and a BOM are read", (
 test("CSV: groups, their dates and status, and each transaction's group survive a write and read", () => {
   const original = backup({
     groups: [
-      { id: "main", name: "Main", startDate: null, endDate: null, status: "ACTIVE" },
-      { id: "g-abc", name: "Ooty trip", startDate: "2026-11-01", endDate: "2026-11-05", status: "CLOSED" },
-      { id: "g-def", name: "Bengaluru", startDate: "2026-12-01", endDate: null, status: "ACTIVE" },
+      { id: "main", name: "Main", startDate: null, endDate: null, status: "ACTIVE", parentId: null, pinned: false, heldPaise: 0 },
+      { id: "g-abc", name: "Ooty trip", startDate: "2026-11-01", endDate: "2026-11-05", status: "CLOSED", parentId: null, pinned: false, heldPaise: 0 },
+      { id: "g-def", name: "Bengaluru", startDate: "2026-12-01", endDate: null, status: "ACTIVE", parentId: null, pinned: false, heldPaise: 0 },
     ],
     transactions: [tx(), tx({ id: "g-abc|upi:629618527541:D", dedupeKey: "g-abc|upi:629618527541:D", groupId: "g-abc" })],
   });
@@ -235,9 +235,33 @@ test("CSV: groups, their dates and status, and each transaction's group survive 
   assert.deepEqual(read, { ...original, exportedAt: "" });
 });
 
+test("CSV and JSON: a group's parent and pin survive, and an older file restores groups as separate and unpinned", () => {
+  const original = backup({
+    groups: [
+      { id: "main", name: "Main", startDate: null, endDate: null, status: "ACTIVE", parentId: null, pinned: false, heldPaise: 0 },
+      { id: "g-nov", name: "Nov Month Expenses", startDate: "2026-11-01", endDate: "2026-11-30", status: "ACTIVE", parentId: "main", pinned: true, heldPaise: 0 },
+      { id: "g-day", name: "Day to day", startDate: "2026-11-01", endDate: null, status: "ACTIVE", parentId: "g-nov", pinned: false, heldPaise: 25000000 },
+    ],
+  });
+  assert.deepEqual(parseBackup(serializeBackup(original)).backup.groups, original.groups);
+  assert.deepEqual(parseBackup(JSON.stringify(original)).backup.groups, original.groups);
+
+  const csv = serializeBackup(original).split("\r\n")[0].split(",");
+  assert.ok(csv.includes("Groups Parent Id") && csv.includes("Groups Pinned"));
+
+  // a file made before groups could sit inside groups: no such columns
+  const old = serializeBackup(original)
+    .split("\r\n")
+    .map((line) => line.split(",").slice(0, -3).join(","))
+    .join("\r\n");
+  const restored = parseBackup(old).backup.groups;
+  assert.equal(restored.length, 3);
+  assert.ok(restored.every((g) => g.parentId === null && g.pinned === false && g.heldPaise === 0));
+});
+
 test("JSON: groups round-trip too", () => {
   const original = backup({
-    groups: [{ id: "g-abc", name: "Ooty trip", startDate: "2026-11-01", endDate: null, status: "ACTIVE" }],
+    groups: [{ id: "g-abc", name: "Ooty trip", startDate: "2026-11-01", endDate: null, status: "ACTIVE", parentId: null, pinned: false, heldPaise: 0 }],
     transactions: [tx({ groupId: "g-abc" })],
   });
   assert.deepEqual(parseBackup(JSON.stringify(original)).backup, original);
@@ -257,7 +281,7 @@ test("a version 1 file (no groups, no Group Id) restores everything into Main", 
 
 test("a damaged group row is skipped and counted", () => {
   const csv = serializeBackup(
-    backup({ groups: [{ id: "g-abc", name: "Ooty trip", startDate: null, endDate: null, status: "ACTIVE" }] }),
+    backup({ groups: [{ id: "g-abc", name: "Ooty trip", startDate: null, endDate: null, status: "ACTIVE", parentId: null, pinned: false, heldPaise: 0 }] }),
   );
   const broken = csv.replace("Ooty trip", "");
   const { backup: read, skipped } = parseBackup(broken);
@@ -267,7 +291,7 @@ test("a damaged group row is skipped and counted", () => {
 
 test("the group an entry created survives a CSV and a JSON round trip", () => {
   const original = backup({
-    groups: [{ id: "g-abc", name: "Bengaluru", startDate: "2026-10-01", endDate: "2026-10-31", status: "ACTIVE" }],
+    groups: [{ id: "g-abc", name: "Bengaluru", startDate: "2026-10-01", endDate: "2026-10-31", status: "ACTIVE", parentId: null, pinned: false, heldPaise: 0 }],
     transactions: [tx({ id: "m-1", dedupeKey: null, source: "manual", upiRef: null, createdGroupId: "g-abc" })],
   });
   assert.equal(parseBackup(serializeBackup(original)).backup.transactions[0].createdGroupId, "g-abc");

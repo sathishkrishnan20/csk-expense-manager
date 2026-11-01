@@ -259,8 +259,8 @@ back button, the name and an options button (edit name and dates, close or reope
 tabs are opened by path, because switching by route key lost the group's id and sent Charts back to the Groups list. The
 `Footer` and the web `Sidebar` take the group from the route, so the + menu (Credit, Debit, Import) adds to the group
 you are in. Totals are per group and `groupId` is a **required** parameter of the db queries, so a missed call
-site is a type error; Home's Account Balance is Main only and there is deliberately no combined total (a transfer
-from Main to a group is a debit in one and a credit in the other). **Importing goes into a chosen group**: the
+site is a type error. (Balances now roll up through the group tree, see "Groups inside groups" below; the original
+design had no combined total.) **Importing goes into a chosen group**: the
 Import screen has an "Import into" picker (a group's own Import button presets it) and every row of the file goes
 there, whatever it is. The importer itself is unchanged; `src/import/scopedStore.ts` wraps the store so the dedupe
 key (which is also the row id) is `<groupId>|<bankKey>` for a group and the plain bank key for Main, so existing
@@ -272,7 +272,56 @@ on `group_id` is created after it (not in `SCHEMA`, which also runs on old datab
 from the file falls back to Main. Not built: moving existing rows to another group, and a "Reopen and import"
 prompt (importing into a closed group simply works).
 
-**Create a group for an entry** (schema version 5). A new entry in Main (Add form; not edits, not inside a group) has a "Create a
+**Groups inside groups and pinning** (schema version 9). `expense_groups` gains `parent_id` (the group it sits under; null for
+Main and for a group kept separate) and `pinned`. **A group's balance is its own income minus its own expenses plus the
+balances of its direct subgroups, each of which already includes theirs** (`withRolledUp`, `balanceOf` in
+`src/domain/groups.ts`, tested); `listGroupsWithBalances` returns `inPaise`/`outPaise` (own entries) and `subgroupsPaise`.
+The Income and Expenses cards (and the In/Out on group cards) include everything below the group (`subgroupsInPaise`,
+`subgroupsOutPaise`, `totalInPaise`, `totalOutPaise`), so income - expenses is the balance, and the purple block says "Includes the
+groups under it". The Transactions list and Recent Transactions of a group are still its own entries only. This is what makes the
+owner's usage work: salary is the only income in Main, and everything else sits in groups under Main. A budget entry in a
+parent ("Day to day" 30,000 in Nov) is cancelled by the opening income in the group it created, so only the real spending
+reduces the totals. Closed groups still count (the money was spent); deleted ones do not. Decisions: **existing groups
+keep no parent** at migration, so Main's balance does not change until the owner puts a group under another one; a **new
+group defaults to under Main** (the form's "Sits under" picker also offers "None (kept separate)", for something like a second
+bank account); names stay unique across all groups; a group cannot sit under itself or one of its own subgroups
+(`validateParent`, the picker leaves those out, and `updateGroup` checks again); **closing, reopening and deleting cascade**
+to the subtree (`subtreeIds`; delete asks first and counts the subgroups and entries). The Groups page is a tree
+(`flattenTree`, indented, closed groups in their own section) with a pin button per card. Home's strip (`stripGroups`) shows the
+pinned groups first at any depth, then the groups right under Main or kept separate; inside a group the strip is its own
+subgroups (pinned first) (there is no New group / New subgroup button anywhere: **groups are only created from an entry**, "Create a group for this entry" on Add and in Duplicate; `/groups/edit` is for editing). The group's options menu has Pin to Home, edit (name, dates, parent), close/reopen, delete. "Create a group for this entry" and Duplicate's new-group option
+now work in any group, not only Main: the new group's `parent_id` is the group the entry is in, and its opening income is "from"
+that group's name. Backup adds `Groups Parent Id` and `Groups Pinned` columns after `Groups Status`; older files restore their
+groups as separate and unpinned, and a parent that is in neither the file nor the phone is cleared. Not built: moving an
+existing group's entries, depth limits (none), a breadcrumb on a deep group's page.
+
+**Developer cleanup** (Config > "Developer (dev builds only)", `src/ui/DevToolsSection.tsx`, `src/db/dev.ts`). Rendered only when `__DEV__`
+is true (Expo Go, the dev server), so a release build (`npm run ipa`, `ios:device`) never shows it. One button, after a confirmation, deletes every
+transaction (hard delete, so the same statement can be imported again) and every group except Main, and resets Main (no parent, not
+pinned); categories, payment modes, settings and keys stay. It also empties the in-memory AI suggestions. Not undoable.
+
+**Home group and the Group filter.** The app opens on a configurable **home group** (`src/settings/homeGroup.ts`, plain storage key `home_group`;
+Main when unset). `resolveHomeGroup` (`src/db/homeGroup.ts`) falls back to Main when the saved group is closed or deleted, and
+`useHomeGroup` (`src/ui/useHomeGroup.ts`) re-reads it each time a tab is focused. The Home, Transactions and Charts tabs
+(`src/app/(tabs)/`) render `HomeView` / `TransactionsView` / `ChartsView` for that group instead of always Main, so Main is now just a
+group: its own page is `/groups/main` (the same `groups/[id]` route, with the options menu limited to Rename and Show on Home, since Main
+is never pinned, closed or deleted). The home group is set with the home icon on each card of the Groups page or "Show on Home" in a group's
+options. On the Home tab the Groups strip (`homeStripGroups`) lists the pinned groups, then Main, then the home group's subgroups, then the
+other top-level groups, never the one shown; a group's own page still lists its subgroups. The floating **+**, Import and Add list start
+in the home group when no `?group=` is given (`resolveHomeGroupId`); the Add form also has a Group field for one entry, and the group tabs'
+last item is now "Home". (An earlier "remember the last group picked in Add" default was replaced by this.)
+The **Group filter** (`src/ui/GroupFilter.tsx`, pure logic in `src/domain/groupScope.ts`) is on Transactions and Charts: a `GroupScope` is
+a list of group ids or null for every group, it starts on the page's own group, and ticking groups widens it (at least one stays ticked).
+`listTransactions`, `getTotals` and `getExpensesBy` take a scope (`scopeSql`: `group_id IN (...)` or none). When a list covers several
+groups each row shows its group; Duplicate from such a list copies into the rows' group (or the page's group when they differ). "See All" on
+Home passes `?fresh=` so the page starts on its own group again. The filter is not saved between visits.
+
+**Create a group for an entry** (schema version 5). Balances roll up, so the opening income must not be counted twice. For an **expense** entry the
+parent's expense cancels the group's opening income. For an **income** entry the money stays in the parent, so the group's opening income is
+**held** (`expense_groups.held_paise`, schema version 10, `heldOpening`): it is part of the group's own figures (the group shows it to spend) but left
+out of what the group adds to its parent (`withRolledUp`, capped at the group's own income in case the opening entry was deleted). 2.5L income + a
+group made from it shows 2.5L in Main, not 5L. The version 10 migration back-fills `held_paise` from the income entry that created each existing
+group. The CSV backup has `Groups Held`.
 group for this entry" option. The entry stays in Main, and `addEntries` (`src/db/transactions.ts`) saves, in one db transaction,
 the group, an opening income in it equal to the amount (Income : Account Transfer if the owner still has it, otherwise
 the first Income subcategory; `src/domain/entryGroup.ts`) and the entry, which remembers the group in `transactions.created_group_id`
@@ -345,7 +394,7 @@ Save asks to be pressed again. Limits: needs PRF support (recent Safari/Chrome);
 passkey makes the stored key unreadable ("Forget saved key" resets); malware or a malicious
 extension running while unlocked can still read the key.
 
-### Cloud backup (Config > Cloud backup)
+### Cloud backup (Config > Cloud backup and restore)
 
 An encrypted copy of the same data as Export, kept on a free Cloudflare Worker + KV (`server/`). Chosen
 for: free without a card, never pauses when idle, a tiny server we control, works from Expo Go.
@@ -365,9 +414,17 @@ for: free without a card, never pauses when idle, a tiny server we control, work
   Worker accepts only ids of 64 lowercase hex, bodies that start like a sealed backup (`RU1CA`) and at most
   10,000,000 characters (`MAX_UPLOAD_CHARS`, the same in the app, checked before upload; KV allows 25 MiB).
   CORS is open so the web build can call it.
-- **Restore is the same merge as Import** (`restoreBackup`): it never changes what is on the phone. A code
-  typed on a new phone is saved only after it opened a backup. Delete removes the server copy; Turn off
-  forgets the code on this phone and leaves the server copy.
+- **Nothing is scheduled, and there is no on/off switch.** The first "Back up to cloud" on a phone makes the
+  recovery code (`ensureRecoveryCode`), shows it, then uploads; after that the button reads "Back up now".
+  "Show recovery code" can be pressed any time on the phone that made it (it is read from the Keychain).
+- **Restore is the same merge as Import** (`restoreBackup`): it never changes what is on the phone, and it
+  always asks for the recovery code, even when the phone has one. The typed code is only used to read that copy;
+  it is never saved and never replaces the phone's own code. A phone with no code of its own makes a new one on
+  its first backup, so a second phone that restored from the first gets its own entry (the restored data plus
+  its own) and the first copy stays exactly as it was: the phones then back up independently. Trade-off: after
+  replacing a lost phone, the new phone has a new code and the old copy stays as a frozen snapshot (nothing
+  expires, and only the code that made it can delete it). Delete removes this phone's own server copy. There is
+  deliberately no "forget the code" action.
 - **Skip unchanged:** a keyed fingerprint of the CSV is kept in plain storage; if it equals the last upload,
   nothing is sent. The free tier allows about 1,000 KV writes a day for the whole account (one backup = one
   write); D1 (100,000 a day) is the upgrade path, with no change to the app.

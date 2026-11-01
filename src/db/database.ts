@@ -2,7 +2,7 @@ import { Platform } from "react-native";
 import * as SQLite from "expo-sqlite";
 import { DEFAULT_CATEGORIES, DEFAULT_PAYMENT_METHODS, FALLBACK } from "../domain/masterData";
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 10;
 
 const SCHEMA = `
 -- A group is a separate ledger (see domain/groups.ts). 'main' holds everything entered before groups existed.
@@ -12,6 +12,12 @@ CREATE TABLE IF NOT EXISTS expense_groups (
   start_date TEXT,
   end_date   TEXT,
   status     TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'CLOSED', 'DELETED')),
+  -- the group this one sits under (a group's balance includes the groups under it); null = kept separate, and for Main
+  parent_id  TEXT,
+  -- shown first on Home
+  pinned     INTEGER NOT NULL DEFAULT 0,
+  -- income the group was started with out of money its parent already has (see domain/groups.ts, heldPaise)
+  held_paise INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -129,6 +135,26 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
     // and drops the columns.
     for (const column of ["suggested_category", "suggested_subcategory", "suggestion_rejected"]) {
       if (now.some((c) => c.name === column)) await txn.execAsync(`ALTER TABLE transactions DROP COLUMN ${column}`);
+    }
+    // Version 9 added groups inside groups and pinning. Groups that already exist stay separate (no parent), so Main's
+    // balance does not change until the owner puts a group under another one.
+    const groupColumns = await txn.getAllAsync<{ name: string }>("SELECT name FROM pragma_table_info('expense_groups')");
+    if (!groupColumns.some((c) => c.name === "parent_id")) {
+      await txn.execAsync("ALTER TABLE expense_groups ADD COLUMN parent_id TEXT");
+    }
+    if (!groupColumns.some((c) => c.name === "pinned")) {
+      await txn.execAsync("ALTER TABLE expense_groups ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0");
+    }
+    // Version 10 added heldPaise: a group made from an income entry keeps that income to spend without the parent counting it twice.
+    // Groups made that way before it get their held amount from the entry that created them.
+    if (!groupColumns.some((c) => c.name === "held_paise")) {
+      await txn.execAsync("ALTER TABLE expense_groups ADD COLUMN held_paise INTEGER NOT NULL DEFAULT 0");
+      await txn.execAsync(
+        `UPDATE expense_groups SET held_paise = COALESCE((
+           SELECT t.amount_paise FROM transactions t
+           WHERE t.created_group_id = expense_groups.id AND t.direction = 'credit' AND t.status = 'ACTIVE' LIMIT 1), 0)
+         WHERE id != 'main'`,
+      );
     }
     // Version 6 added a description per subcategory.
     const catColumns = await txn.getAllAsync<{ name: string }>("SELECT name FROM pragma_table_info('categories')");

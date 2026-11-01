@@ -12,6 +12,7 @@ import {
   endOfMonth,
   incomeClassFor,
   openingIncomeFor,
+  heldOpening,
   suggestGroup,
   validateNewGroups,
   type GroupPlan,
@@ -90,10 +91,10 @@ export default function DuplicateTransactions() {
   const badAmount = chosen.some((d) => amountOf(d.sourceId) === null);
   const warning = futureDateWarning(chosen, targetId, toISODate(new Date()));
 
-  // The group each copy would create. Only entries that created a group offer one, and only for copies going into Main.
+  // The group each copy would create. Only entries that created a group offer one; it sits under the group the copy goes into.
   const groupFor = (sourceId: string, txnDate: string): { offered: boolean; on: boolean; plan: GroupPlan } => {
     const source = rows.find((r) => r.id === sourceId);
-    const offered = targetId === MAIN_GROUP_ID && !!source?.createdGroupId;
+    const offered = !!source?.createdGroupId;
     const edit = groupEdits[sourceId] ?? {};
     const baseName = allGroups.find((g) => g.id === source?.createdGroupId)?.name ?? (source ? suggestGroup(source).name : "");
     return {
@@ -141,7 +142,9 @@ export default function DuplicateTransactions() {
                 name: g.plan.name.trim(),
                 startDate: g.plan.startDate,
                 endDate: g.plan.endDate,
-                opening: openingIncomeFor({ ...d, amountPaise }, incomeClass),
+                parentId: targetId,
+                opening: openingIncomeFor({ ...d, amountPaise }, incomeClass, targetName),
+                heldPaise: heldOpening(d.direction, amountPaise, true),
               }
             : undefined,
         };
@@ -223,7 +226,7 @@ export default function DuplicateTransactions() {
                     <>
                       <CheckOption
                         label="Create a new group for this copy"
-                        hint="The original entry created a group. The copy stays in Main."
+                        hint={`The original entry created a group. The copy stays in ${targetName}, and the new group sits under it.`}
                         checked={g.on}
                         onPress={() => edit(d.sourceId, { on: !g.on })}
                       />

@@ -13,13 +13,13 @@ type IconName = keyof typeof MaterialIcons.glyphMap;
 const FAB_SIZE = 60;
 const FAB_BOTTOM = 20;
 const ACTION_SIZE = 40;
-const BAR_HEIGHT = 56;
+const BAR_HEIGHT = 62; // icon 24 + label + padding, with room for the label of a selected tab (larger text) and descenders like the g in Config
 
 interface Tab {
   name: string;
   label: string;
   icon: IconName;
-  exit?: boolean; // not a tab of this bar: leaves the group for Main
+  exit?: boolean; // not a tab of this bar: leaves the group for the Home screen
 }
 
 const TABS: (Tab | null)[] = [
@@ -30,13 +30,13 @@ const TABS: (Tab | null)[] = [
   { name: "config", label: "Config", icon: "settings" },
 ];
 
-// A group's pages have the same shape as Main's, with a way back to Main where Config is.
+// A group's pages have the same shape as the Home tabs, with a way back to Home where Config is.
 const GROUP_TABS: (Tab | null)[] = [
   { name: "index", label: "Overview", icon: "account-balance-wallet" },
   { name: "transactions", label: "Transactions", icon: "dynamic-form" },
   null,
   { name: "charts", label: "Charts", icon: "pie-chart" },
-  { name: "main", label: "Main", icon: "home", exit: true },
+  { name: "home", label: "Home", icon: "home", exit: true },
 ];
 
 interface Action {
@@ -136,7 +136,7 @@ export function Footer({ state, navigateToTab, groupId }: BottomTabBarProps & { 
                 numberOfLines={1}
                 adjustsFontSizeToFit
                 minimumFontScale={0.8}
-                style={[styles.label, { color: tint, fontSize: selected ? 14 : 12 }]}
+                style={[styles.label, { color: tint, fontSize: 12 }]}
               >
                 {tab.label}
               </T>
@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     ...shadow.high,
   },
-  item: { flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 8, paddingBottom: 8 },
+  item: { flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 6, paddingBottom: 6 },
   label: { marginTop: 2, maxWidth: "100%", paddingHorizontal: 2 },
   // Pinned to the bottom edge and centred; children define the height.
   anchored: { position: "absolute", left: 0, right: 0, alignItems: "center" },

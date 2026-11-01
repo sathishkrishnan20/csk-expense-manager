@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { BarChart, PieChart } from "react-native-gifted-charts";
 import { useFocusEffect } from "expo-router";
@@ -9,10 +9,14 @@ import {
   type GroupTotal,
   type Totals,
 } from "../db/transactions";
+import { listGroupsWithBalances } from "../db/groups";
 import { formatRupees, monthRange } from "../domain/format";
+import type { GroupWithBalance } from "../domain/groups";
+import { scopeKey, type GroupScope } from "../domain/groupScope";
 import { notify } from "../platform/dialogs";
 import { T } from "./Text";
 import { DateField, InlineSelect } from "./forms";
+import { GroupFilter } from "./GroupFilter";
 import { colors, shadow } from "./theme";
 import { useContentWidth } from "./useLayout";
 
@@ -37,7 +41,8 @@ function compact(rupees: number): string {
   return String(Math.round(rupees));
 }
 
-// Income and expense charts for one group (Main is a group too). `header` is the page's title bar.
+// Income and expense charts for the groups chosen in the Group filter (the page's own group to begin with; one, several or all). `header` is
+// the page's title bar.
 export function ChartsView({ groupId, header }: { groupId: string; header: ReactNode }) {
   const width = useContentWidth();
   const initial = monthRange(new Date());
@@ -46,19 +51,27 @@ export function ChartsView({ groupId, header }: { groupId: string; header: React
   const [grouping, setGrouping] = useState<ExpenseGrouping>("category");
   const [totals, setTotals] = useState<Totals | null>(null);
   const [groups, setGroups] = useState<GroupTotal[]>([]);
+  const [allGroups, setAllGroups] = useState<GroupWithBalance[]>([]);
+  const [scope, setScope] = useState<GroupScope>([groupId]);
+  useEffect(() => setScope([groupId]), [groupId]); // another page group starts on that group again
+  const key = scopeKey(scope);
 
   useFocusEffect(
     useCallback(() => {
       let alive = true;
-      Promise.all([getTotals(groupId, { start, end }), getExpensesBy(groupId, grouping, { start, end })]).then(([t, g]) => {
-        if (!alive) return;
-        setTotals(t);
-        setGroups(g);
-      });
+      Promise.all([getTotals(scope, { start, end }), getExpensesBy(scope, grouping, { start, end }), listGroupsWithBalances()]).then(
+        ([t, g, gs]) => {
+          if (!alive) return;
+          setTotals(t);
+          setGroups(g);
+          setAllGroups(gs);
+        },
+      );
       return () => {
         alive = false;
       };
-    }, [start, end, grouping, groupId]),
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [start, end, grouping, key]),
   );
 
   const empty = totals !== null && totals.incomePaise === 0 && totals.expensePaise === 0;
@@ -81,6 +94,7 @@ export function ChartsView({ groupId, header }: { groupId: string; header: React
   return (
     <View style={styles.page}>
       {header}
+      <GroupFilter groups={allGroups} scope={scope} onChange={setScope} />
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
         <View style={styles.filters}>
           <View style={{ flex: 1 }}>

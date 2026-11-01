@@ -3,6 +3,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { listGroupsWithBalances } from "../db/groups";
+import { resolveHomeGroupId } from "../db/homeGroup";
 import { MAIN_GROUP_ID, type Group } from "../domain/groups";
 import type { ImportSummary } from "../import/importStatement";
 import { formatLongDate, formatRupees } from "../domain/format";
@@ -34,6 +35,7 @@ export default function ImportStatement() {
 
   useEffect(() => {
     let alive = true;
+    if (!group) resolveHomeGroupId().then((id) => alive && setGroupId(id));
     listGroupsWithBalances().then((all) => {
       if (alive) setGroups(all.filter((g) => g.status === "ACTIVE" || g.id === groupId));
     });

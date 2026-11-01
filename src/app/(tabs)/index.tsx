@@ -1,6 +1,8 @@
 import { HomeView } from "../../ui/HomeView";
-import { MAIN_GROUP_ID } from "../../domain/groups";
+import { useHomeGroup } from "../../ui/useHomeGroup";
 
+// The group chosen as Home (Main unless the owner chose another on the Groups page).
 export default function Home() {
-  return <HomeView groupId={MAIN_GROUP_ID} />;
+  const home = useHomeGroup();
+  return home ? <HomeView groupId={home.id} /> : null;
 }

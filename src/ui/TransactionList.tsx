@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { FlatList, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
+import { listGroupsWithBalances } from "../db/groups";
 import type { TransactionRecord } from "../db/transactions";
+import { createdGroupInfo, type GroupWithBalance } from "../domain/groups";
 import type { CategoryDef } from "../domain/masterData";
 import { keepPresent, selectAll, toggle } from "../domain/selection";
 import { NO_FILTERS, activeFilterCount, applyFilters, type TransactionFilters } from "../domain/transactionFilters";
@@ -18,18 +20,36 @@ interface Props {
   categories: CategoryDef[];
   filters: TransactionFilters;
   onFiltersChange: (filters: TransactionFilters) => void;
-  header?: ReactNode; // above the filters (the group switcher, or a group's summary)
+  header?: ReactNode; // above the filters (the group filter)
+  resetKey?: string; // changes when the groups shown change, which clears a selection of rows
+  groupNames?: ReadonlyMap<string, string>; // when set, each row says which group it is in
   emptyText: string;
 }
 
 // One group's transactions with the filters, and the select-then-Duplicate flow: long-press a row to start
 // selecting, tick rows (or "Select all" for everything the filters show), then Duplicate.
-export function TransactionList({ groupId, items, categories, filters, onFiltersChange, header, emptyText }: Props) {
+export function TransactionList({ groupId, items, categories, filters, onFiltersChange, header, emptyText, resetKey, groupNames }: Props) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [selecting, setSelecting] = useState(false);
 
   const all = useMemo(() => items ?? [], [items]);
+
+  // The groups that entries here created, so each of those rows can show what is left in its group.
+  const [groups, setGroups] = useState<GroupWithBalance[]>([]);
+  useEffect(() => {
+    if (!all.some((t) => t.createdGroupId)) {
+      setGroups([]);
+      return;
+    }
+    let alive = true;
+    listGroupsWithBalances().then((gs) => {
+      if (alive) setGroups(gs);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [all]);
   const shown = useMemo(() => applyFilters(all, filters), [all, filters]);
   const filtered = activeFilterCount(filters) > 0;
 
@@ -37,7 +57,7 @@ export function TransactionList({ groupId, items, categories, filters, onFilters
   useEffect(() => {
     setSelected(new Set());
     setSelecting(false);
-  }, [groupId]);
+  }, [groupId, resetKey]);
   useEffect(() => {
     setSelected((current) => keepPresent(current, all.map((t) => t.id)));
   }, [all]);
@@ -50,7 +70,9 @@ export function TransactionList({ groupId, items, categories, filters, onFilters
   const duplicate = () => {
     const rows = all.filter((t) => selected.has(t.id));
     if (rows.length === 0) return;
-    setPendingDuplicate(groupId, rows);
+    // The copies go into the group the rows are in; rows from several groups go into the page's own group.
+    const owners = new Set(rows.map((t) => t.groupId));
+    setPendingDuplicate(owners.size === 1 ? [...owners][0] : groupId, rows);
     stopSelecting();
     router.push("/duplicate");
   };
@@ -75,6 +97,8 @@ export function TransactionList({ groupId, items, categories, filters, onFilters
         renderItem={({ item }) => (
           <TransactionRow
             item={item}
+            createdGroup={createdGroupInfo(groups, item.createdGroupId)}
+            groupName={groupNames?.get(item.groupId)}
             selecting={selecting}
             selected={selected.has(item.id)}
             onPress={() =>

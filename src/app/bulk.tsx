@@ -6,6 +6,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { loadCategories } from "../db/config";
 import { listGroupsWithBalances } from "../db/groups";
+import { resolveHomeGroupId } from "../db/homeGroup";
 import { addEntries } from "../db/transactions";
 import { BULK_HEADER, BULK_TEMPLATE_FILE_NAME, bulkTemplateCsv, parseBulkList } from "../domain/bulkList";
 import { excelToCSV, isExcelBinary } from "../domain/excelReader";
@@ -46,6 +47,7 @@ export default function AddList() {
 
   useEffect(() => {
     let alive = true;
+    if (!group) resolveHomeGroupId().then((id) => alive && setGroupId(id)); // from the Home tabs: the home group
     Promise.all([listGroupsWithBalances(), loadCategories()]).then(([gs, cats]) => {
       if (!alive) return;
       setGroups(gs.filter((g) => g.status === "ACTIVE" || g.id === groupId));

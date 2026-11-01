@@ -24,6 +24,7 @@ import {
 import { CategoriesSection } from "../../ui/CategoriesSection";
 import { CloudBackupSection } from "../../ui/CloudBackupSection";
 import { DataBackupSection } from "../../ui/DataBackupSection";
+import { DevToolsSection } from "../../ui/DevToolsSection";
 import { StatementPasswordsSection } from "../../ui/StatementPasswordsSection";
 import { AiStatus, ActiveAiLine } from "../../ui/ActiveAi";
 import { AppHeader } from "../../ui/Header";
@@ -32,7 +33,7 @@ import { Button, OutlinedInput, TextButton } from "../../ui/forms";
 import { UnlockGate } from "../../ui/UnlockGate";
 import { colors } from "../../ui/theme";
 
-type Section = "payments" | "category" | "ai" | "passwords" | "backup" | "cloud" | "reclassify" | "";
+type Section = "payments" | "category" | "ai" | "passwords" | "backup" | "cloud" | "reclassify" | "dev" | "";
 
 export default function Config() {
   const router = useRouter();
@@ -58,7 +59,7 @@ export default function Config() {
         <Accordion title="Export and Import" open={expanded === "backup"} onToggle={() => toggle("backup")}>
           <DataBackupSection />
         </Accordion>
-        <Accordion title="Cloud backup" open={expanded === "cloud"} onToggle={() => toggle("cloud")}>
+        <Accordion title="Cloud backup and restore" open={expanded === "cloud"} onToggle={() => toggle("cloud")}>
           <CloudBackupSection />
         </Accordion>
         <Accordion
@@ -68,6 +69,12 @@ export default function Config() {
         >
           <ReclassifySection />
         </Accordion>
+        {/* Development builds only: __DEV__ is false in a release build, so this is not shown there. */}
+        {__DEV__ ? (
+          <Accordion title="Developer (dev builds only)" open={expanded === "dev"} onToggle={() => toggle("dev")}>
+            <DevToolsSection />
+          </Accordion>
+        ) : null}
         <Pressable style={[styles.accordion, styles.summary]} onPress={() => router.push("/help")} accessibilityRole="link">
           <T>How it works</T>
           <MaterialIcons name="chevron-right" size={24} color={colors.textSecondary} />

@@ -3,9 +3,10 @@
 //
 // Layout (one header row, then one row per line of data, blocks side by side):
 //   [ transactions ... ] 5 empty columns [ Category List | Subcategory List | Subcategory Description ] 5 empty columns [ Payment Mode List ]
-//   5 empty columns [ Groups Id | Name | Start Date | End Date | Status ]
+//   5 empty columns [ Groups Id | Name | Start Date | End Date | Status | Parent Id | Pinned | Held ]
 // Files without a Subcategory Description column (made before descriptions existed) simply have none.
-// Version 1 files have no Group Id column and no groups block; their transactions all go to Main.
+// Version 1 files have no Group Id column and no groups block; their transactions all go to Main. Files without Parent Id and
+// Pinned (made before groups could sit inside groups) restore every group as a separate one, not pinned.
 // Columns are found by their header names, so reordering them in Excel does not matter.
 // Files from the first version of the app were JSON; those are still read.
 
@@ -50,6 +51,9 @@ export interface BackupGroup {
   startDate: string | null;
   endDate: string | null;
   status: GroupStatus;
+  parentId: string | null; // the group it sits under, if any
+  pinned: boolean;
+  heldPaise: number; // opening income taken from money the parent already has (see domain/groups.ts)
 }
 
 export interface BackupCategory {
@@ -131,7 +135,16 @@ function readGroup(raw: unknown): BackupGroup | null {
   const startDate = isoDateOrNull(raw.startDate);
   const endDate = isoDateOrNull(raw.endDate);
   if (startDate === undefined || endDate === undefined) return null;
-  return { id: raw.id, name: raw.name.trim(), startDate, endDate, status };
+  return {
+    id: raw.id,
+    name: raw.name.trim(),
+    startDate,
+    endDate,
+    status,
+    parentId: optionalString(raw.parentId) ?? null,
+    pinned: raw.pinned === true,
+    heldPaise: typeof raw.heldPaise === "number" && Number.isSafeInteger(raw.heldPaise) && raw.heldPaise > 0 ? raw.heldPaise : 0,
+  };
 }
 
 export interface ParsedBackup {
@@ -278,6 +291,9 @@ const GROUP_COLUMNS = [
   { header: "Groups Start Date", write: (g: BackupGroup) => (g.startDate ? csvDate(g.startDate) : "") },
   { header: "Groups End Date", write: (g: BackupGroup) => (g.endDate ? csvDate(g.endDate) : "") },
   { header: "Groups Status", write: (g: BackupGroup) => cap(g.status) },
+  { header: "Groups Parent Id", write: (g: BackupGroup) => guard(g.parentId) },
+  { header: "Groups Pinned", write: (g: BackupGroup) => (g.pinned ? "Yes" : "") },
+  { header: "Groups Held", write: (g: BackupGroup) => (g.heldPaise > 0 ? rupees(g.heldPaise) : "") },
 ];
 
 export function serializeBackup(backup: Backup): string {
@@ -382,7 +398,7 @@ function parseCsvBackup(text: string): ParsedBackup {
     const method = cell(row, paymentList);
     if (method) paymentMethods.push(method);
 
-    const [gId, gName, gStart, gEnd, gStatus] = groupCols.map((i) => cell(row, i));
+    const [gId, gName, gStart, gEnd, gStatus, gParent, gPinned, gHeld] = groupCols.map((i) => cell(row, i));
     if (gId || gName) {
       const startDate = gStart ? parseDate(gStart) : null;
       const endDate = gEnd ? parseDate(gEnd) : null;
@@ -393,6 +409,9 @@ function parseCsvBackup(text: string): ParsedBackup {
           startDate,
           endDate,
           status: /^deleted$/i.test(gStatus) ? "DELETED" : /^closed$/i.test(gStatus) ? "CLOSED" : "ACTIVE",
+          parentId: gParent && gParent !== gId ? gParent : null,
+          pinned: /^(yes|true|1)$/i.test(gPinned),
+          heldPaise: gHeld ? Math.max(parseAmountPaise(gHeld) ?? 0, 0) : 0,
         });
       } else skipped++;
     }

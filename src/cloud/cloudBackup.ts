@@ -16,7 +16,6 @@ import {
 import {
   cloudBackupUrl,
   clearLastUpload,
-  forgetRecoveryCode,
   hasRecoveryCode,
   loadLastUpload,
   loadRecoveryCode,
@@ -30,14 +29,14 @@ import { deleteBackup, downloadBackup, uploadBackup } from "./client";
 
 export interface CloudStatus {
   configured: boolean; // the server address is set
-  enabled: boolean; // this phone has a recovery code
+  hasCode: boolean; // this phone has a recovery code
   lastBackupAt: string | null;
 }
 
 // Does not read the code itself, so it also works while the web build is locked.
 export async function cloudStatus(): Promise<CloudStatus> {
-  const [enabled, last] = await Promise.all([hasRecoveryCode(), loadLastUpload()]);
-  return { configured: cloudBackupUrl() !== null, enabled, lastBackupAt: last?.at ?? null };
+  const [hasCode, last] = await Promise.all([hasRecoveryCode(), loadLastUpload()]);
+  return { configured: cloudBackupUrl() !== null, hasCode, lastBackupAt: last?.at ?? null };
 }
 
 function serverUrl(): string {
@@ -48,15 +47,15 @@ function serverUrl(): string {
 
 async function codeOnThisPhone(): Promise<string> {
   const code = await loadRecoveryCode();
-  if (!code) throw new CloudBackupError("Turn on cloud backup first.");
+  if (!code) throw new CloudBackupError("This phone has no recovery code yet. Back up to the cloud first.");
   return code;
 }
 
 // This phone's recovery code, to show to the owner.
 export const showRecoveryCode = codeOnThisPhone;
 
-// Makes this phone's recovery code the first time; returns the code either way.
-export async function turnOnCloudBackup(): Promise<string> {
+// The first backup on a phone makes its recovery code; after that this returns the same code.
+export async function ensureRecoveryCode(): Promise<string> {
   serverUrl();
   const existing = await loadRecoveryCode();
   if (existing) return existing;
@@ -91,29 +90,20 @@ export interface CloudRestoreResult {
   updatedAt: string | null;
 }
 
-// Adds whatever is missing from the cloud copy to this phone (it never changes what is already here). `typedCode` is the
-// recovery code from another phone; without it this phone's own code is used. A typed code is kept only after it has opened
-// a backup, so later backups from this phone replace that same copy.
-export async function restoreFromCloud(typedCode: string | null): Promise<CloudRestoreResult> {
+// Adds whatever is missing from the cloud copy to this phone (it never changes what is already here). The owner always types
+// the recovery code. The typed code is only used to read that copy: it is not kept, and this phone's own recovery code (if it
+// has one) is not changed. A phone with no code makes its own on its first backup, so the copy restored from stays exactly as
+// it was and the two phones then back up independently.
+export async function restoreFromCloud(typedCode: string): Promise<CloudRestoreResult> {
   const url = serverUrl();
-  const code = typedCode === null ? await codeOnThisPhone() : normalizeRecoveryCode(typedCode);
+  const code = normalizeRecoveryCode(typedCode);
   const keys = deriveKeys(parseRecoveryCode(code));
 
   const found = await downloadBackup(url, keys.id);
-  if (!found) {
-    throw new CloudBackupError(
-      typedCode === null
-        ? "There is no cloud backup for this phone's recovery code yet. Back up first."
-        : "No backup was found for that recovery code. Check the code, and that the other phone has backed up.",
-    );
-  }
+  if (!found) throw new CloudBackupError("No backup was found for that recovery code. Check the code, and that a backup was made with it.");
   const { backup, skipped } = parseBackup(fromUploadBody(found.body, keys));
   const summary = await restoreBackup(backup, skipped);
 
-  if (typedCode !== null && (await loadRecoveryCode()) !== code) {
-    await saveRecoveryCode(code);
-    await clearLastUpload();
-  }
   return { summary, updatedAt: found.updatedAt };
 }
 
@@ -124,6 +114,3 @@ export async function deleteCloudBackup(): Promise<void> {
   await deleteBackup(url, keys.id);
   await clearLastUpload();
 }
-
-// Cloud backup off for this phone: forgets the recovery code. The copy on the server stays and can be restored with the code.
-export const turnOffCloudBackup = forgetRecoveryCode;

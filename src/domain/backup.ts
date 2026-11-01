@@ -4,6 +4,10 @@
 // Layout (one header row, then one row per line of data, blocks side by side):
 //   [ transactions ... ] 5 empty columns [ Category List | Subcategory List | Subcategory Description ] 5 empty columns [ Payment Mode List ]
 //   5 empty columns [ Groups Id | Name | Start Date | End Date | Status | Parent Id | Pinned | Held ]
+//   5 empty columns [ Occasions Id | Title | Date | Status ] 5 empty columns [ Gifts Id | Occasion Id | Occasion | Name | Direction | Type | Value | Unit | Rate | Note | Status | Created | Updated ]
+//   5 empty columns [ Assets Id | Type | Name | Quantity | Unit | Purity | Invested | Acquired | Description | Gift Id | Lender | Ticket | Pledged On | Due On | Loan | Pledge Note | Status | Created | Updated ]
+// Files made before gifts existed have neither block (version 3 added them); they restore with no gifts. Files made before assets
+// existed have no assets block (version 4); they restore with no assets.
 // Files without a Subcategory Description column (made before descriptions existed) simply have none.
 // Version 1 files have no Group Id column and no groups block; their transactions all go to Main. Files without Parent Id and
 // Pinned (made before groups could sit inside groups) restore every group as a separate one, not pinned.
@@ -11,13 +15,15 @@
 // Files from the first version of the app were JSON; those are still read.
 
 import Papa from "papaparse";
+import { ASSET_TYPES, ASSET_UNITS, GOLD_PURITIES, normaliseAsset, type AssetFields, type AssetStatus } from "./assets";
+import { gramsInputText, parseGramsInput, type GiftDirection, type GiftType, type GiftUnit } from "./gifts";
 import { MAIN_GROUP_ID, type GroupStatus } from "./groups";
 import { cleanDescription } from "./masterData";
 import { parseAmountPaise, parseDate } from "./statementParser";
 import { PENDING_AI, fallbackFor } from "./taxonomy";
 
 export const BACKUP_FORMAT = "expense-manager-backup";
-export const BACKUP_VERSION = 2;
+export const BACKUP_VERSION = 4;
 
 export interface BackupTransaction {
   id: string;
@@ -56,6 +62,38 @@ export interface BackupGroup {
   heldPaise: number; // opening income taken from money the parent already has (see domain/groups.ts)
 }
 
+export interface BackupGiftOccasion {
+  id: string;
+  title: string;
+  occasionDate: string;
+  status: "ACTIVE" | "DELETED";
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface BackupGift {
+  id: string;
+  occasionId: string;
+  name: string;
+  direction: GiftDirection;
+  type: GiftType;
+  value: number | null; // paise when unit is INR, milligrams when unit is g
+  unit: GiftUnit;
+  ratePaise: number | null;
+  note: string | null;
+  status: "ACTIVE" | "DELETED";
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface BackupAsset extends Omit<AssetFields, "status"> {
+  id: string;
+  giftId: string | null; // the gift it was added from
+  status: AssetStatus;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
 export interface BackupCategory {
   category: string;
   subcategory: string;
@@ -69,6 +107,9 @@ export interface Backup {
   categories: BackupCategory[];
   paymentMethods: string[];
   groups: BackupGroup[];
+  giftOccasions: BackupGiftOccasion[];
+  gifts: BackupGift[];
+  assets: BackupAsset[];
   transactions: BackupTransaction[];
 }
 
@@ -147,6 +188,100 @@ function readGroup(raw: unknown): BackupGroup | null {
   };
 }
 
+const GIFT_TYPES_SET: readonly GiftType[] = ["cash", "gold", "silver", "other"];
+const isPositiveInt = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v > 0;
+
+function readGiftOccasion(raw: unknown): BackupGiftOccasion | null {
+  if (!isObject(raw) || !nonEmpty(raw.id) || !nonEmpty(raw.title)) return null;
+  const occasionDate = isoDateOrNull(raw.occasionDate);
+  if (!occasionDate) return null;
+  const createdAt = optionalString(raw.createdAt);
+  const updatedAt = optionalString(raw.updatedAt);
+  if (createdAt === undefined || updatedAt === undefined) return null;
+  return { id: raw.id, title: raw.title.trim(), occasionDate, status: raw.status === "DELETED" ? "DELETED" : "ACTIVE", createdAt, updatedAt };
+}
+
+function readGift(raw: unknown): BackupGift | null {
+  if (!isObject(raw) || !nonEmpty(raw.id) || !nonEmpty(raw.occasionId) || !nonEmpty(raw.name)) return null;
+  if (raw.direction !== "received" && raw.direction !== "given") return null;
+  const type = GIFT_TYPES_SET.find((t) => t === raw.type);
+  if (!type) return null;
+  if (raw.value != null && !isPositiveInt(raw.value)) return null;
+  if (raw.ratePaise != null && !isPositiveInt(raw.ratePaise)) return null;
+  const note = optionalString(raw.note);
+  const createdAt = optionalString(raw.createdAt);
+  const updatedAt = optionalString(raw.updatedAt);
+  if (note === undefined || createdAt === undefined || updatedAt === undefined) return null;
+  return {
+    id: raw.id,
+    occasionId: raw.occasionId,
+    name: raw.name.trim(),
+    direction: raw.direction,
+    type,
+    value: (raw.value as number | null | undefined) ?? null,
+    unit: raw.unit === "g" ? "g" : "INR",
+    ratePaise: (raw.ratePaise as number | null | undefined) ?? null,
+    note,
+    status: raw.status === "DELETED" ? "DELETED" : "ACTIVE",
+    createdAt,
+    updatedAt,
+  };
+}
+
+const ASSET_TYPE_VALUES = ASSET_TYPES.map((t) => t.value);
+const ASSET_UNIT_VALUES = ASSET_UNITS.map((u) => u.value);
+
+function readAsset(raw: unknown): BackupAsset | null {
+  if (!isObject(raw) || !nonEmpty(raw.id) || !nonEmpty(raw.name)) return null;
+  const type = ASSET_TYPE_VALUES.find((t) => t === raw.type);
+  if (!type) return null;
+  const unit = raw.unit == null || raw.unit === "" ? null : (ASSET_UNIT_VALUES.find((u) => u === raw.unit) ?? undefined);
+  if (unit === undefined) return null;
+  if (raw.quantity != null && !isPositiveInt(raw.quantity)) return null;
+  if (raw.investedPaise != null && !isPositiveInt(raw.investedPaise)) return null;
+  if (raw.loanPaise != null && !isPositiveInt(raw.loanPaise)) return null;
+  const purityK = raw.purityK == null ? null : (GOLD_PURITIES.find((k) => k === raw.purityK) ?? undefined);
+  if (purityK === undefined) return null;
+
+  const acquiredDate = isoDateOrNull(raw.acquiredDate);
+  const pledgedDate = isoDateOrNull(raw.pledgedDate);
+  const dueDate = isoDateOrNull(raw.dueDate);
+  if (acquiredDate === undefined || pledgedDate === undefined || dueDate === undefined) return null;
+
+  const strings = {
+    description: optionalString(raw.description),
+    giftId: optionalString(raw.giftId),
+    lender: optionalString(raw.lender),
+    ticketNo: optionalString(raw.ticketNo),
+    pledgeNote: optionalString(raw.pledgeNote),
+    createdAt: optionalString(raw.createdAt),
+    updatedAt: optionalString(raw.updatedAt),
+  };
+  if (Object.values(strings).some((v) => v === undefined)) return null;
+  const s = strings as Record<keyof typeof strings, string | null>;
+
+  const status: AssetStatus = raw.status === "DELETED" ? "DELETED" : raw.status === "SOLD" ? "SOLD" : "ACTIVE";
+  // Same rules as the form: the unit follows the type, and only gold has purity or a pledge.
+  const fields = normaliseAsset({
+    type,
+    name: raw.name,
+    status: status === "SOLD" ? "SOLD" : "ACTIVE",
+    quantity: (raw.quantity as number | null | undefined) ?? null,
+    unit,
+    purityK,
+    investedPaise: (raw.investedPaise as number | null | undefined) ?? null,
+    acquiredDate,
+    description: s.description,
+    lender: s.lender,
+    ticketNo: s.ticketNo,
+    pledgedDate,
+    dueDate,
+    loanPaise: (raw.loanPaise as number | null | undefined) ?? null,
+    pledgeNote: s.pledgeNote,
+  });
+  return { ...fields, id: raw.id, giftId: s.giftId, status, createdAt: s.createdAt, updatedAt: s.updatedAt };
+}
+
 export interface ParsedBackup {
   backup: Backup;
   skipped: number;
@@ -206,6 +341,26 @@ function parseJsonBackup(text: string): ParsedBackup {
     else skipped++;
   }
 
+  const giftOccasions: BackupGiftOccasion[] = [];
+  for (const item of Array.isArray(raw.giftOccasions) ? raw.giftOccasions : []) {
+    const o = readGiftOccasion(item);
+    if (o) giftOccasions.push(o);
+    else skipped++;
+  }
+  const gifts: BackupGift[] = [];
+  for (const item of Array.isArray(raw.gifts) ? raw.gifts : []) {
+    const g = readGift(item);
+    if (g) gifts.push(g);
+    else skipped++;
+  }
+
+  const assets: BackupAsset[] = [];
+  for (const item of Array.isArray(raw.assets) ? raw.assets : []) {
+    const a = readAsset(item);
+    if (a) assets.push(a);
+    else skipped++;
+  }
+
   return {
     backup: {
       format: BACKUP_FORMAT,
@@ -214,6 +369,9 @@ function parseJsonBackup(text: string): ParsedBackup {
       categories,
       paymentMethods,
       groups,
+      giftOccasions,
+      gifts,
+      assets,
       transactions,
     },
     skipped,
@@ -296,6 +454,58 @@ const GROUP_COLUMNS = [
   { header: "Groups Held", write: (g: BackupGroup) => (g.heldPaise > 0 ? rupees(g.heldPaise) : "") },
 ];
 
+// The gifts blocks, after the groups.
+const GIFT_OCCASION_COLUMNS = [
+  { header: "Occasions Id", write: (o: BackupGiftOccasion) => guard(o.id) },
+  { header: "Occasions Title", write: (o: BackupGiftOccasion) => guard(o.title) },
+  { header: "Occasions Date", write: (o: BackupGiftOccasion) => csvDate(o.occasionDate) },
+  { header: "Occasions Status", write: (o: BackupGiftOccasion) => cap(o.status) },
+];
+
+// The value is written in its own unit (rupees, or grams), the unit next to it.
+const giftValueText = (g: BackupGift): string => (g.value === null ? "" : g.unit === "g" ? gramsInputText(g.value) : rupees(g.value));
+
+const GIFT_COLUMNS = [
+  { header: "Gifts Id", write: (g: BackupGift) => guard(g.id) },
+  { header: "Gifts Occasion Id", write: (g: BackupGift) => guard(g.occasionId) },
+  { header: "Gifts Occasion", write: (g: BackupGift, titles: ReadonlyMap<string, string>) => guard(titles.get(g.occasionId) ?? "") },
+  { header: "Gifts Name", write: (g: BackupGift) => guard(g.name) },
+  { header: "Gifts Direction", write: (g: BackupGift) => cap(g.direction) },
+  { header: "Gifts Type", write: (g: BackupGift) => cap(g.type) },
+  { header: "Gifts Value", write: giftValueText },
+  { header: "Gifts Unit", write: (g: BackupGift) => g.unit },
+  { header: "Gifts Rate", write: (g: BackupGift) => (g.ratePaise === null ? "" : rupees(g.ratePaise)) },
+  { header: "Gifts Note", write: (g: BackupGift) => guard(g.note) },
+  { header: "Gifts Status", write: (g: BackupGift) => cap(g.status) },
+  { header: "Gifts Created", write: (g: BackupGift) => g.createdAt ?? "" },
+  { header: "Gifts Updated", write: (g: BackupGift) => g.updatedAt ?? "" },
+];
+
+// The assets block, after the gifts. Quantity is written in its own unit (grams, units, cent...), the unit next to it.
+const assetQuantityText = (a: BackupAsset): string => (a.quantity === null ? "" : gramsInputText(a.quantity));
+
+const ASSET_COLUMNS = [
+  { header: "Assets Id", write: (a: BackupAsset) => guard(a.id) },
+  { header: "Assets Type", write: (a: BackupAsset) => a.type },
+  { header: "Assets Name", write: (a: BackupAsset) => guard(a.name) },
+  { header: "Assets Quantity", write: assetQuantityText },
+  { header: "Assets Unit", write: (a: BackupAsset) => a.unit ?? "" },
+  { header: "Assets Purity", write: (a: BackupAsset) => (a.purityK === null ? "" : String(a.purityK)) },
+  { header: "Assets Invested", write: (a: BackupAsset) => (a.investedPaise === null ? "" : rupees(a.investedPaise)) },
+  { header: "Assets Acquired", write: (a: BackupAsset) => (a.acquiredDate ? csvDate(a.acquiredDate) : "") },
+  { header: "Assets Description", write: (a: BackupAsset) => guard(a.description) },
+  { header: "Assets Gift Id", write: (a: BackupAsset) => guard(a.giftId) },
+  { header: "Assets Lender", write: (a: BackupAsset) => guard(a.lender) },
+  { header: "Assets Ticket", write: (a: BackupAsset) => guard(a.ticketNo) },
+  { header: "Assets Pledged On", write: (a: BackupAsset) => (a.pledgedDate ? csvDate(a.pledgedDate) : "") },
+  { header: "Assets Due On", write: (a: BackupAsset) => (a.dueDate ? csvDate(a.dueDate) : "") },
+  { header: "Assets Loan", write: (a: BackupAsset) => (a.loanPaise === null ? "" : rupees(a.loanPaise)) },
+  { header: "Assets Pledge Note", write: (a: BackupAsset) => guard(a.pledgeNote) },
+  { header: "Assets Status", write: (a: BackupAsset) => cap(a.status) },
+  { header: "Assets Created", write: (a: BackupAsset) => a.createdAt ?? "" },
+  { header: "Assets Updated", write: (a: BackupAsset) => a.updatedAt ?? "" },
+];
+
 export function serializeBackup(backup: Backup): string {
   const blanks = (n: number) => Array<string>(n).fill("");
   const header = [
@@ -308,19 +518,32 @@ export function serializeBackup(backup: Backup): string {
     PAYMENT_LIST,
     ...blanks(GAP_COLUMNS),
     ...GROUP_COLUMNS.map((c) => c.header),
+    ...blanks(GAP_COLUMNS),
+    ...GIFT_OCCASION_COLUMNS.map((c) => c.header),
+    ...blanks(GAP_COLUMNS),
+    ...GIFT_COLUMNS.map((c) => c.header),
+    ...blanks(GAP_COLUMNS),
+    ...ASSET_COLUMNS.map((c) => c.header),
   ];
 
+  const titles = new Map(backup.giftOccasions.map((o) => [o.id, o.title]));
   const count = Math.max(
     backup.transactions.length,
     backup.categories.length,
     backup.paymentMethods.length,
     backup.groups.length,
+    backup.giftOccasions.length,
+    backup.gifts.length,
+    backup.assets.length,
   );
   const rows: string[][] = [header];
   for (let i = 0; i < count; i++) {
     const t = backup.transactions[i];
     const c = backup.categories[i];
     const g = backup.groups[i];
+    const o = backup.giftOccasions[i];
+    const gift = backup.gifts[i];
+    const asset = backup.assets[i];
     rows.push([
       ...(t ? COLUMNS.map((col) => col.write(t)) : blanks(COLUMNS.length)),
       ...blanks(GAP_COLUMNS),
@@ -331,6 +554,12 @@ export function serializeBackup(backup: Backup): string {
       guard(backup.paymentMethods[i] ?? null),
       ...blanks(GAP_COLUMNS),
       ...(g ? GROUP_COLUMNS.map((col) => col.write(g)) : blanks(GROUP_COLUMNS.length)),
+      ...blanks(GAP_COLUMNS),
+      ...(o ? GIFT_OCCASION_COLUMNS.map((col) => col.write(o)) : blanks(GIFT_OCCASION_COLUMNS.length)),
+      ...blanks(GAP_COLUMNS),
+      ...(gift ? GIFT_COLUMNS.map((col) => col.write(gift, titles)) : blanks(GIFT_COLUMNS.length)),
+      ...blanks(GAP_COLUMNS),
+      ...(asset ? ASSET_COLUMNS.map((col) => col.write(asset)) : blanks(ASSET_COLUMNS.length)),
     ]);
   }
   // The BOM makes Excel read the file as UTF-8 (names and notes in other scripts).
@@ -372,6 +601,9 @@ function parseCsvBackup(text: string): ParsedBackup {
   const descriptionList = at(SUBCATEGORY_DESCRIPTION);
   const paymentList = at(PAYMENT_LIST);
   const groupCols = GROUP_COLUMNS.map((c) => at(c.header));
+  const occasionCols = GIFT_OCCASION_COLUMNS.map((c) => at(c.header));
+  const giftCols = GIFT_COLUMNS.map((c) => at(c.header));
+  const assetCols = ASSET_COLUMNS.map((c) => at(c.header));
   const cell = (row: string[], i: number) => (i < 0 ? "" : unguard((row[i] ?? "").trim()));
 
   let skipped = 0;
@@ -379,6 +611,9 @@ function parseCsvBackup(text: string): ParsedBackup {
   const categories: Backup["categories"] = [];
   const paymentMethods: string[] = [];
   const groups: BackupGroup[] = [];
+  const giftOccasions: BackupGiftOccasion[] = [];
+  const gifts: BackupGift[] = [];
+  const assets: BackupAsset[] = [];
   const seen = new Map<string, number>();
 
   for (const row of rows.slice(1)) {
@@ -415,10 +650,83 @@ function parseCsvBackup(text: string): ParsedBackup {
         });
       } else skipped++;
     }
+
+    const [oId, oTitle, oDate, oStatus] = occasionCols.map((i) => cell(row, i));
+    if (oId || oTitle) {
+      const occasion = readGiftOccasion({ id: oId, title: oTitle, occasionDate: oDate ? parseDate(oDate) : null, status: /^deleted$/i.test(oStatus) ? "DELETED" : "ACTIVE" });
+      if (occasion) giftOccasions.push(occasion);
+      else skipped++;
+    }
+
+    // The "Gifts Occasion" title column is for reading in Excel; the occasion is found by its id.
+    const [fId, fOccasionId, , fName, fDirection, fType, fValue, fUnit, fRate, fNote, fStatus, fCreated, fUpdated] = giftCols.map((i) => cell(row, i));
+    if (fId || fOccasionId || fName) {
+      const unit = /^g$/i.test(fUnit) ? "g" : "INR";
+      const value = fValue === "" ? null : unit === "g" ? parseGramsInput(fValue) : parseAmountPaise(fValue);
+      const rate = fRate === "" ? null : parseAmountPaise(fRate);
+      const gift =
+        (fValue === "" || value) && (fRate === "" || rate)
+          ? readGift({
+              id: fId,
+              occasionId: fOccasionId,
+              name: fName,
+              direction: fDirection.toLowerCase(),
+              type: fType.toLowerCase(),
+              value,
+              unit,
+              ratePaise: rate,
+              note: fNote === "" ? null : fNote,
+              status: /^deleted$/i.test(fStatus) ? "DELETED" : "ACTIVE",
+              createdAt: TIMESTAMP.test(fCreated) ? fCreated : null,
+              updatedAt: TIMESTAMP.test(fUpdated) ? fUpdated : null,
+            })
+          : null;
+      if (gift) gifts.push(gift);
+      else skipped++;
+    }
+
+    const [aId, aType, aName, aQuantity, aUnit, aPurity, aInvested, aAcquired, aDescription, aGiftId, aLender, aTicket, aPledgedOn, aDueOn, aLoan, aNote, aStatus, aCreated, aUpdated] =
+      assetCols.map((i) => cell(row, i));
+    if (aId || aName) {
+      const quantity = aQuantity === "" ? null : parseGramsInput(aQuantity);
+      const invested = aInvested === "" ? null : parseAmountPaise(aInvested);
+      const loan = aLoan === "" ? null : parseAmountPaise(aLoan);
+      const acquired = aAcquired === "" ? null : parseDate(aAcquired);
+      const pledgedOn = aPledgedOn === "" ? null : parseDate(aPledgedOn);
+      const dueOn = aDueOn === "" ? null : parseDate(aDueOn);
+      const readable =
+        (aQuantity === "" || quantity) && (aInvested === "" || invested) && (aLoan === "" || loan) &&
+        (aAcquired === "" || acquired) && (aPledgedOn === "" || pledgedOn) && (aDueOn === "" || dueOn);
+      const asset = readable
+        ? readAsset({
+            id: aId,
+            type: aType.toLowerCase().replace(/\s+/g, "_"),
+            name: aName,
+            quantity,
+            unit: aUnit.toLowerCase(),
+            purityK: aPurity === "" ? null : Number(aPurity.replace(/k$/i, "")),
+            investedPaise: invested,
+            acquiredDate: acquired,
+            description: aDescription === "" ? null : aDescription,
+            giftId: aGiftId === "" ? null : aGiftId,
+            lender: aLender === "" ? null : aLender,
+            ticketNo: aTicket === "" ? null : aTicket,
+            pledgedDate: pledgedOn,
+            dueDate: dueOn,
+            loanPaise: loan,
+            pledgeNote: aNote === "" ? null : aNote,
+            status: /^deleted$/i.test(aStatus) ? "DELETED" : /^sold$/i.test(aStatus) ? "SOLD" : "ACTIVE",
+            createdAt: TIMESTAMP.test(aCreated) ? aCreated : null,
+            updatedAt: TIMESTAMP.test(aUpdated) ? aUpdated : null,
+          })
+        : null;
+      if (asset) assets.push(asset);
+      else skipped++;
+    }
   }
 
   return {
-    backup: { format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: "", categories, paymentMethods, groups, transactions },
+    backup: { format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: "", categories, paymentMethods, groups, giftOccasions, gifts, assets, transactions },
     skipped,
   };
 }

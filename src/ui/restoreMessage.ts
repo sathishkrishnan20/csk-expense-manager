@@ -10,6 +10,8 @@ export function describeRestore(r: RestoreSummary): string {
     `${count(r.categoriesAdded, "category", "categories")} and ${count(r.paymentMethodsAdded, "payment mode")} added`,
   ];
   if (r.groupsAdded > 0) parts.push(`${count(r.groupsAdded, "group")} added`);
+  if (r.giftsAdded > 0) parts.push(`${count(r.giftsAdded, "gift")} added`);
+  if (r.assetsAdded > 0) parts.push(`${count(r.assetsAdded, "asset")} added`);
   if (r.skipped > 0) parts.push(`${count(r.skipped, "damaged entry", "damaged entries")} skipped`);
   return `${parts.join(", ")}.`;
 }

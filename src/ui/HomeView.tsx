@@ -21,13 +21,15 @@ import { T } from "./Text";
 import { Button, Chip } from "./forms";
 import { GroupCard } from "./GroupCard";
 import { RowDivider, TransactionRow } from "./TransactionRow";
+import { useAddClearance } from "./AddMenu";
+import { useOpenDrawer } from "./AppDrawer";
 import { colors, fonts, shadow } from "./theme";
 
 const RECENT_COUNT = 5;
 
 // The overview of one group; Main is a group too. Neither has a title bar: the purple block runs to the top of the
-// screen. Main shows its wallet icon there, plus its groups and the first-run welcome card; a group (`groupBar`)
-// shows a back button, its name and an options button instead.
+// screen. Main shows a menu button there (the wallet icon where there is no drawer), plus its groups and the first-run welcome card; a group (`groupBar`)
+// shows a back button, its name, a menu button and an options button instead.
 export interface GroupBar {
   name: string;
   onBack: () => void;
@@ -37,6 +39,8 @@ export interface GroupBar {
 export function HomeView({ groupId, groupBar }: { groupId: string; groupBar?: GroupBar }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const openDrawer = useOpenDrawer();
+  const clearance = useAddClearance();
   const main = groupId === MAIN_GROUP_ID;
   // The Home tab shows the home group (Main unless another was chosen); a group opened from the Groups list has its own bar.
   const homeScreen = !groupBar;
@@ -68,7 +72,7 @@ export function HomeView({ groupId, groupBar }: { groupId: string; groupBar?: Gr
     }, [groupId, main]),
   );
 
-  // Pages of a group live under /groups/<id>; Main's are the tabs.
+  // Pages of a group live under /groups/<id>; Main's are at the top level (/transactions, /charts).
   const transactionsPath = homeScreen ? "/transactions" : `/groups/${groupId}/transactions`;
   const add = (type: "CREDIT" | "DEBIT") => router.push({ pathname: "/add", params: { type, group: groupId } });
   const dates = group ? groupDatesLabel(group, formatLongDate) : null;
@@ -85,14 +89,14 @@ export function HomeView({ groupId, groupBar }: { groupId: string; groupBar?: Gr
 
   return (
     <View style={styles.page}>
-      <ScrollView style={styles.page} contentContainerStyle={{ paddingBottom: 32 }}>
+      <ScrollView style={styles.page} contentContainerStyle={{ paddingBottom: clearance || 32 }}>
         <LinearGradient
           colors={[colors.gradientFrom, colors.gradientTo]}
           start={{ x: 0, y: 0.5 }}
           end={{ x: 1, y: 0.5 }}
           style={[styles.summary, { paddingTop: insets.top + 16 }, shadow.mid]}
         >
-          <View style={[styles.avatarRow, groupBar && styles.avatarRowGroup]}>
+          <View style={[styles.avatarRow, (groupBar || openDrawer) && styles.avatarRowGroup]}>
             {groupBar ? (
               <>
                 <Pressable onPress={groupBar.onBack} style={styles.barButton} hitSlop={8} accessibilityLabel="Back">
@@ -101,14 +105,28 @@ export function HomeView({ groupId, groupBar }: { groupId: string; groupBar?: Gr
                 <T weight="medium" style={styles.groupName} numberOfLines={1}>
                   {groupBar.name}
                 </T>
+                {openDrawer ? (
+                  <Pressable onPress={openDrawer} style={styles.barButton} hitSlop={8} accessibilityRole="button" accessibilityLabel="Open menu">
+                    <MaterialIcons name="menu" size={26} color="#fff" />
+                  </Pressable>
+                ) : null}
                 <Pressable onPress={groupBar.onMenu} style={styles.barButton} hitSlop={8} accessibilityLabel="Group options">
                   <MaterialIcons name="more-vert" size={26} color="#fff" />
                 </Pressable>
               </>
             ) : (
-              <View style={styles.avatar}>
-                <MaterialIcons name="account-balance-wallet" size={24} color={colors.primary} />
-              </View>
+              <>
+                {/* The menu (Assets, Gifts, Groups, ...) opens from here, at the left edge like a group's back button. Where there is no drawer (a wide browser window has the Sidebar) the wallet icon stays instead. */}
+                {openDrawer ? (
+                  <Pressable onPress={openDrawer} style={styles.barButton} hitSlop={8} accessibilityRole="button" accessibilityLabel="Open menu">
+                    <MaterialIcons name="menu" size={26} color="#fff" />
+                  </Pressable>
+                ) : (
+                  <View style={styles.avatar}>
+                    <MaterialIcons name="account-balance-wallet" size={24} color={colors.primary} />
+                  </View>
+                )}
+              </>
             )}
           </View>
           <T style={styles.balanceLabel} numberOfLines={1}>

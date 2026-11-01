@@ -1,4 +1,5 @@
 import { useRouter } from "expo-router";
+import { WithAddButton } from "../../../ui/AddMenu";
 import { useGroupActions } from "../../../ui/GroupHeader";
 import { HomeView } from "../../../ui/HomeView";
 import { useRouteGroupId } from "../../../ui/useRouteGroupId";
@@ -10,9 +11,9 @@ export default function GroupHome() {
   const router = useRouter();
   const { group, openMenu, sheet } = useGroupActions(id);
   return (
-    <>
+    <WithAddButton>
       <HomeView groupId={id} groupBar={{ name: group?.name ?? "", onBack: () => router.navigate("/groups"), onMenu: openMenu }} />
       {sheet}
-    </>
+    </WithAddButton>
   );
 }

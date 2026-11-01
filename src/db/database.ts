@@ -2,7 +2,7 @@ import { Platform } from "react-native";
 import * as SQLite from "expo-sqlite";
 import { DEFAULT_CATEGORIES, DEFAULT_PAYMENT_METHODS, FALLBACK } from "../domain/masterData";
 
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 12;
 
 const SCHEMA = `
 -- A group is a separate ledger (see domain/groups.ts). 'main' holds everything entered before groups existed.
@@ -69,6 +69,61 @@ CREATE TABLE IF NOT EXISTS transactions (
   updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS transactions_date_idx ON transactions (txn_date DESC, created_at DESC);
+
+-- Gifts (schema version 11; see domain/gifts.ts). Information only: not transactions, no category, no AI, no effect on any balance.
+-- An occasion is created from the gift form the first time its name is typed; its date is the date of that first gift.
+CREATE TABLE IF NOT EXISTS gift_occasions (
+  id            TEXT PRIMARY KEY NOT NULL,
+  title         TEXT NOT NULL,
+  occasion_date TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'DELETED')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- One kind of gift per row. value is paise when unit is INR and milligrams when unit is g; rate_paise is the price of a gram that
+-- day (gold and silver). No foreign key on occasion_id: the db layer keeps it valid.
+CREATE TABLE IF NOT EXISTS gift_list (
+  id          TEXT PRIMARY KEY NOT NULL,
+  occasion_id TEXT NOT NULL,
+  name        TEXT NOT NULL,
+  direction   TEXT NOT NULL CHECK (direction IN ('received', 'given')),
+  type        TEXT NOT NULL CHECK (type IN ('cash', 'gold', 'silver', 'other')),
+  value       INTEGER,
+  unit        TEXT NOT NULL DEFAULT 'INR' CHECK (unit IN ('INR', 'g')),
+  rate_paise  INTEGER,
+  note        TEXT,
+  status      TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'DELETED')),
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS gift_list_occasion_idx ON gift_list (occasion_id);
+
+-- Assets (schema version 12; see domain/assets.ts). Information only: not transactions, no AI, no effect on any balance. quantity is
+-- in thousandths of unit (milligrams for gold). A gold row with a lender is pledged ("adagu"), the whole row; there is no pledge history.
+-- gift_id is the gift a row was made from ("Add to assets" on a gold gift), so the same gift cannot be added twice.
+CREATE TABLE IF NOT EXISTS assets (
+  id             TEXT PRIMARY KEY NOT NULL,
+  type           TEXT NOT NULL CHECK (type IN ('gold', 'land', 'mutual_fund', 'other')),
+  name           TEXT NOT NULL,
+  quantity       INTEGER,
+  unit           TEXT CHECK (unit IS NULL OR unit IN ('g', 'units', 'cent', 'acre', 'sqft', 'ground')),
+  purity_k       INTEGER,
+  invested_paise INTEGER,
+  acquired_date  TEXT,
+  description    TEXT,
+  gift_id        TEXT,
+  lender         TEXT,
+  ticket_no      TEXT,
+  pledged_date   TEXT,
+  due_date       TEXT,
+  loan_paise     INTEGER,
+  pledge_note    TEXT,
+  status         TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'SOLD', 'DELETED')),
+  created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS assets_gift_idx ON assets (gift_id);
 `;
 
 // Runs the work in one transaction. Native uses an exclusive transaction; the web build of

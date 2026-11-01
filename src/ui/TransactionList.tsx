@@ -7,6 +7,7 @@ import { createdGroupInfo, type GroupWithBalance } from "../domain/groups";
 import type { CategoryDef } from "../domain/masterData";
 import { keepPresent, selectAll, toggle } from "../domain/selection";
 import { NO_FILTERS, activeFilterCount, applyFilters, type TransactionFilters } from "../domain/transactionFilters";
+import { useAddClearance } from "./AddMenu";
 import { T } from "./Text";
 import { Button, TextButton } from "./forms";
 import { TransactionFiltersPanel } from "./TransactionFilters";
@@ -29,6 +30,7 @@ interface Props {
 // One group's transactions with the filters, and the select-then-Duplicate flow: long-press a row to start
 // selecting, tick rows (or "Select all" for everything the filters show), then Duplicate.
 export function TransactionList({ groupId, items, categories, filters, onFiltersChange, header, emptyText, resetKey, groupNames }: Props) {
+  const clearance = useAddClearance();
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [selecting, setSelecting] = useState(false);
@@ -114,7 +116,7 @@ export function TransactionList({ groupId, items, categories, filters, onFilters
           />
         )}
         ItemSeparatorComponent={RowDivider}
-        contentContainerStyle={{ paddingBottom: 32 }}
+        contentContainerStyle={{ paddingBottom: clearance || 32 }}
         ListHeaderComponent={
           <>
             {header}

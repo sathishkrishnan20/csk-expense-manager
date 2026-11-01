@@ -101,7 +101,7 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
         },
         {
           bullets: [
-            "Open a group from the Groups strip on Home. It works like Main: its own bottom tabs (Overview, Transactions, Charts), the same + button for Credit, Debit and Import, and a Main tab to go back. Everything you add or import there goes into that group.",
+            "Open a group from the Groups strip on Home. It works like Main: the same pages (Overview, Transactions, Charts) in the menu button at the top, the same + button for Credit, Debit and Import, and Main in that menu to go back. Everything you add or import there goes into that group.",
             "When you import, the Import screen shows which group it is going into: every row in the file goes into that group, whether it is an expense, an income or a transfer.",
             "A group's balance is its own incomes minus its own expenses, plus the balances of the groups under it. So a group inside \"Nov Month Expenses\" counts in Nov's balance, and Nov counts in Main's Account Balance. Put salary in Main and everything else in groups, and Main shows what is left. The Income and Expenses cards on a group also include everything under it, so an expense added in a subgroup shows in every group above it, and income minus expenses is the balance. (An entry that created a group counts as an expense in the parent and its opening income counts as income in the group, so both cards include that amount; the balance is unaffected.) The Transactions list of each group shows only its own entries. A group set to \"None (kept separate)\", such as a second bank account, stays out of Main's balance.",
             "Adding an entry? Tick \"Create a group for this entry\" to make a group at the same time, in Main or inside any group. The entry stays where it is and the new group sits under it (a \"Day to day\" entry in Nov Month Expenses can create a Day to day group under Nov). The group is named Category - Subcategory (or the description), starts on the entry's date, ends on the last day of that month, and starts with an income equal to the amount. If the entry is an expense, that income cancels the expense in the group above. If the entry is an income, the group shows the amount to spend, but the group above still counts that money only once (so a ₹2.5 lakh income and a group made from it show ₹2.5 lakh in Main, not ₹5 lakh). Everything is filled in for you and can be changed, and the group can be edited later from its options button.",
@@ -114,6 +114,44 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
         },
         {
           text: "To repeat entries, such as monthly rent or EMIs: touch and hold a row in Transactions (or in a group), tick more rows, use Select all to take everything the filters show, then Duplicate. Choose how many months later, or one date for all; the copies go into the same group unless you pick another. You can change each amount or leave a row out before creating them. If the original entry created a group, each copy can create a new group too: its name (with the new month added), dates and starting income are shown for you to change, and a name that already exists must be changed first. Untick it to copy only the entry. Copies are hand entries; if you duplicate into Main with a future date and import the bank statement later, the real rows are added as well.",
+        },
+      ],
+    },
+    {
+      id: "gifts",
+      title: "Gifts",
+      blocks: [
+        {
+          text: "A record of gold and money your relatives gave at functions (a marriage, a hair offering and so on), and what you gave back at theirs. It is for your information only: Gifts are not transactions and are never part of any balance, group, chart or category, and nothing in them is sent to the AI.",
+        },
+        {
+          bullets: [
+            "Open Gifts from the menu: tap the menu button at the top left of Home, then Gifts. It lists every gift like Transactions does, newest occasion first.",
+            "Search by name, occasion or what was given (typing a person's name lists everything they gave and received), or filter by occasion and Received / Given.",
+            "Add gift: pick the occasion, or choose + New occasion and type its name. A new occasion takes the date you enter as its date, and later gifts in it show that date, locked. To change it, tap Change the occasion date; that moves every gift in the occasion.",
+            "Each gift is Received or Given, and one kind of thing: Cash, Gold, Silver or Other. Gold and silver are in grams (or a rupee worth, such as 2000 worth of silver), and you can note the price per gram that day to see what it was worth then. For a gift of two things, such as cash and a ring, add two entries. Save & next keeps the occasion for the next person.",
+            "Import list brings in a notebook or sheet in one go. Paste it, or choose a CSV or Excel file: a line with just a name is a heading (an occasion), and the lines under it are a name and a gift (\"Kannaki 3 gram gold\", \"Ramesh 100000Rs\", \"Nisha Bangle\"). You can fix each occasion's name, date and Received / Given, and leave gifts out, before saving. A weight like 1G is read as gold, and a gift it cannot read (such as 1000 or 500) is kept as a note for you to fix.",
+            "Gifts are included in Export and in Cloud backup.",
+          ],
+        },
+      ],
+    },
+    {
+      id: "assets",
+      title: "Assets",
+      blocks: [
+        {
+          text: "A record of what you own: gold, land, mutual funds and anything else. It is for your information only: Assets are not transactions and are never part of any balance, group, chart or category, nothing in them is sent to the AI, and nothing is valued (you note what you paid, not what it is worth now).",
+        },
+        {
+          bullets: [
+            "Open Assets from the menu: tap the menu button at the top left of Home, then Assets. Search by name, lender or description, filter by type, and choose Holding, Pledged, Sold or All.",
+            "Add asset: pick the type, then the name and, if you want, the quantity, the amount paid, the date and a description. Gold is in grams (with its purity, 22K for example), land in cent, acre, sq ft or ground, and a mutual fund in units. Add each physical piece as its own entry. Save & next keeps the type for the next one.",
+            "Pledged (adagu): on a gold entry, set Pledged to Yes and enter who it is pledged to; that is the only thing required. The ticket number, the pledged and due dates, the loan amount and a purpose or note are optional. The whole piece counts as pledged and shows in amber on its card, with how many days are left to the due date. When you take it back, set Pledged to No.",
+            "On a gold gift you received, Add to assets starts an asset from it with the weight and the giver filled in. A gift can be added only once; after that the gift shows In your assets, and opens it.",
+            "Mutual funds, NPS and similar holdings cannot be read from any app or API, so note what you invested yourself and look up today's value at your bank or fund provider.",
+            "Assets are included in Export and in Cloud backup.",
+          ],
         },
       ],
     },
@@ -205,9 +243,9 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
       blocks: [
         {
           bullets: [
-            "Config > Export and Import > Export saves everything (transactions, groups, categories, payment modes) as one CSV file" +
+            "Config > Export and Import > Export saves everything (transactions, groups, gifts, assets, categories, payment modes) as one CSV file" +
               (web ? ", downloaded by the browser." : ", using the share sheet (Save to Files, AirDrop)."),
-            "Open it in Excel: your transactions are on the left, then your category list, then your payment modes, then your groups, separated by empty columns. Each transaction's Group Id says which group it belongs to. Keep the column headings as they are.",
+            "Open it in Excel: your transactions are on the left, then your category list, then your payment modes, then your groups, then your gifts, then your assets, separated by empty columns. Each transaction's Group Id says which group it belongs to. Keep the column headings as they are.",
             "Import adds whatever is missing from such a file. It never changes or removes what is already here, so it is safe to run twice. You can add rows in Excel before importing; leave Category and Subcategory empty to have the AI fill them in later.",
             "Your API key is not part of the file. Enter it again on the new device.",
             "Export now and then, or use Cloud backup below. Export is also how you move data between the phone and a browser.",

@@ -7,6 +7,7 @@ import { resolveHomeGroupId } from "../db/homeGroup";
 import { saveHomeGroupId } from "../settings/homeGroup";
 import { MAIN_GROUP_ID, isMainGroup, type GroupWithBalance } from "../domain/groups";
 import { confirmAction } from "../platform/dialogs";
+import { useOpenDrawer } from "./AppDrawer";
 import { AppHeader } from "./Header";
 import { T } from "./Text";
 import { Sheet } from "./forms";
@@ -127,15 +128,23 @@ export function useGroupActions(groupId: string) {
 export function GroupHeader({ groupId }: { groupId: string }) {
   const router = useRouter();
   const { group, openMenu, sheet } = useGroupActions(groupId);
+  const openDrawer = useOpenDrawer();
   return (
     <>
       <AppHeader
         title={group?.name ?? "Group"}
         onBack={() => router.navigate("/groups")}
         right={
-          <Pressable onPress={openMenu} hitSlop={8} style={styles.menuButton} accessibilityLabel="Group options">
-            <MaterialIcons name="more-vert" size={24} color="#fff" />
-          </Pressable>
+          <>
+            {openDrawer ? (
+              <Pressable onPress={openDrawer} hitSlop={8} style={styles.menuButton} accessibilityRole="button" accessibilityLabel="Open menu">
+                <MaterialIcons name="menu" size={24} color="#fff" />
+              </Pressable>
+            ) : null}
+            <Pressable onPress={openMenu} hitSlop={8} style={styles.menuButton} accessibilityLabel="Group options">
+              <MaterialIcons name="more-vert" size={24} color="#fff" />
+            </Pressable>
+          </>
         }
       />
       {sheet}

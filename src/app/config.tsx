@@ -2,14 +2,14 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import { addPaymentMethod, loadPaymentMethods, removePaymentMethod } from "../../db/config";
-import { countReclassifyCandidates, countUnresolved, retryUnresolved } from "../../db/transactions";
-import { runReclassify } from "../../import/services";
-import { suggestionCount } from "../../import/suggestionStore";
-import { DEFAULT_OLLAMA_URL, PROVIDER_LABEL, providerNeedsKey, type Provider } from "../../llm/providers";
-import { confirmAction } from "../../platform/dialogs";
-import { secureStorageLabel } from "../../platform/secureStorage";
-import { useSecureLock } from "../../platform/useSecureLock";
+import { addPaymentMethod, loadPaymentMethods, removePaymentMethod } from "../db/config";
+import { countReclassifyCandidates, countUnresolved, retryUnresolved } from "../db/transactions";
+import { runReclassify } from "../import/services";
+import { suggestionCount } from "../import/suggestionStore";
+import { DEFAULT_OLLAMA_URL, PROVIDER_LABEL, providerNeedsKey, type Provider } from "../llm/providers";
+import { confirmAction } from "../platform/dialogs";
+import { secureStorageLabel } from "../platform/secureStorage";
+import { useSecureLock } from "../platform/useSecureLock";
 import {
   hasApiKey,
   loadApiKey,
@@ -20,67 +20,73 @@ import {
   saveModel,
   saveOllamaUrl,
   saveProvider,
-} from "../../settings/settings";
-import { CategoriesSection } from "../../ui/CategoriesSection";
-import { CloudBackupSection } from "../../ui/CloudBackupSection";
-import { DataBackupSection } from "../../ui/DataBackupSection";
-import { DevToolsSection } from "../../ui/DevToolsSection";
-import { StatementPasswordsSection } from "../../ui/StatementPasswordsSection";
-import { AiStatus, ActiveAiLine } from "../../ui/ActiveAi";
-import { AppHeader } from "../../ui/Header";
-import { T } from "../../ui/Text";
-import { Button, OutlinedInput, TextButton } from "../../ui/forms";
-import { UnlockGate } from "../../ui/UnlockGate";
-import { colors } from "../../ui/theme";
+} from "../settings/settings";
+import { CategoriesSection } from "../ui/CategoriesSection";
+import { CloudBackupSection } from "../ui/CloudBackupSection";
+import { DataBackupSection } from "../ui/DataBackupSection";
+import { DevToolsSection } from "../ui/DevToolsSection";
+import { StatementPasswordsSection } from "../ui/StatementPasswordsSection";
+import { AiStatus, ActiveAiLine } from "../ui/ActiveAi";
+import { WithAddButton, useAddClearance } from "../ui/AddMenu";
+import { AppHeader } from "../ui/Header";
+import { T } from "../ui/Text";
+import { Button, OutlinedInput, TextButton } from "../ui/forms";
+import { UnlockGate } from "../ui/UnlockGate";
+import { useTabBack } from "../ui/useGoBack";
+import { colors } from "../ui/theme";
 
 type Section = "payments" | "category" | "ai" | "passwords" | "backup" | "cloud" | "reclassify" | "dev" | "";
 
 export default function Config() {
   const router = useRouter();
+  const clearance = useAddClearance();
+  const goBack = useTabBack();
   const [expanded, setExpanded] = useState<Section>("payments");
   const toggle = (section: Section) => setExpanded(expanded === section ? "" : section);
 
   return (
-    <View style={styles.page}>
-      <AppHeader title="Config" />
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
-        <Accordion title="Payment Modes" open={expanded === "payments"} onToggle={() => toggle("payments")}>
-          <PaymentModes />
-        </Accordion>
-        <Accordion title="Categories" open={expanded === "category"} onToggle={() => toggle("category")}>
-          <CategoriesSection />
-        </Accordion>
-        <Accordion title="AI" open={expanded === "ai"} onToggle={() => toggle("ai")}>
-          <AiSection />
-        </Accordion>
-        <Accordion title="Statement passwords" open={expanded === "passwords"} onToggle={() => toggle("passwords")}>
-          <StatementPasswordsSection />
-        </Accordion>
-        <Accordion title="Export and Import" open={expanded === "backup"} onToggle={() => toggle("backup")}>
-          <DataBackupSection />
-        </Accordion>
-        <Accordion title="Cloud backup and restore" open={expanded === "cloud"} onToggle={() => toggle("cloud")}>
-          <CloudBackupSection />
-        </Accordion>
-        <Accordion
-          title="Re-classify Uncategorised"
-          open={expanded === "reclassify"}
-          onToggle={() => toggle("reclassify")}
-        >
-          <ReclassifySection />
-        </Accordion>
-        {/* Development builds only: __DEV__ is false in a release build, so this is not shown there. */}
-        {__DEV__ ? (
-          <Accordion title="Developer (dev builds only)" open={expanded === "dev"} onToggle={() => toggle("dev")}>
-            <DevToolsSection />
+    <WithAddButton>
+      <View style={styles.page}>
+        <AppHeader onBack={goBack} title="Config" />
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: clearance || 40 }}>
+          <Accordion title="Payment Modes" open={expanded === "payments"} onToggle={() => toggle("payments")}>
+            <PaymentModes />
           </Accordion>
-        ) : null}
-        <Pressable style={[styles.accordion, styles.summary]} onPress={() => router.push("/help")} accessibilityRole="link">
-          <T>How it works</T>
-          <MaterialIcons name="chevron-right" size={24} color={colors.textSecondary} />
-        </Pressable>
-      </ScrollView>
-    </View>
+          <Accordion title="Categories" open={expanded === "category"} onToggle={() => toggle("category")}>
+            <CategoriesSection />
+          </Accordion>
+          <Accordion title="AI" open={expanded === "ai"} onToggle={() => toggle("ai")}>
+            <AiSection />
+          </Accordion>
+          <Accordion title="Statement passwords" open={expanded === "passwords"} onToggle={() => toggle("passwords")}>
+            <StatementPasswordsSection />
+          </Accordion>
+          <Accordion title="Export and Import" open={expanded === "backup"} onToggle={() => toggle("backup")}>
+            <DataBackupSection />
+          </Accordion>
+          <Accordion title="Cloud backup and restore" open={expanded === "cloud"} onToggle={() => toggle("cloud")}>
+            <CloudBackupSection />
+          </Accordion>
+          <Accordion
+            title="Re-classify Uncategorised"
+            open={expanded === "reclassify"}
+            onToggle={() => toggle("reclassify")}
+          >
+            <ReclassifySection />
+          </Accordion>
+          {/* Development builds only: __DEV__ is false in a release build, so this is not shown there. */}
+          {__DEV__ ? (
+            <Accordion title="Developer (dev builds only)" open={expanded === "dev"} onToggle={() => toggle("dev")}>
+              <DevToolsSection />
+            </Accordion>
+          ) : null}
+          <Pressable style={[styles.accordion, styles.summary]} onPress={() => router.push("/help")} accessibilityRole="link">
+            <T>How it works</T>
+            <MaterialIcons name="chevron-right" size={24} color={colors.textSecondary} />
+          </Pressable>
+        </ScrollView>
+      </View>
+    </WithAddButton>
   );
 }
 

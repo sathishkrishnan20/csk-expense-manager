@@ -8,6 +8,7 @@ import {
   parseBackup,
   serializeBackup,
   type Backup,
+  type BackupAsset,
   type BackupTransaction,
 } from "../../src/domain/backup";
 
@@ -45,6 +46,9 @@ const backup = (over: Partial<Backup> = {}): Backup => ({
   categories: [{ category: "Food", subcategory: "Groceries" }],
   paymentMethods: ["Cash", "UPI"],
   groups: [],
+  giftOccasions: [],
+  gifts: [],
+  assets: [],
   transactions: [tx()],
   ...over,
 });
@@ -139,16 +143,23 @@ test("CSV layout: transactions, 5 empty columns, category list, 5 empty columns,
   assert.equal(header[list + 2], "Subcategory Description");
   assert.deepEqual(header.slice(list + 3, list + 8), ["", "", "", "", ""]);
   assert.equal(header[list + 8], "Payment Mode List");
-  // then 5 empty columns and the five columns of the groups block
+  // then 5 empty columns and the groups block (8 columns), 5 empty columns and the occasions block (4), 5 empty columns and the gifts block (13)
   assert.deepEqual(header.slice(list + 9, list + 14), ["", "", "", "", ""]);
   assert.equal(header[list + 14], "Groups Id");
-  assert.equal(header.length, list + 22);
+  assert.deepEqual(header.slice(list + 22, list + 27), ["", "", "", "", ""]);
+  assert.equal(header[list + 27], "Occasions Id");
+  assert.deepEqual(header.slice(list + 31, list + 36), ["", "", "", "", ""]);
+  assert.equal(header[list + 36], "Gifts Id");
+  // then 5 empty columns and the assets block (19)
+  assert.deepEqual(header.slice(list + 49, list + 54), ["", "", "", "", ""]);
+  assert.equal(header[list + 54], "Assets Id");
+  assert.equal(header.length, list + 73);
   assert.deepEqual(header.slice(0, 5), ["Date", "Type", "Amount", "Category", "Subcategory"]);
 
   // 1 transaction but 3 payment modes: later rows have empty transaction cells.
   assert.equal(lines.length, 1 + 3); // header + one row per payment mode
   assert.match(lines[1], /^23-Oct-2026,Debit,1355\.00,Personal,Clothing,SATHISH KR,UPI,for dresse,2553\.65,Active,/);
-  assert.match(lines[3], new RegExp(`^,{${list + 8}}Card,{13}$`));
+  assert.match(lines[3], new RegExp(`^,{${list + 8}}Card,{64}$`));
 });
 
 test("CSV: text that Excel would run as a formula is protected and restored", () => {
@@ -250,10 +261,10 @@ test("CSV and JSON: a group's parent and pin survive, and an older file restores
   assert.ok(csv.includes("Groups Parent Id") && csv.includes("Groups Pinned"));
 
   // a file made before groups could sit inside groups: no such columns
-  const old = serializeBackup(original)
-    .split("\r\n")
-    .map((line) => line.split(",").slice(0, -3).join(","))
-    .join("\r\n");
+  const dropped = new Set(["Groups Parent Id", "Groups Pinned", "Groups Held"]);
+  const table = serializeBackup(original).split("\r\n").map((line) => line.split(","));
+  const keep = table[0].map((h) => !dropped.has(h));
+  const old = table.map((cells) => cells.filter((_, i) => keep[i]).join(",")).join("\r\n");
   const restored = parseBackup(old).backup.groups;
   assert.equal(restored.length, 3);
   assert.ok(restored.every((g) => g.parentId === null && g.pinned === false && g.heldPaise === 0));
@@ -329,4 +340,117 @@ test("a JSON backup's category description is read and tidied", () => {
     { category: "Food", subcategory: "Snacks", description: "tea and bakes" },
     { category: "Food", subcategory: "Fruits" },
   ]);
+});
+
+test("gifts: occasions and gifts survive CSV and JSON, in rupees and grams, with the price", () => {
+  const original = backup({
+    giftOccasions: [
+      { id: "go-1", title: "Thishika Hair Offering", occasionDate: "2026-06-10", status: "ACTIVE", createdAt: null, updatedAt: null },
+      { id: "go-2", title: "Repaid", occasionDate: "2026-07-01", status: "DELETED", createdAt: null, updatedAt: null },
+    ],
+    gifts: [
+      { id: "gf-1", occasionId: "go-1", name: "Kartheesan", direction: "received", type: "gold", value: 2250, unit: "g", ratePaise: 750000, note: "chain, 22K", status: "ACTIVE", createdAt: null, updatedAt: null },
+      { id: "gf-2", occasionId: "go-1", name: "Kannan", direction: "received", type: "cash", value: 100000, unit: "INR", ratePaise: null, note: null, status: "ACTIVE", createdAt: null, updatedAt: null },
+      { id: "gf-3", occasionId: "go-1", name: "Nisha", direction: "received", type: "other", value: null, unit: "INR", ratePaise: null, note: "Bangle", status: "ACTIVE", createdAt: null, updatedAt: null },
+      { id: "gf-4", occasionId: "go-2", name: "Trikshan", direction: "given", type: "silver", value: 200000, unit: "INR", ratePaise: null, note: null, status: "DELETED", createdAt: null, updatedAt: null },
+    ],
+  });
+  const csv = parseBackup(serializeBackup(original));
+  assert.equal(csv.skipped, 0);
+  assert.deepEqual(csv.backup.giftOccasions, original.giftOccasions);
+  assert.deepEqual(csv.backup.gifts, original.gifts);
+  assert.deepEqual(parseBackup(JSON.stringify(original)).backup.gifts, original.gifts);
+
+  // readable in Excel: the value is in its own unit, with the unit and the occasion's name beside it
+  const rows = csvRows(serializeBackup(original));
+  assert.match(rows[1], /,gf-1,go-1,Thishika Hair Offering,Kartheesan,Received,Gold,2\.25,g,7500\.00,"chain, 22K",Active,/);
+  assert.match(rows[2], /,gf-2,go-1,Thishika Hair Offering,Kannan,Received,Cash,1000\.00,INR,,,Active,/);
+});
+
+test("gifts: a file from before gifts existed restores with none, and damaged gift rows are skipped", () => {
+  const old = serializeBackup(backup())
+    .split("\r\n")
+    .map((line) => line.split(",").slice(0, -46).join(","))
+    .join("\r\n");
+  const read = parseBackup(old);
+  assert.deepEqual(read.backup.gifts, []);
+  assert.deepEqual(read.backup.giftOccasions, []);
+  assert.equal(read.backup.transactions.length, 1);
+
+  const damaged = backup({
+    giftOccasions: [{ id: "go-1", title: "Marriage", occasionDate: "2026-06-10", status: "ACTIVE", createdAt: null, updatedAt: null }],
+    gifts: [
+      { id: "gf-1", occasionId: "go-1", name: "Ravi", direction: "received", type: "gold", value: 3000, unit: "g", ratePaise: null, note: null, status: "ACTIVE", createdAt: null, updatedAt: null },
+    ],
+  });
+  const text = serializeBackup(damaged).replace(",Received,Gold,3,g,", ",Sideways,Gold,3,g,");
+  const result = parseBackup(text);
+  assert.equal(result.skipped, 1);
+  assert.equal(result.backup.gifts.length, 0);
+});
+
+const goldAsset = (over: Partial<BackupAsset> = {}): BackupAsset => ({
+  id: "as-1",
+  type: "gold",
+  name: "Chain",
+  status: "ACTIVE",
+  quantity: 12500,
+  unit: "g",
+  purityK: 22,
+  investedPaise: 7000000,
+  acquiredDate: "2025-06-12",
+  description: "Gift from Kannaki, Marriage",
+  giftId: "gf-1",
+  lender: null,
+  ticketNo: null,
+  pledgedDate: null,
+  dueDate: null,
+  loanPaise: null,
+  pledgeNote: null,
+  createdAt: null,
+  updatedAt: null,
+  ...over,
+});
+
+test("assets: gold, land, funds and a pledged piece survive CSV and JSON", () => {
+  const original = backup({
+    assets: [
+      goldAsset(),
+      goldAsset({ id: "as-2", name: "Bangle", quantity: 8000, giftId: null, description: null, lender: "Muthoot", ticketNo: "4521", pledgedDate: "2026-03-10", dueDate: "2027-03-10", loanPaise: 5000000, pledgeNote: "Land advance, part 1" }),
+      goldAsset({ id: "as-3", type: "land", name: "Sivakasi plot", quantity: 5000, unit: "cent", purityK: null, investedPaise: null, acquiredDate: null, description: "Survey 123/4", giftId: null }),
+      goldAsset({ id: "as-4", type: "mutual_fund", name: "Axis Bluechip", quantity: 482351, unit: "units", purityK: null, investedPaise: 10000000, giftId: null, description: null }),
+      goldAsset({ id: "as-5", name: "Old ring", status: "SOLD", giftId: null, quantity: null }),
+      goldAsset({ id: "as-6", type: "other", name: "NPS", quantity: null, unit: null, purityK: null, giftId: null, status: "DELETED" }),
+    ],
+  });
+  const csv = parseBackup(serializeBackup(original));
+  assert.equal(csv.skipped, 0);
+  assert.deepEqual(csv.backup.assets, original.assets);
+  assert.deepEqual(parseBackup(JSON.stringify(original)).backup.assets, original.assets);
+
+  // readable in Excel: quantity in its own unit, the unit beside it, the pledge on the same row
+  const rows = csvRows(serializeBackup(original));
+  assert.match(rows[1], /,as-1,gold,Chain,12\.5,g,22,70000\.00,12-Jun-2025,"Gift from Kannaki, Marriage",gf-1,,,,,,,Active,/);
+  assert.match(rows[2], /,as-2,gold,Bangle,8,g,22,70000\.00,12-Jun-2025,,,Muthoot,4521,10-Mar-2026,10-Mar-2027,50000\.00,"Land advance, part 1",Active,/);
+});
+
+test("assets: a file from before assets existed restores with none, and damaged asset rows are skipped", () => {
+  const old = serializeBackup(backup({ assets: [goldAsset()] }))
+    .split("\r\n")
+    .map((line) => line.split(",").slice(0, -24).join(","))
+    .join("\r\n");
+  const read = parseBackup(old);
+  assert.deepEqual(read.backup.assets, []);
+  assert.equal(read.skipped, 0);
+
+  const text = serializeBackup(backup({ assets: [goldAsset()] })).replace(",as-1,gold,", ",as-1,jewel,");
+  const result = parseBackup(text);
+  assert.equal(result.skipped, 1);
+  assert.equal(result.backup.assets.length, 0);
+});
+
+test("assets: only gold keeps a pledge, even if a file says otherwise", () => {
+  const land = goldAsset({ id: "as-9", type: "land", unit: "cent", purityK: null, lender: "Bank", loanPaise: 100 });
+  const read = parseBackup(JSON.stringify({ ...backup(), assets: [land] })).backup.assets[0];
+  assert.deepEqual([read.lender, read.loanPaise], [null, null]);
 });

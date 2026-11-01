@@ -2,10 +2,15 @@ import {
   BACKUP_FORMAT,
   BACKUP_VERSION,
   type Backup,
+  type BackupAsset,
   type BackupCategory,
+  type BackupGift,
+  type BackupGiftOccasion,
   type BackupGroup,
   type BackupTransaction,
 } from "../domain/backup";
+import type { AssetStatus, AssetType, AssetUnit } from "../domain/assets";
+import type { GiftDirection, GiftType, GiftUnit } from "../domain/gifts";
 import { MAIN_GROUP_ID } from "../domain/groups";
 import { cleanDescription } from "../domain/masterData";
 import { getDb, inTransaction } from "./database";
@@ -47,6 +52,52 @@ interface GroupRow {
   held_paise: number;
 }
 
+interface GiftOccasionRow {
+  id: string;
+  title: string;
+  occasion_date: string;
+  status: "ACTIVE" | "DELETED";
+  created_at: string;
+  updated_at: string;
+}
+
+interface GiftBackupRow {
+  id: string;
+  occasion_id: string;
+  name: string;
+  direction: GiftDirection;
+  type: GiftType;
+  value: number | null;
+  unit: GiftUnit;
+  rate_paise: number | null;
+  note: string | null;
+  status: "ACTIVE" | "DELETED";
+  created_at: string;
+  updated_at: string;
+}
+
+interface AssetBackupRow {
+  id: string;
+  type: AssetType;
+  name: string;
+  quantity: number | null;
+  unit: AssetUnit | null;
+  purity_k: number | null;
+  invested_paise: number | null;
+  acquired_date: string | null;
+  description: string | null;
+  gift_id: string | null;
+  lender: string | null;
+  ticket_no: string | null;
+  pledged_date: string | null;
+  due_date: string | null;
+  loan_paise: number | null;
+  pledge_note: string | null;
+  status: AssetStatus;
+  created_at: string;
+  updated_at: string;
+}
+
 function toBackupTransaction(r: TransactionRow): BackupTransaction {
   return {
     id: r.id,
@@ -79,13 +130,22 @@ function toBackupTransaction(r: TransactionRow): BackupTransaction {
 // from coming back on the next statement import.
 export async function exportBackup(): Promise<Backup> {
   const db = await getDb();
-  const [categories, methods, transactions, groups] = await Promise.all([
+  const [categories, methods, transactions, groups, giftOccasions, gifts, assets] = await Promise.all([
     db.getAllAsync<{ category: string; subcategory: string; description: string | null }>(
       "SELECT category, subcategory, description FROM categories ORDER BY sort, id",
     ),
     db.getAllAsync<{ name: string }>("SELECT name FROM payment_methods ORDER BY sort"),
     db.getAllAsync<TransactionRow>("SELECT * FROM transactions ORDER BY txn_date, created_at, rowid"),
     db.getAllAsync<GroupRow>("SELECT id, name, start_date, end_date, status, parent_id, pinned, held_paise FROM expense_groups ORDER BY created_at, rowid"),
+    db.getAllAsync<GiftOccasionRow>("SELECT id, title, occasion_date, status, created_at, updated_at FROM gift_occasions ORDER BY created_at, rowid"),
+    db.getAllAsync<GiftBackupRow>(
+      "SELECT id, occasion_id, name, direction, type, value, unit, rate_paise, note, status, created_at, updated_at FROM gift_list ORDER BY created_at, rowid",
+    ),
+    db.getAllAsync<AssetBackupRow>(
+      `SELECT id, type, name, quantity, unit, purity_k, invested_paise, acquired_date, description, gift_id, lender, ticket_no,
+              pledged_date, due_date, loan_paise, pledge_note, status, created_at, updated_at
+       FROM assets ORDER BY created_at, rowid`,
+    ),
   ]);
   return {
     format: BACKUP_FORMAT,
@@ -111,6 +171,55 @@ export async function exportBackup(): Promise<Backup> {
         heldPaise: g.held_paise,
       }),
     ),
+    giftOccasions: giftOccasions.map(
+      (o): BackupGiftOccasion => ({
+        id: o.id,
+        title: o.title,
+        occasionDate: o.occasion_date,
+        status: o.status,
+        createdAt: o.created_at,
+        updatedAt: o.updated_at,
+      }),
+    ),
+    gifts: gifts.map(
+      (g): BackupGift => ({
+        id: g.id,
+        occasionId: g.occasion_id,
+        name: g.name,
+        direction: g.direction,
+        type: g.type,
+        value: g.value,
+        unit: g.unit,
+        ratePaise: g.rate_paise,
+        note: g.note,
+        status: g.status,
+        createdAt: g.created_at,
+        updatedAt: g.updated_at,
+      }),
+    ),
+    assets: assets.map(
+      (a): BackupAsset => ({
+        id: a.id,
+        type: a.type,
+        name: a.name,
+        status: a.status,
+        quantity: a.quantity,
+        unit: a.unit,
+        purityK: a.purity_k,
+        investedPaise: a.invested_paise,
+        acquiredDate: a.acquired_date,
+        description: a.description,
+        giftId: a.gift_id,
+        lender: a.lender,
+        ticketNo: a.ticket_no,
+        pledgedDate: a.pledged_date,
+        dueDate: a.due_date,
+        loanPaise: a.loan_paise,
+        pledgeNote: a.pledge_note,
+        createdAt: a.created_at,
+        updatedAt: a.updated_at,
+      }),
+    ),
     transactions: transactions.map(toBackupTransaction),
   };
 }
@@ -121,6 +230,8 @@ export interface RestoreSummary {
   categoriesAdded: number;
   paymentMethodsAdded: number;
   groupsAdded: number;
+  giftsAdded: number;
+  assetsAdded: number;
   skipped: number;
 }
 
@@ -134,6 +245,8 @@ export async function restoreBackup(backup: Backup, skipped: number): Promise<Re
     categoriesAdded: 0,
     paymentMethodsAdded: 0,
     groupsAdded: 0,
+    giftsAdded: 0,
+    assetsAdded: 0,
     skipped,
   };
 
@@ -173,6 +286,61 @@ export async function restoreBackup(backup: Backup, skipped: number): Promise<Re
     // A group whose parent is in neither the file nor this phone is kept separate, so nothing hangs under a group that is not there.
     await txn.runAsync("UPDATE expense_groups SET parent_id = NULL WHERE parent_id IS NOT NULL AND parent_id NOT IN (SELECT id FROM expense_groups)");
     const known = new Set((await txn.getAllAsync<{ id: string }>("SELECT id FROM expense_groups")).map((g) => g.id));
+
+    // Gifts: occasions first, then the gifts in them. A gift whose occasion is in neither the file nor this phone is skipped.
+    for (const o of backup.giftOccasions) {
+      await txn.runAsync(
+        `INSERT OR IGNORE INTO gift_occasions (id, title, occasion_date, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))`,
+        [o.id, o.title, o.occasionDate, o.status, o.createdAt, o.updatedAt],
+      );
+    }
+    const occasionIds = new Set((await txn.getAllAsync<{ id: string }>("SELECT id FROM gift_occasions")).map((o) => o.id));
+    for (const g of backup.gifts) {
+      if (!occasionIds.has(g.occasionId)) {
+        summary.skipped++;
+        continue;
+      }
+      const r = await txn.runAsync(
+        `INSERT OR IGNORE INTO gift_list
+           (id, occasion_id, name, direction, type, value, unit, rate_paise, note, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))`,
+        [g.id, g.occasionId, g.name, g.direction, g.type, g.value, g.unit, g.ratePaise, g.note, g.status, g.createdAt, g.updatedAt],
+      );
+      summary.giftsAdded += r.changes;
+    }
+
+    // Assets stand alone (gift_id is only a note of where one came from), so each is added unless its id is already here.
+    for (const a of backup.assets) {
+      const r = await txn.runAsync(
+        `INSERT OR IGNORE INTO assets
+           (id, type, name, status, quantity, unit, purity_k, invested_paise, acquired_date, description, gift_id, lender,
+            ticket_no, pledged_date, due_date, loan_paise, pledge_note, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))`,
+        [
+          a.id,
+          a.type,
+          a.name,
+          a.status,
+          a.quantity,
+          a.unit,
+          a.purityK,
+          a.investedPaise,
+          a.acquiredDate,
+          a.description,
+          a.giftId,
+          a.lender,
+          a.ticketNo,
+          a.pledgedDate,
+          a.dueDate,
+          a.loanPaise,
+          a.pledgeNote,
+          a.createdAt,
+          a.updatedAt,
+        ],
+      );
+      summary.assetsAdded += r.changes;
+    }
 
     for (const t of backup.transactions) {
       const r = await txn.runAsync(

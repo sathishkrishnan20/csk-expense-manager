@@ -14,6 +14,7 @@ import { formatRupees, monthRange } from "../domain/format";
 import type { GroupWithBalance } from "../domain/groups";
 import { scopeKey, type GroupScope } from "../domain/groupScope";
 import { notify } from "../platform/dialogs";
+import { useAddClearance } from "./AddMenu";
 import { T } from "./Text";
 import { DateField, InlineSelect } from "./forms";
 import { GroupFilter } from "./GroupFilter";
@@ -44,6 +45,7 @@ function compact(rupees: number): string {
 // Income and expense charts for the groups chosen in the Group filter (the page's own group to begin with; one, several or all). `header` is
 // the page's title bar.
 export function ChartsView({ groupId, header }: { groupId: string; header: ReactNode }) {
+  const clearance = useAddClearance();
   const width = useContentWidth();
   const initial = monthRange(new Date());
   const [start, setStart] = useState(initial.start);
@@ -95,7 +97,7 @@ export function ChartsView({ groupId, header }: { groupId: string; header: React
     <View style={styles.page}>
       {header}
       <GroupFilter groups={allGroups} scope={scope} onChange={setScope} />
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: clearance || 40 }}>
         <View style={styles.filters}>
           <View style={{ flex: 1 }}>
             <DateField

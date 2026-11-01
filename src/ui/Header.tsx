@@ -11,8 +11,7 @@ interface Props {
   right?: ReactNode;
 }
 
-// The purple MUI AppBar. Pages reached from the + menu show a back arrow;
-// the four main tabs do not.
+// The purple MUI AppBar. Every page except Home shows a back arrow; the menu drawer is opened from Home (and inside a group).
 export function AppHeader({ title, onBack, right }: Props) {
   const insets = useSafeAreaInsets();
   return (

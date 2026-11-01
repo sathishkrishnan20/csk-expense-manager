@@ -31,7 +31,7 @@ Typecheck (`npm run typecheck`) is a cheap check you may run before finishing. D
 
 ## Navigation & Routing
 
-- Routes live in `src/app/`: four tabs in `(tabs)` plus `add`, `import` and `help` in the root stack. Tabs use `expo-router/js-tabs` with the custom bar in `src/ui/Footer.tsx` (Expo Router 58 has no React Navigation; see `docs/ARCHITECTURE.md` §5).
+- Routes live in `src/app/`, all as screens of one flat root `Stack` (Home, Transactions, Charts, Config, Assets, Gifts, Groups, `add`, `import`, `help`, ...). There is no tab navigator or bottom bar: pages are reached from the menu drawer (`src/ui/AppDrawer.tsx`) and the floating + button (`src/ui/AddMenu.tsx`). Expo Router 58 has no React Navigation; see `docs/ARCHITECTURE.md` §5.
 - Read `docs/ARCHITECTURE.md` before changing structure, the LLM providers, `app.json` (do not change `slug`), or `metro.config.js`.
 
 ## Building with EAS

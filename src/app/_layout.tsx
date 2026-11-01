@@ -12,6 +12,7 @@ import {
   useFonts,
 } from "@expo-google-fonts/roboto";
 import { getDb } from "../db/database";
+import { AppDrawer } from "../ui/AppDrawer";
 import { Sidebar } from "../ui/Sidebar";
 import { T } from "../ui/Text";
 import { colors } from "../ui/theme";
@@ -51,7 +52,9 @@ export default function RootLayout() {
       <View style={desktop ? styles.shell : styles.phoneFrame}>
         {desktop ? <Sidebar /> : null}
         <View style={styles.fill}>
-          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }} />
+          <AppDrawer>
+            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }} />
+          </AppDrawer>
         </View>
       </View>
     </SafeAreaProvider>
@@ -59,7 +62,8 @@ export default function RootLayout() {
 }
 
 // Built for a phone. In a browser: narrow windows keep the phone layout as a centred column;
-// wide ones (>= 768px) get the web Expense Manager's side drawer with the page filling the rest.
+// wide ones (>= 768px) get the web Expense Manager's side drawer with the page filling the rest. On a phone (and a narrow window)
+// the same list of pages is a drawer that slides over the page from the menu button on Home (ui/AppDrawer.tsx).
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   phoneFrame: { flex: 1, width: "100%", maxWidth: PHONE_COLUMN_MAX_WIDTH, alignSelf: "center" },

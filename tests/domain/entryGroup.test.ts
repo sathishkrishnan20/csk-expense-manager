@@ -5,6 +5,7 @@ import {
   endOfMonth,
   incomeClassFor,
   openingIncomeFor,
+  heldOpening,
   suggestGroup,
   validateNewGroups,
 } from "../../src/domain/entryGroup";
@@ -76,4 +77,17 @@ test("the opening income mirrors the entry as a credit", () => {
     paymentMethod: "UPI",
     description: "Bengaluru",
   });
+});
+
+test("the opening income of a subgroup comes from the group the entry is in", () => {
+  const entry = { txnDate: "2026-11-05", amountPaise: 3000000, paymentMethod: null, payee: "Day to day", description: null };
+  const income = openingIncomeFor(entry, { category: "Income", subcategory: "Account Transfer" }, "Nov Month Expenses");
+  assert.equal(income.payee, "Nov Month Expenses");
+  assert.equal(income.amountPaise, 3000000);
+});
+
+test("an income entry's group opening income is held (not counted again by the parent); an expense's is not", () => {
+  assert.equal(heldOpening("credit", 25000000, true), 25000000);
+  assert.equal(heldOpening("credit", 25000000, false), 0); // no opening income, nothing held
+  assert.equal(heldOpening("debit", 2500000, true), 0); // the parent's expense already cancels it
 });

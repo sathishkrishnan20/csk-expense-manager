@@ -32,9 +32,9 @@ Screens (src/app, Expo Router) read SQLite.
 | Concern | Choice |
 |---|---|
 | App | Expo SDK 58, React Native 0.88, TypeScript. iOS is the target; a web build is supported in code but untested (see "Web" in section 3) |
-| Navigation | Expo Router 58. Tabs come from `expo-router/js-tabs` with a custom `tabBar`; Add/Edit and Import are root-stack screens above the tabs |
+| Navigation | Expo Router 58. **One flat root `Stack`** (`src/app/_layout.tsx`): every page, including Home, Transactions, Charts, Config and a group's pages, is a screen of it and slides in like any other (no tab navigator, no bottom bar). Pages are reached from the menu drawer, and the floating + button is `AddMenu` (`WithAddButton` puts it on each page). Add/Edit and Import are screens of the same stack |
 | Look | Theme values copied from the web app (`src/ui/theme.ts`): primary `#7F3DFF`, gradient `#9061ed` to `#5d3ba2`, income `#00A86B`, expense `#FD3C4A`, Roboto, Georgia for the Home numbers, MUI-style outlined fields and bottom bar |
-| Storage | `expo-sqlite`, file `expenses.db`, schema version 8 |
+| Storage | `expo-sqlite`, file `expenses.db`, schema version 12 |
 | Money | Integer paise; `amount_paise` is always positive and `direction` says which way |
 | API key | iOS Keychain via `expo-secure-store`; AES-GCM-encrypted in browser `localStorage` on web, with the key derived from a passkey (WebAuthn PRF) (`src/platform/secureStorage*.ts`) |
 | LLM | One active provider chosen in Config > AI: Gemini (default, `gemini-3.5-flash-lite`), Claude (`claude-haiku-5-5`), ChatGPT / OpenAI (`gpt-6-luna`, Chat Completions with strict `json_schema`) or Ollama (`llama3.2`, `POST {address}/api/chat` with the schema in `format`, no key). The model name is editable per provider; defaults live in `src/llm/providers.ts` (`MODELS`) |
@@ -251,16 +251,15 @@ its own incomes and expenses and balance. `Main` (id `main`) is the built-in gro
 groups existed; every transaction has a `group_id` (default `main`), and `expense_groups` holds `name`, optional
 `start_date` / `end_date` (labels only, they never limit what a group can hold) and `status` (`ACTIVE`, `CLOSED`,
 `DELETED`; deleting a group soft-deletes its transactions). Groups are created only by the owner. **A group is used exactly like Main**: Home, Transactions and Charts are
-shared views (`src/ui/HomeView.tsx`, `TransactionsView.tsx`, `ChartsView.tsx`) that take a `groupId`; Main's tab
-files render them with `main`, and a group's pages (`src/app/groups/[id]/`, its own `js-tabs` navigator with the same
-`Footer`) render the same views with the group's id. The group's Overview has no title bar, like Main's Home: its purple block carries a
-back button, the name and an options button (edit name and dates, close or reopen, delete; `useGroupActions` in
+shared views (`src/ui/HomeView.tsx`, `TransactionsView.tsx`, `ChartsView.tsx`) that take a `groupId`; Main's
+files (`src/app/index.tsx`, `transactions.tsx`, `charts.tsx`) render them with `main`, and a group's pages (`src/app/groups/[id]/`, plain screens of the root stack with no layout file of their own, no bottom bar, see **App menu**) render the same views with the group's id. The group's Overview has no title bar, like Main's Home: its purple block carries a
+back button, the name, a menu button and an options button (edit name and dates, close or reopen, delete; `useGroupActions` in
 `src/ui/GroupHeader.tsx`); its Transactions and Charts have a title bar (`GroupHeader`) with the same back and options. A group's
-tabs are opened by path, because switching by route key lost the group's id and sent Charts back to the Groups list. The
-`Footer` and the web `Sidebar` take the group from the route, so the + menu (Credit, Debit, Import) adds to the group
+pages are opened by path (the drawer's group menu uses `router.navigate` with the full path), because switching by route key lost the group's id and sent Charts back to the Groups list. The
+`AddMenu` and the web `Sidebar` take the group from the route, so the + menu (Credit, Debit, Import) adds to the group
 you are in. Totals are per group and `groupId` is a **required** parameter of the db queries, so a missed call
-site is a type error; Home's Account Balance is Main only and there is deliberately no combined total (a transfer
-from Main to a group is a debit in one and a credit in the other). **Importing goes into a chosen group**: the
+site is a type error. (Balances now roll up through the group tree, see "Groups inside groups" below; the original
+design had no combined total.) **Importing goes into a chosen group**: the
 Import screen has an "Import into" picker (a group's own Import button presets it) and every row of the file goes
 there, whatever it is. The importer itself is unchanged; `src/import/scopedStore.ts` wraps the store so the dedupe
 key (which is also the row id) is `<groupId>|<bankKey>` for a group and the plain bank key for Main, so existing
@@ -272,7 +271,56 @@ on `group_id` is created after it (not in `SCHEMA`, which also runs on old datab
 from the file falls back to Main. Not built: moving existing rows to another group, and a "Reopen and import"
 prompt (importing into a closed group simply works).
 
-**Create a group for an entry** (schema version 5). A new entry in Main (Add form; not edits, not inside a group) has a "Create a
+**Groups inside groups and pinning** (schema version 9). `expense_groups` gains `parent_id` (the group it sits under; null for
+Main and for a group kept separate) and `pinned`. **A group's balance is its own income minus its own expenses plus the
+balances of its direct subgroups, each of which already includes theirs** (`withRolledUp`, `balanceOf` in
+`src/domain/groups.ts`, tested); `listGroupsWithBalances` returns `inPaise`/`outPaise` (own entries) and `subgroupsPaise`.
+The Income and Expenses cards (and the In/Out on group cards) include everything below the group (`subgroupsInPaise`,
+`subgroupsOutPaise`, `totalInPaise`, `totalOutPaise`), so income - expenses is the balance, and the purple block says "Includes the
+groups under it". The Transactions list and Recent Transactions of a group are still its own entries only. This is what makes the
+owner's usage work: salary is the only income in Main, and everything else sits in groups under Main. A budget entry in a
+parent ("Day to day" 30,000 in Nov) is cancelled by the opening income in the group it created, so only the real spending
+reduces the totals. Closed groups still count (the money was spent); deleted ones do not. Decisions: **existing groups
+keep no parent** at migration, so Main's balance does not change until the owner puts a group under another one; a **new
+group defaults to under Main** (the form's "Sits under" picker also offers "None (kept separate)", for something like a second
+bank account); names stay unique across all groups; a group cannot sit under itself or one of its own subgroups
+(`validateParent`, the picker leaves those out, and `updateGroup` checks again); **closing, reopening and deleting cascade**
+to the subtree (`subtreeIds`; delete asks first and counts the subgroups and entries). The Groups page is a tree
+(`flattenTree`, indented, closed groups in their own section) with a pin button per card. Home's strip (`stripGroups`) shows the
+pinned groups first at any depth, then the groups right under Main or kept separate; inside a group the strip is its own
+subgroups (pinned first) (there is no New group / New subgroup button anywhere: **groups are only created from an entry**, "Create a group for this entry" on Add and in Duplicate; `/groups/edit` is for editing). The group's options menu has Pin to Home, edit (name, dates, parent), close/reopen, delete. "Create a group for this entry" and Duplicate's new-group option
+now work in any group, not only Main: the new group's `parent_id` is the group the entry is in, and its opening income is "from"
+that group's name. Backup adds `Groups Parent Id` and `Groups Pinned` columns after `Groups Status`; older files restore their
+groups as separate and unpinned, and a parent that is in neither the file nor the phone is cleared. Not built: moving an
+existing group's entries, depth limits (none), a breadcrumb on a deep group's page.
+
+**Developer cleanup** (Config > "Developer (dev builds only)", `src/ui/DevToolsSection.tsx`, `src/db/dev.ts`). Rendered only when `__DEV__`
+is true (Expo Go, the dev server), so a release build (`npm run ipa`, `ios:device`) never shows it. One button, after a confirmation, deletes every
+transaction (hard delete, so the same statement can be imported again) and every group except Main, and resets Main (no parent, not
+pinned); categories, payment modes, settings and keys stay. It also empties the in-memory AI suggestions. Not undoable.
+
+**Home group and the Group filter.** The app opens on a configurable **home group** (`src/settings/homeGroup.ts`, plain storage key `home_group`;
+Main when unset). `resolveHomeGroup` (`src/db/homeGroup.ts`) falls back to Main when the saved group is closed or deleted, and
+`useHomeGroup` (`src/ui/useHomeGroup.ts`) re-reads it each time a page is focused. The Home, Transactions and Charts pages
+(`src/app/index.tsx`, `transactions.tsx`, `charts.tsx`) render `HomeView` / `TransactionsView` / `ChartsView` for that group instead of always Main, so Main is now just a
+group: its own page is `/groups/main` (the same `groups/[id]` route, with the options menu limited to Rename and Show on Home, since Main
+is never pinned, closed or deleted). The home group is set with the home icon on each card of the Groups page or "Show on Home" in a group's
+options. On the Home page the Groups strip (`homeStripGroups`) lists the pinned groups, then Main, then the home group's subgroups, then the
+other top-level groups, never the one shown; a group's own page still lists its subgroups. The floating **+**, Import and Add list start
+in the home group when no `?group=` is given (`resolveHomeGroupId`); the Add form also has a Group field for one entry, and the group tabs'
+last item is now "Home". (An earlier "remember the last group picked in Add" default was replaced by this.)
+The **Group filter** (`src/ui/GroupFilter.tsx`, pure logic in `src/domain/groupScope.ts`) is on Transactions and Charts: a `GroupScope` is
+a list of group ids or null for every group, it starts on the page's own group, and ticking groups widens it (at least one stays ticked).
+`listTransactions`, `getTotals` and `getExpensesBy` take a scope (`scopeSql`: `group_id IN (...)` or none). When a list covers several
+groups each row shows its group; Duplicate from such a list copies into the rows' group (or the page's group when they differ). "See All" on
+Home passes `?fresh=` so the page starts on its own group again. The filter is not saved between visits.
+
+**Create a group for an entry** (schema version 5). Balances roll up, so the opening income must not be counted twice. For an **expense** entry the
+parent's expense cancels the group's opening income. For an **income** entry the money stays in the parent, so the group's opening income is
+**held** (`expense_groups.held_paise`, schema version 10, `heldOpening`): it is part of the group's own figures (the group shows it to spend) but left
+out of what the group adds to its parent (`withRolledUp`, capped at the group's own income in case the opening entry was deleted). 2.5L income + a
+group made from it shows 2.5L in Main, not 5L. The version 10 migration back-fills `held_paise` from the income entry that created each existing
+group. The CSV backup has `Groups Held`.
 group for this entry" option. The entry stays in Main, and `addEntries` (`src/db/transactions.ts`) saves, in one db transaction,
 the group, an opening income in it equal to the amount (Income : Account Transfer if the owner still has it, otherwise
 the first Income subcategory; `src/domain/entryGroup.ts`) and the entry, which remembers the group in `transactions.created_group_id`
@@ -306,6 +354,68 @@ uncategorised, pending or unresolved is copied as "Categorise later" so Re-class
 matched against a statement import, so a future-dated copy in Main would be counted twice once the real statement is
 imported; the screen warns about it, and duplicating into a group avoids it.
 
+**Gifts** (schema version 11; `src/domain/gifts.ts`, `src/db/gifts.ts`). Gold and money relatives give at functions (marriage, hair
+offering, ...) and what the owner gives back at theirs, kept **for information only**: two tables of their own, nothing in
+`transactions`, no category, no group, no AI, and nothing that touches any balance, chart or total. Groups were considered first and
+dropped for this: a received gift would have to be an `Income` credit, rolls into balances and the "All groups" totals, and gold has no
+rupee amount. Tables: `gift_occasions` (`id`, `title`, `occasion_date`, `status`) and `gift_list` (`id`, `occasion_id`, `name`,
+`direction` received|given, `type` cash|gold|silver|other, `value`, `unit` INR|g, `rate_paise`, `note`, `status`), soft-deleted like
+transactions, no foreign key (the db layer keeps `occasion_id` valid). **One kind of gift per row** (cash and a ring are two rows).
+`value` is paise when `unit` is INR and **milligrams** when it is g (2.25 g = 2250), so there is no float drift; gold and silver can
+also be a rupee worth ("2000 worth of silver"); `rate_paise` is the optional price of a gram that day, which gives "worth then".
+**Occasions have no screens.** The gift form's Occasion field lists the occasions that have at least one gift; "+ New occasion" types a
+name, and the first gift's date becomes the occasion's date (`resolveOccasion`: the same name ignoring case and spacing is the same
+occasion, so a yearly function needs the year in its name). A later gift shows the occasion's date locked; "Change the occasion date"
+unlocks it and changing it moves the whole occasion (the form says how many gifts). An occasion with no active gifts is not listed. No
+people table: the name is free text, and typing it in the search box finds everything a person gave or received (search matches name,
+occasion, note and the gift text). Editing or deleting an occasion (rename, date, delete) is deliberately not built yet; add a ⋮ menu on
+a section once the owner has used it. Screens: `src/app/gifts.tsx` (flat cards like Transactions, no overview or totals at the top, search,
+occasion and Received/Given filters; `GiftRow`), `gift.tsx` (add/edit, Save & next; every choice - occasion, Received/Given, type, grams or rupees - is a dropdown, not a tab-like selector), `gift-import.tsx`
+and the Gifts item of the app menu (see **App menu**). **Import list**: paste text or
+choose a CSV/Excel file; `parseGiftList` treats a line with one cell followed directly by gift lines as an occasion heading (several in a
+row are joined with " - "), lines with a name and a gift as gifts, and `parseGiftText` reads "3Gram gold", "1.5G Gold", "1G" (gold),
+"100000Rs", "10000" (cash), "2000 worth of silver" and plain words ("Bangle", other); text with digits it cannot read ("1000 or 500") is
+kept as a note with a warning. Headings starting "Repaid"/"Returned" default to Given. Each occasion's name, date and direction can be
+edited in the preview, and a title that already exists adds to it and keeps its date. Backup version 3 adds the two blocks after Groups
+(`Occasions Id|Title|Date|Status`, then `Gifts Id|Occasion Id|Occasion|Name|Direction|Type|Value|Unit|Rate|Note|Status|Created|Updated`;
+Value is in rupees or grams with its Unit beside it); older files restore with no gifts, a gift whose occasion is missing is skipped
+and counted, and the cloud backup carries them because it uses the same CSV. Dev cleanup also empties both tables. Not built: the
+occasion edit/rename/delete menu, a per-person view, a gold rate setting. Holdings are Assets (below).
+
+**App menu** (`src/ui/AppDrawer.tsx`, `menuPages.ts`, `MenuButton.tsx`). On a phone (and a browser window narrower than 768px) a drawer
+slides over the page from the left; the way to open it is the menu button at the top left of the Home tab's purple block
+(`HomeView`, through `useOpenDrawer`; a plain white icon near the left edge like a group's back button; the wallet circle is shown only where there is no drawer). It is **not** shown in a group's page, which keeps its back
+arrow and options button, and swiping from the edge is off on purpose (`swipeEnabled={false}`). Items, in order, from `MENU_PAGES`:
+Home, Transactions, Groups, Charts, Assets, Gifts, Config, How it works; a wide browser window shows the same list in the permanent
+`Sidebar`, so a page is added in one place. **Look:** a purple gradient header with the logo and name, then a white list of flat full-width rows (`MenuButton`: icon and label, and for the current page a light purple background with a purple bar at its left edge); the browser's `Sidebar` adds an "Add" section below a divider. It was first white pill buttons on the gradient, which looked like cards and was replaced. **No bottom bar and no tab navigators.** An earlier version had `js-tabs` layouts for Home/Transactions/Charts/Config (`(tabs)/_layout.tsx`) and for a group's pages (`groups/[id]/_layout.tsx`); with the bar gone they only caused a different, un-animated switch from the stack screens (Assets, Gifts, Groups), so both layouts were deleted and the pages moved up into the root stack (`src/app/index.tsx`, `transactions.tsx`, `charts.tsx`, `config.tsx`; `groups/[id]/index.tsx`, `transactions.tsx`, `charts.tsx`). Addresses did not change (a folder in parentheses never was part of them). Each of those pages is wrapped in `WithAddButton` (`src/ui/AddMenu.tsx`): a full-page, touch-through layer holding `AddMenu align="right"`, so the + button floats at the bottom right over the page, slides with it, and opens Credit, Debit, Import and Add list (it reads the group from the address, `groupIdFromPath`, so on a group page it adds to that group). The layer must fill the page so the button is inside its parent's bounds (iOS ignores touches outside them). **Only Home has the menu button** (its purple block); every other page, including Transactions, Charts, Config, Assets and Gifts, has a back arrow (`useGoBack`: the page before, or Home; Transactions, Charts and Config use `useTabBack`, which gives no arrow in a wide browser window where the Sidebar is), so switching pages means going back to Home and opening the menu again. The exception is a group, whose pages are reached only through the drawer: the Overview's bar and `GroupHeader` show the menu button beside the options button, and the drawer there lists the group's pages. **Inside a group the drawer lists that group's pages** (`groupMenuPages`: Overview, Transactions, Charts, Groups, Main; the same list as the browser's `Sidebar`; the group is read from the address with `groupIdFromPath`), everywhere else it lists `MENU_PAGES`. The pages' lists end with `useAddClearance()` of space (button height, gaps and bottom inset) so the last row is not under the button; it is 0 in a wide browser window. **How it is built:** `AppDrawer` wraps the root
+`Stack` in `_layout.tsx` and renders `Drawer` from `react-native-drawer-layout` (4.2.12), the same panel Expo Router's `expo-router/drawer`
+navigator is made of. The navigator itself was not used: it shows only the screens declared in its layout, so using it would have meant
+moving every route file under a new group folder, and the menu items here are plain links (`router.navigate`) that need no navigator.
+`react-native-drawer-layout`, `react-native-reanimated`, `react-native-worklets` and `react-native-gesture-handler` are therefore
+dependencies (added with `npx expo install`; they are native modules, which Expo Go includes). The `Drawer` brings its own
+`GestureHandlerRootView`; if a future screen uses gestures outside the drawer it needs its own.
+
+**Assets** (schema version 12; `src/domain/assets.ts`, `src/db/assets.ts`). What the owner holds: gold, land, mutual funds and other,
+kept **for information only** in one table `assets` (nothing in `transactions`, no group, no AI, no balance or total, and no valuation:
+there is `invested_paise` but deliberately no current value, because there is no API for gold, MF or NPS holdings and the owner reads
+those off the bank or provider). Columns: `type` gold|land|mutual_fund|other, `name`, `quantity` (**thousandths** of `unit`: milligrams for
+gold, so 2.25 g = 2250, and 482.351 fund units = 482351) with `unit` g|units|cent|acre|sqft|ground (gold is always g, a fund always
+units, land chooses, other has none), `purity_k` (gold), `invested_paise`, `acquired_date`, `description` (free text; it replaces source,
+location, reference and note), `gift_id`, `status` ACTIVE|SOLD|DELETED (no sold date or price), and the pledge. **Pledged gold
+("adagu") is columns on the same row, not a second table, and keeps no history**: a gold row is pledged when `lender` is filled
+(`isPledged`), and the whole row is pledged; each physical piece is its own row so a piece is never part pledged. The other pledge
+fields `ticket_no`, `pledged_date`, `due_date`, `loan_paise` and `pledge_note` (one purpose/note field) are optional; there is no
+interest rate or calculation. Setting Pledged to No clears them all (`normaliseAsset`, used by the form, the db layer and the backup
+reader). The loan is not a transaction. Screens: `src/app/assets.tsx` (flat cards, `AssetRow`; search, a Type dropdown and a Show
+dropdown Holding/Pledged/Sold/All; no totals line), `asset.tsx` (add/edit; every choice is a dropdown; for gold a Pledged dropdown
+reveals Lender (required), Ticket, Pledged on, Due on, Loan and Purpose or note), and the Assets item of the app menu (see **App menu**). **Add to assets** on a gold gift received in grams (`canAddToAssets`) opens `asset.tsx?fromGift=`, filled by `draftFromGift`;
+`assets.gift_id` makes it add at most once (`saveAsset` returns the existing asset for a gift that has one, and the form opens it, and
+the gift shows "In your assets"). Save buttons also take a `useRef` guard so a double tap cannot save twice. Backup version 4 adds one
+block after the gifts (`Assets Id|Type|Name|Quantity|Unit|Purity|Invested|Acquired|Description|Gift Id|Lender|Ticket|Pledged On|Due On|Loan|Pledge Note|Status|Created|Updated`);
+older files restore with no assets and the cloud backup carries them. Dev cleanup also empties the table. Not built: valuation, interest,
+a gold total line, photos, partial pledges.
+
+
 **Embeddings, vector search and RAG were dropped** (an earlier learning goal; not
 needed for classifying a short note into a list). They can return later, for example
 for "ask questions about my spending".
@@ -325,8 +435,8 @@ ones), and WAL is not requested on web. `expo-sqlite` on web runs wa-sqlite in a
 same headers; `public/_headers`, `_redirects` and `serve.json` carry them into `dist/` for
 `npm run web:build`, and `npm run web:serve` serves it locally). `app.json` uses `web.output: "single"` (not static rendering, which cannot
 run SQLite). Layout in a browser follows the web Expense Manager: below 768px wide it is the phone layout
-(bottom bar and + button) as a centred column of at most 480px; from 768px up the bottom bar
-is hidden (`Footer` returns null) and `src/ui/Sidebar.tsx` shows the permanent left drawer
+(menu drawer and + button) as a centred column of at most 480px; from 768px up the + button
+is hidden (`AddMenu` returns null) and `src/ui/Sidebar.tsx` shows the permanent left drawer
 (pages, plus Credit / Debit / Import in place of the + menu) with the page filling all
 the space to its right, as in the web app. The breakpoint and widths are in `src/ui/useLayout.ts`, which also
 gives `useContentWidth()` for pixel-sized content (the bar chart). Phones never reach the
@@ -345,7 +455,7 @@ Save asks to be pressed again. Limits: needs PRF support (recent Safari/Chrome);
 passkey makes the stored key unreadable ("Forget saved key" resets); malware or a malicious
 extension running while unlocked can still read the key.
 
-### Cloud backup (Config > Cloud backup)
+### Cloud backup (Config > Cloud backup and restore)
 
 An encrypted copy of the same data as Export, kept on a free Cloudflare Worker + KV (`server/`). Chosen
 for: free without a card, never pauses when idle, a tiny server we control, works from Expo Go.
@@ -365,9 +475,17 @@ for: free without a card, never pauses when idle, a tiny server we control, work
   Worker accepts only ids of 64 lowercase hex, bodies that start like a sealed backup (`RU1CA`) and at most
   10,000,000 characters (`MAX_UPLOAD_CHARS`, the same in the app, checked before upload; KV allows 25 MiB).
   CORS is open so the web build can call it.
-- **Restore is the same merge as Import** (`restoreBackup`): it never changes what is on the phone. A code
-  typed on a new phone is saved only after it opened a backup. Delete removes the server copy; Turn off
-  forgets the code on this phone and leaves the server copy.
+- **Nothing is scheduled, and there is no on/off switch.** The first "Back up to cloud" on a phone makes the
+  recovery code (`ensureRecoveryCode`), shows it, then uploads; after that the button reads "Back up now".
+  "Show recovery code" can be pressed any time on the phone that made it (it is read from the Keychain).
+- **Restore is the same merge as Import** (`restoreBackup`): it never changes what is on the phone, and it
+  always asks for the recovery code, even when the phone has one. The typed code is only used to read that copy;
+  it is never saved and never replaces the phone's own code. A phone with no code of its own makes a new one on
+  its first backup, so a second phone that restored from the first gets its own entry (the restored data plus
+  its own) and the first copy stays exactly as it was: the phones then back up independently. Trade-off: after
+  replacing a lost phone, the new phone has a new code and the old copy stays as a frozen snapshot (nothing
+  expires, and only the code that made it can delete it). Delete removes this phone's own server copy. There is
+  deliberately no "forget the code" action.
 - **Skip unchanged:** a keyed fingerprint of the CSV is kept in plain storage; if it equals the last upload,
   nothing is sent. The free tier allows about 1,000 KV writes a day for the whole account (one backup = one
   write); D1 (100,000 a day) is the upgrade path, with no change to the app.
@@ -396,8 +514,8 @@ for: free without a card, never pauses when idle, a tiny server we control, work
   build has an import cycle that crashes at startup under Metro
   ("Cannot read property 'BetaToolRunner' of undefined"). Only this package is
   redirected; disabling package exports globally breaks React Native itself.
-- **Expo Router 58 no longer ships React Navigation.** Import `Tabs` and the
-  `BottomTabBarProps` type from `expo-router/js-tabs` (importing `Tabs` from
+- **Expo Router 58 no longer ships React Navigation.** (The app no longer uses tabs; if one is ever added, import `Tabs` and the
+  `BottomTabBarProps` type from `expo-router/js-tabs`; importing `Tabs` from
   `expo-router` is deprecated). A custom bar receives `state` and
   `navigateToTab(routeKey)`, not a `navigation` object.
 - **Keep `slug` as `ai-expense-manager` in `app.json`.** Expo Go stores app data

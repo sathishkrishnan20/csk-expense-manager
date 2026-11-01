@@ -161,6 +161,34 @@ export function SelectField({
   );
 }
 
+// A dropdown over a short list of { value, label } choices.
+export function ChoiceField<V extends string>({
+  label,
+  options,
+  value,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  options: { value: V; label: string }[];
+  value: V;
+  onChange: (value: V) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <SelectField
+      label={label}
+      value={options.find((o) => o.value === value)?.label ?? ""}
+      options={options.map((o) => o.label)}
+      disabled={disabled}
+      onChange={(picked) => {
+        const choice = options.find((o) => o.label === picked);
+        if (choice) onChange(choice.value);
+      }}
+    />
+  );
+}
+
 // The small "standard" Select used next to a chart title.
 export function InlineSelect<V extends string>({
   label,

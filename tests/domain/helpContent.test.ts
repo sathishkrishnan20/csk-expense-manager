@@ -30,3 +30,21 @@ test("storage and key wording follows the device", () => {
   assert.match(allText("web"), /stored in this browser/);
   assert.doesNotMatch(allText("web"), /Keychain|Save to Files|tap \+/i);
 });
+
+test("the guide explains Gifts, and that they are information only", () => {
+  for (const platform of ["ios", "web"] as const) {
+    const gifts = helpTopics(platform).find((t) => t.id === "gifts");
+    assert.ok(gifts, platform);
+    assert.match(textOf(gifts.blocks), /never part of any balance/);
+    assert.match(textOf(gifts.blocks), /Import list/);
+  }
+});
+
+test("the guide explains Assets, pledging, and that they are information only", () => {
+  for (const platform of ["ios", "web"] as const) {
+    const assets = helpTopics(platform).find((t) => t.id === "assets");
+    assert.ok(assets, platform);
+    assert.match(textOf(assets.blocks), /never part of any balance/);
+    assert.match(textOf(assets.blocks), /Pledged \(adagu\)/);
+  }
+});

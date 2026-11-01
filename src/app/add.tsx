@@ -3,11 +3,11 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "re
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { loadCategories, loadPaymentMethods } from "../db/config";
-import { getGroup, listGroupsWithBalances } from "../db/groups";
+import { listGroupsWithBalances } from "../db/groups";
 import { addEntries, addTransaction, deleteTransaction, getTransaction, updateTransaction } from "../db/transactions";
 import { parseAmountInput, toISODate } from "../domain/format";
-import { incomeClassFor, openingIncomeFor, suggestGroup, validateNewGroups, type GroupPlan } from "../domain/entryGroup";
-import { MAIN_GROUP_ID, isMainGroup } from "../domain/groups";
+import { heldOpening, incomeClassFor, openingIncomeFor, suggestGroup, validateNewGroups, type GroupPlan } from "../domain/entryGroup";
+import { MAIN_GROUP_ID, flattenTree, isMainGroup, type GroupWithBalance } from "../domain/groups";
 import {
   FALLBACK,
   INCOME_CATEGORY,
@@ -19,6 +19,7 @@ import {
 } from "../domain/masterData";
 import { PENDING_AI, type Direction } from "../domain/taxonomy";
 import { confirmAction } from "../platform/dialogs";
+import { resolveHomeGroupId } from "../db/homeGroup";
 import { AppHeader, HeaderTextButton } from "../ui/Header";
 import { T } from "../ui/Text";
 import { Button, CheckOption, DateField, OutlinedInput, RadioOption, SelectField, useSnackbar } from "../ui/forms";
@@ -34,7 +35,8 @@ export default function AddTransaction() {
 
   const editing = typeof id === "string" && id !== "";
   const [groupId, setGroupId] = useState(group || MAIN_GROUP_ID);
-  const [groupName, setGroupName] = useState("");
+  const [groups, setGroups] = useState<GroupWithBalance[]>([]);
+  const groupName = groups.find((g) => g.id === groupId)?.name ?? "";
   const [direction, setDirection] = useState<Direction>(type === "CREDIT" ? "credit" : "debit");
   const [date, setDate] = useState(toISODate(new Date()));
   const [amount, setAmount] = useState("");
@@ -52,7 +54,7 @@ export default function AddTransaction() {
   const [createGroup, setCreateGroup] = useState(false);
   const [openingIncome, setOpeningIncome] = useState(true);
   const [groupEdits, setGroupEdits] = useState<{ name?: string; startDate?: string | null; endDate?: string | null }>({});
-  const [groupNames, setGroupNames] = useState<string[]>([]);
+  const groupNames = groups.map((g) => g.name);
 
   const [categories, setCategories] = useState<CategoryDef[]>([]);
   const [methods, setMethods] = useState<string[]>([]);
@@ -65,7 +67,15 @@ export default function AddTransaction() {
       setCategories(cats);
       setMethods(pms);
 
+      const all = await listGroupsWithBalances();
+      if (!alive) return;
+      setGroups(all);
+
       let owner = group || MAIN_GROUP_ID;
+      // Added from the Home tabs (no group in the address): the home group, the one the app opens on.
+      if (!editing && !group) owner = await resolveHomeGroupId();
+      // The form can be reused for another group, so the group follows the parameter instead of being fixed when it first opened.
+      if (!editing) setGroupId(owner);
       if (editing) {
         const record = await getTransaction(id);
         if (!alive) return;
@@ -90,16 +100,12 @@ export default function AddTransaction() {
         // Hand entries are meant for cash, so start there.
         setMethod(pms.includes("Cash") ? "Cash" : "");
       }
-      const g = await getGroup(owner);
-      if (alive) setGroupName(g?.name ?? "");
-      const all = await listGroupsWithBalances();
-      if (alive) setGroupNames(all.map((x) => x.name));
     })();
     return () => {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, group]);
 
   const categoryOptions = useMemo(() => {
     const base =
@@ -129,7 +135,15 @@ export default function AddTransaction() {
     setSubcategory("");
   };
 
-  const canCreateGroup = !editing && isMainGroup(groupId);
+  // A new entry in any group (Main too) can create a group; the new group sits under the group the entry is in.
+  // The groups a new entry can go into: open ones, as a tree (a dash for each level down).
+  const groupChoices = flattenTree(groups.filter((g) => g.status === "ACTIVE")).map(({ group: g, depth }) => ({
+    id: g.id,
+    label: `${"– ".repeat(depth)}${g.name}`,
+  }));
+  const groupLabelOf = (id: string) => groupChoices.find((c) => c.id === id)?.label ?? "";
+  const canCreateGroup = !editing;
+  const fromName = groupName || "Main";
   const suggestion = useMemo(
     () =>
       suggestGroup({
@@ -189,11 +203,13 @@ export default function AddTransaction() {
             name,
             startDate: plan.startDate,
             endDate: plan.endDate,
-            opening: openingIncome ? openingIncomeFor(input, incomeClassFor(categories)) : null,
+            parentId: groupId,
+            opening: openingIncome ? openingIncomeFor(input, incomeClassFor(categories), fromName) : null,
+            heldPaise: heldOpening(direction, amountPaise, openingIncome),
           },
         },
       ]);
-      setGroupNames((names) => [...names, name]);
+      listGroupsWithBalances().then(setGroups);
       setCreateGroup(false);
       setGroupEdits({});
       snackbar.show(`Added, and group "${name}" created`, 3000);
@@ -234,6 +250,19 @@ export default function AddTransaction() {
           <RadioOption label="Expense" selected={direction === "debit"} onPress={() => changeDirection("debit")} />
           <RadioOption label="Credit" selected={direction === "credit"} onPress={() => changeDirection("credit")} />
         </View>
+        {!editing && groupChoices.length > 1 ? (
+          <>
+            <SelectField
+              label="Group"
+              value={groupLabelOf(groupId)}
+              options={groupChoices.map((c) => c.label)}
+              onChange={(label) => {
+                const id = groupChoices.find((c) => c.label === label)?.id ?? MAIN_GROUP_ID;
+                setGroupId(id); // for this entry only
+              }}
+            />
+          </>
+        ) : null}
         <DateField label="Date" value={date} onChange={setDate} />
         <OutlinedInput label="Amount" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" />
         {canCategoriseLater ? (
@@ -277,7 +306,7 @@ export default function AddTransaction() {
           <>
             <CheckOption
               label="Create a group for this entry"
-              hint="Makes a separate group with its own balance. This entry stays in Main. The name and dates are filled in from the entry; change them if you like."
+              hint={`Makes a group under ${fromName}, with its own entries. This entry stays in ${fromName}, and the new group's balance counts in ${fromName}'s. The name and dates are filled in from the entry; change them if you like.`}
               checked={createGroup}
               onPress={() => setCreateGroup(!createGroup)}
             />
@@ -293,6 +322,7 @@ export default function AddTransaction() {
                 <DateField label="Group end date" value={plan.endDate} onChange={(endDate) => setGroupEdits({ ...groupEdits, endDate })} />
                 <CheckOption
                   label="Start the group with this amount as income"
+                  hint={direction === "credit" ? `The group shows this amount to spend. ${fromName} still counts the money only once.` : undefined}
                   checked={openingIncome}
                   onPress={() => setOpeningIncome(!openingIncome)}
                 />

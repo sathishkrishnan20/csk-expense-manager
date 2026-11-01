@@ -1,6 +1,16 @@
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { addSuggestions, pendingSuggestions, removeSuggestions, startSuggestions, suggestionCount } from "../../src/import/suggestionStore";
+import {
+  addSuggestions,
+  addUnsuggested,
+  pendingSuggestions,
+  pendingUnsuggested,
+  removeSuggestions,
+  removeUnsuggested,
+  startSuggestions,
+  suggestionCount,
+  unsuggestedCount,
+} from "../../src/import/suggestionStore";
 
 beforeEach(() => startSuggestions());
 
@@ -47,4 +57,28 @@ test("a new run forgets the last run's suggestions", () => {
   addSuggestions([{ id: "a", suggestion: carrom }]);
   startSuggestions();
   assert.equal(suggestionCount(), 0);
+});
+
+test("entries the AI had no idea for are kept apart from the suggestions", () => {
+  addSuggestions([{ id: "a", suggestion: carrom }]);
+  addUnsuggested(["b", "c"]);
+  assert.equal(suggestionCount(), 1);
+  assert.equal(unsuggestedCount(), 2);
+  assert.deepEqual(pendingUnsuggested(), ["b", "c"]);
+});
+
+test("an entry that has a suggestion is not also listed as having none, and a later suggestion takes it off the list", () => {
+  addSuggestions([{ id: "a", suggestion: carrom }]);
+  addUnsuggested(["a", "b"]);
+  assert.deepEqual(pendingUnsuggested(), ["b"]);
+  addSuggestions([{ id: "b", suggestion: vet }]);
+  assert.deepEqual(pendingUnsuggested(), []);
+});
+
+test("entries categorised since are removed from the no-suggestion list, and a new run clears it", () => {
+  addUnsuggested(["a", "b", "c"]);
+  removeUnsuggested(["a", "unknown"]);
+  assert.deepEqual(pendingUnsuggested(), ["b", "c"]);
+  startSuggestions();
+  assert.equal(unsuggestedCount(), 0);
 });

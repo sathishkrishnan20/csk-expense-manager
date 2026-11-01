@@ -5,7 +5,9 @@ import {
   MAX_SUGGESTION_NAME,
   acceptSuggestion,
   describeStatus,
+  expenseCategoryNames,
   snapToExisting,
+  subcategoryNames,
   suggestionKey,
   suggestionStatus,
   tidyName,
@@ -62,4 +64,14 @@ test("entries with the same suggestion share a key, whatever the case or spacing
     suggestionKey({ category: " entertainment ", subcategory: "CARROM" }),
   );
   assert.notEqual(suggestionKey({ category: "A", subcategory: "B" }), suggestionKey({ category: "A", subcategory: "C" }));
+});
+
+test("the picker offers every category except Income and Others for an expense", () => {
+  assert.deepEqual(expenseCategoryNames(MASTER), ["Entertainment"]);
+});
+
+test("the picker lists a category's subcategories with Other-like ones last, and none for an unknown category", () => {
+  const master: CategoryDef[] = [{ category: "Food", subcategories: ["Other", "Dining", "Groceries"] }];
+  assert.deepEqual(subcategoryNames(master, "Food"), ["Dining", "Groceries", "Other"]);
+  assert.deepEqual(subcategoryNames(master, "Carrom"), []);
 });

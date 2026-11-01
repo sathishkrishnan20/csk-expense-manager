@@ -5,7 +5,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { addPaymentMethod, loadPaymentMethods, removePaymentMethod } from "../db/config";
 import { countReclassifyCandidates, countUnresolved, retryUnresolved } from "../db/transactions";
 import { runReclassify } from "../import/services";
-import { suggestionCount } from "../import/suggestionStore";
+import { suggestionCount, unsuggestedCount } from "../import/suggestionStore";
 import { DEFAULT_OLLAMA_URL, PROVIDER_LABEL, providerNeedsKey, type Provider } from "../llm/providers";
 import { confirmAction } from "../platform/dialogs";
 import { secureStorageLabel } from "../platform/secureStorage";
@@ -291,6 +291,7 @@ function ReclassifySection() {
   const [pending, setPending] = useState(0);
   const [unresolved, setUnresolved] = useState(0);
   const [suggestions, setSuggestions] = useState(0);
+  const [noIdea, setNoIdea] = useState(0);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const [result, setResult] = useState<{ text: string; isError: boolean } | null>(null);
@@ -300,6 +301,7 @@ function ReclassifySection() {
       countReclassifyCandidates().then(setPending);
       countUnresolved(null).then(setUnresolved);
       setSuggestions(suggestionCount());
+      setNoIdea(unsuggestedCount());
     }, []),
   );
 
@@ -309,13 +311,14 @@ function ReclassifySection() {
     try {
       const s = await runReclassify(setProgress);
       const parts = [`${s.moved} moved to a category`, `${s.stillUncategorised} still uncategorised`];
+      if (unsuggestedCount() > 0) parts.push(`${unsuggestedCount()} with no AI suggestion`);
       if (s.notProcessed > 0) parts.push(`${s.notProcessed} not processed`);
       setResult({
         text: s.error ? `${parts.join(", ")}. Stopped: ${s.error}` : `${parts.join(", ")}.`,
         isError: s.error !== null,
       });
-      // Straight to the suggestions when some entries could not be placed and the AI has ideas for them.
-      if (s.stillUncategorised > 0 && suggestionCount() > 0) {
+      // Straight to the suggestions when some entries could not be placed: the AI's ideas for them, and the ones it had no idea for.
+      if (s.stillUncategorised > 0 && (suggestionCount() > 0 || unsuggestedCount() > 0)) {
         router.push({
           pathname: "/suggestions",
           params: { moved: String(s.moved), still: String(s.stillUncategorised), total: String(s.total), skipped: String(s.notProcessed) },
@@ -329,6 +332,7 @@ function ReclassifySection() {
       countReclassifyCandidates().then(setPending);
       countUnresolved(null).then(setUnresolved);
       setSuggestions(suggestionCount());
+      setNoIdea(unsuggestedCount());
     }
   };
 
@@ -365,6 +369,12 @@ function ReclassifySection() {
       {suggestions > 0 ? (
         <TextButton
           label={`Review ${suggestions} AI suggestion${suggestions === 1 ? "" : "s"}`}
+          onPress={() => router.push("/suggestions")}
+        />
+      ) : null}
+      {noIdea > 0 ? (
+        <TextButton
+          label={`${noIdea} with no AI suggestion: choose a category`}
           onPress={() => router.push("/suggestions")}
         />
       ) : null}

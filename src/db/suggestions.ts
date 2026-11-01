@@ -2,16 +2,19 @@ import type { Suggestion } from "../domain/masterData";
 import { FALLBACK } from "../domain/masterData";
 import { snapToExisting, tidyName, validateSuggestion } from "../domain/suggestions";
 import type { Direction } from "../domain/taxonomy";
-import { pendingSuggestions, removeSuggestions } from "../import/suggestionStore";
+import { pendingSuggestions, pendingUnsuggested, removeSuggestions, removeUnsuggested } from "../import/suggestionStore";
 import { getDb, inTransaction } from "./database";
 
-export interface SuggestionEntry {
+export interface UnsuggestedEntry {
   id: string;
   txnDate: string;
   direction: Direction;
   amountPaise: number;
   payee: string | null;
   description: string | null;
+}
+
+export interface SuggestionEntry extends UnsuggestedEntry {
   suggestion: Suggestion;
 }
 
@@ -28,10 +31,29 @@ const chunksOf = <T>(items: T[]): T[][] => {
 export async function listSuggestions(): Promise<SuggestionEntry[]> {
   const waiting = pendingSuggestions();
   if (waiting.length === 0) return [];
-  const db = await getDb();
   const suggestionOf = new Map(waiting.map((w) => [w.id, w.suggestion]));
-  const found: SuggestionEntry[] = [];
-  for (const chunk of chunksOf(waiting.map((w) => w.id))) {
+  const found = await stillUncategorised(waiting.map((w) => w.id));
+  const stillWaiting = new Set(found.map((e) => e.id));
+  removeSuggestions(waiting.map((w) => w.id).filter((id) => !stillWaiting.has(id)));
+  return found.map((e) => ({ ...e, suggestion: suggestionOf.get(e.id)! }));
+}
+
+// The entries the AI could not place and had no suggestion for, newest first. Same rules as listSuggestions: one that has been
+// categorised since, or deleted, is dropped.
+export async function listUnsuggested(): Promise<UnsuggestedEntry[]> {
+  const waiting = pendingUnsuggested();
+  if (waiting.length === 0) return [];
+  const found = await stillUncategorised(waiting);
+  const stillWaiting = new Set(found.map((e) => e.id));
+  removeUnsuggested(waiting.filter((id) => !stillWaiting.has(id)));
+  return found;
+}
+
+// Of these entries, the ones still active and still in Others : Uncategorised without a category chosen by hand, newest first.
+async function stillUncategorised(ids: string[]): Promise<UnsuggestedEntry[]> {
+  const db = await getDb();
+  const found: UnsuggestedEntry[] = [];
+  for (const chunk of chunksOf(ids)) {
     const rows = await db.getAllAsync<{
       id: string;
       txn_date: string;
@@ -53,12 +75,9 @@ export async function listSuggestions(): Promise<SuggestionEntry[]> {
         amountPaise: r.amount_paise,
         payee: r.payee,
         description: r.description,
-        suggestion: suggestionOf.get(r.id)!,
       });
     }
   }
-  const stillWaiting = new Set(found.map((e) => e.id));
-  removeSuggestions(waiting.map((w) => w.id).filter((id) => !stillWaiting.has(id)));
   return found.sort((a, b) => (a.txnDate < b.txnDate ? 1 : a.txnDate > b.txnDate ? -1 : 0));
 }
 

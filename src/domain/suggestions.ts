@@ -2,7 +2,7 @@
 // not in the owner's list yet. The owner approves (the names are added to the list and the entry is linked to them),
 // edits, or rejects each one. Nothing is added until then. Works for debits and credits; a credit always goes under Income.
 
-import { FALLBACK, INCOME_CATEGORY, type CategoryDef, type Suggestion } from "./masterData";
+import { FALLBACK, INCOME_CATEGORY, sortOthersLast, type CategoryDef, type Suggestion } from "./masterData";
 import type { Direction } from "./taxonomy";
 
 export const MAX_SUGGESTION_NAME = 40;
@@ -64,3 +64,12 @@ export function describeStatus(status: SuggestionStatus, category: string): stri
   if (status === "new-subcategory") return `New subcategory under ${category}`;
   return "Already in your list";
 }
+
+// The categories an expense can be filed under by choice: every category of the list except Income (for credits) and Others
+// (the place for uncategorised entries, which is not a place to move an entry to).
+export const expenseCategoryNames = (master: readonly CategoryDef[]): string[] =>
+  master.filter((c) => !same(c.category, INCOME_CATEGORY) && !same(c.category, FALLBACK.category)).map((c) => c.category);
+
+// The subcategories of a category, "Other"-like ones last; none for a category that is not in the list.
+export const subcategoryNames = (master: readonly CategoryDef[], category: string): string[] =>
+  sortOthersLast(master.find((c) => c.category === category)?.subcategories ?? []);

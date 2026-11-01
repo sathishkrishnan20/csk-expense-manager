@@ -6,7 +6,7 @@ import type { Classification, Direction } from "../domain/taxonomy";
 import { FALLBACK, type Suggestion } from "../domain/masterData";
 import { RECATEGORISE_ATTEMPTS_USED, UNRESOLVED, aiAttemptOutcome } from "../domain/classificationOutcome";
 import { PENDING_AI, fallbackFor } from "../domain/taxonomy";
-import { addSuggestions } from "../import/suggestionStore";
+import { addSuggestions, addUnsuggested } from "../import/suggestionStore";
 import type { GroupScope } from "../domain/groupScope";
 import { getDb, inTransaction } from "./database";
 import { insertGroup, type GroupInput } from "./groups";
@@ -434,6 +434,7 @@ export async function applyClassifications(
   if (updates.length === 0) return;
   const db = await getDb();
   const updated: { id: string; suggestion: Suggestion | undefined }[] = [];
+  const noIdea: string[] = [];
   await inTransaction(db, async (txn) => {
     for (const { id, classification } of updates) {
       const row = await txn.getFirstAsync<{ ai_attempts: number }>(
@@ -451,10 +452,12 @@ export async function applyClassifications(
         [classification.category, classification.subcategory, outcome.unresolved ? UNRESOLVED : label, outcome.attempts, id],
       );
       updated.push({ id, suggestion: classification.suggestion });
+      if (couldNotPlace(classification) && !classification.suggestion) noIdea.push(id);
     }
   });
-  // Where the AI thinks the entries it could not place belong, for the suggestions screen (memory only).
+  // Where the AI thinks the entries it could not place belong, and the ones it had no idea for, for the suggestions screen (memory only).
   addSuggestions(updated);
+  addUnsuggested(noIdea);
 }
 
 // How many transactions the AI gave up on and that wait for the owner; null counts every group.

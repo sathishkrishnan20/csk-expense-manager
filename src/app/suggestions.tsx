@@ -4,7 +4,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { loadCategories } from "../db/config";
-import { approveSuggestions, listSuggestions, type SuggestionEntry } from "../db/suggestions";
+import { approveSuggestions, listSuggestions, listUnsuggested, type SuggestionEntry, type UnsuggestedEntry } from "../db/suggestions";
 import { removeSuggestions } from "../import/suggestionStore";
 import { formatLongDate, formatRupees } from "../domain/format";
 import type { CategoryDef } from "../domain/masterData";
@@ -12,7 +12,8 @@ import { describeStatus, suggestionKey, suggestionStatus, tidyName, validateSugg
 import type { Direction } from "../domain/taxonomy";
 import { AppHeader } from "../ui/Header";
 import { T } from "../ui/Text";
-import { Button, OutlinedInput, TextButton } from "../ui/forms";
+import { CategoryPicker } from "../ui/CategoryPicker";
+import { Button, TextButton } from "../ui/forms";
 import { colors } from "../ui/theme";
 
 interface Edit {
@@ -37,6 +38,7 @@ export default function Suggestions() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [entries, setEntries] = useState<SuggestionEntry[] | null>(null);
+  const [unsuggested, setUnsuggested] = useState<UnsuggestedEntry[]>([]);
   const [master, setMaster] = useState<CategoryDef[]>([]);
   const [edits, setEdits] = useState<Record<string, Edit>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -44,8 +46,9 @@ export default function Suggestions() {
   const [done, setDone] = useState({ approved: 0, rejected: 0 });
 
   const load = useCallback(async () => {
-    const [list, cats] = await Promise.all([listSuggestions(), loadCategories()]);
+    const [list, none, cats] = await Promise.all([listSuggestions(), listUnsuggested(), loadCategories()]);
     setEntries(list);
+    setUnsuggested(none);
     setMaster(cats);
   }, []);
 
@@ -67,7 +70,15 @@ export default function Suggestions() {
   }, [entries]);
 
   const editOf = (g: SuggestionGroup): Edit => edits[g.key] ?? g.suggestion;
-  const setEdit = (g: SuggestionGroup, patch: Partial<Edit>) => setEdits((all) => ({ ...all, [g.key]: { ...editOf(g), ...patch } }));
+  const setEdit = (g: SuggestionGroup, value: Edit) => setEdits((all) => ({ ...all, [g.key]: value }));
+
+  // The category chosen for an entry the AI had no suggestion for, by entry id; a credit starts under Income.
+  const [picks, setPicks] = useState<Record<string, Edit>>({});
+  const pickOf = (e: UnsuggestedEntry): Edit => picks[e.id] ?? { category: e.direction === "credit" ? "Income" : "", subcategory: "" };
+  const saveOwn = (e: UnsuggestedEntry) => {
+    const pick = pickOf(e);
+    return run(`own:${e.id}`, "approved", 1, () => approveSuggestions([e.id], e.direction === "credit" ? "Income" : pick.category, pick.subcategory));
+  };
 
   const run = async (key: string, kind: "approved" | "rejected", count: number, action: () => Promise<void>) => {
     if (busy) return;
@@ -112,7 +123,7 @@ export default function Suggestions() {
           </View>
         ) : null}
 
-        {entries === null ? null : groups.length === 0 ? (
+        {entries === null ? null : groups.length === 0 && unsuggested.length === 0 ? (
           <View style={styles.doneBox}>
             <T weight="medium" style={{ fontSize: 16 }}>
               {reviewed > 0 ? "All reviewed" : "Nothing to review"}
@@ -127,7 +138,7 @@ export default function Suggestions() {
               <Button label="Open Config" onPress={() => router.navigate("/config")} color={colors.importAction} style={{ flex: 1 }} />
             </View>
           </View>
-        ) : (
+        ) : groups.length === 0 ? null : (
           <T style={styles.help}>
             The AI could not place these entries in your categories, so it suggests where they could go. Approve adds the category or subcategory to
             your list and files the entry under it. Reject leaves the entry in Others : Uncategorised. You can change the names first. Suggestions you do not answer are forgotten when the app closes.
@@ -143,19 +154,7 @@ export default function Suggestions() {
           const all = g.entries.map((e) => e.id);
           return (
             <View key={g.key} style={styles.card}>
-              <OutlinedInput
-                label="Category"
-                value={category}
-                editable={!credit}
-                onChangeText={(text) => setEdit(g, { category: text })}
-                autoCapitalize="words"
-              />
-              <OutlinedInput
-                label="Sub Category"
-                value={edit.subcategory}
-                onChangeText={(text) => setEdit(g, { subcategory: text })}
-                autoCapitalize="words"
-              />
+              <CategoryPicker master={master} direction={g.direction} value={edit} onChange={(v) => setEdit(g, v)} disabled={busy} />
               {status ? <T style={styles.status}>{status}</T> : <T style={styles.error}>{problem}</T>}
               {errors[g.key] ? <T style={styles.error}>{errors[g.key]}</T> : null}
 
@@ -201,6 +200,51 @@ export default function Suggestions() {
             </View>
           );
         })}
+
+        {unsuggested.length > 0 ? (
+          <>
+            <View style={{ gap: 4, paddingHorizontal: 4 }}>
+              <T weight="medium">No AI suggestion</T>
+              <T style={styles.help}>
+                The AI could not place {unsuggested.length === 1 ? "this entry" : "these entries"} and has no idea where {unsuggested.length === 1 ? "it" : "they"} could go.
+                Choose a category from your list, or add a new one, then Save. {unsuggested.length === 1 ? "It leaves" : "Each leaves"} this list once categorised.
+              </T>
+            </View>
+            {unsuggested.map((e) => {
+              const pick = pickOf(e);
+              const credit = e.direction === "credit";
+              const category = credit ? "Income" : pick.category;
+              const problem = validateSuggestion(e.direction, category, pick.subcategory);
+              const status = problem ? null : describeStatus(suggestionStatus(master, { category, subcategory: pick.subcategory }), tidyName(category));
+              return (
+                <View key={e.id} style={styles.card}>
+                  <View style={styles.entry}>
+                    <View style={{ flex: 1 }}>
+                      <T numberOfLines={1}>{e.payee || e.description || "(no name)"}</T>
+                      <T style={styles.small} numberOfLines={1}>
+                        {formatLongDate(e.txnDate)}
+                        {e.description && e.payee ? ` · ${e.description}` : ""}
+                      </T>
+                    </View>
+                    <T weight="bold" style={{ color: credit ? colors.creditText : colors.debitText }}>
+                      {formatRupees(e.amountPaise)}
+                    </T>
+                  </View>
+                  <CategoryPicker
+                    master={master}
+                    direction={e.direction}
+                    value={pick}
+                    onChange={(v) => setPicks((all) => ({ ...all, [e.id]: v }))}
+                    disabled={busy}
+                  />
+                  {status && pick.subcategory ? <T style={styles.status}>{status}</T> : null}
+                  {errors[`own:${e.id}`] ? <T style={styles.error}>{errors[`own:${e.id}`]}</T> : null}
+                  <Button label="Save" onPress={() => saveOwn(e)} disabled={busy || !!problem} />
+                </View>
+              );
+            })}
+          </>
+        ) : null}
       </ScrollView>
     </View>
   );

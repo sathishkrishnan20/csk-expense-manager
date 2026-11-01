@@ -8,7 +8,7 @@ import { MAIN_GROUP_ID, type Group } from "../domain/groups";
 import type { ImportSummary } from "../import/importStatement";
 import { formatLongDate, formatRupees } from "../domain/format";
 import { MissingApiKeyError, restoreDeletedRows, runImport } from "../import/services";
-import { suggestionCount } from "../import/suggestionStore";
+import { suggestionCount, unsuggestedCount } from "../import/suggestionStore";
 import type { PickedFile } from "../platform/files";
 import { PdfPasswordError } from "../pdf/errors";
 import { ActiveAiLine } from "../ui/ActiveAi";
@@ -18,13 +18,27 @@ import { Button, SelectField } from "../ui/forms";
 import { UnlockGate } from "../ui/UnlockGate";
 import { colors, shadow } from "../ui/theme";
 
+// The file's name from its address, for showing which file was shared.
+function sharedFileName(uri: string): string {
+  const last = uri.split(/[?#]/)[0].split("/").pop() ?? uri;
+  try {
+    return decodeURIComponent(last) || uri;
+  } catch {
+    return last || uri;
+  }
+}
+
 export default function ImportStatement() {
   const router = useRouter();
   // Set when a statement was shared to the app from Mail or Files (see +native-intent.tsx).
-  // ?group= comes from a group's own Import button; a shared file goes to Main unless the owner picks another group.
+  // ?group= comes from a group's own Import button; a shared file goes to the Home group unless the owner picks another group.
   const { file: sharedFile, group } = useLocalSearchParams<{ file?: string; group?: string }>();
   const [groups, setGroups] = useState<Group[]>([]);
   const [groupId, setGroupId] = useState(group || MAIN_GROUP_ID);
+  // Set once the owner changes "Import into", so the Home group arriving a moment later does not overwrite the choice.
+  const groupTouched = useRef(false);
+  // A statement shared to the app waits here until the owner taps Import, so the group can be chosen first.
+  const [sharedPending, setSharedPending] = useState<string | null>(null);
   const [importedInto, setImportedInto] = useState("");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
@@ -35,7 +49,7 @@ export default function ImportStatement() {
 
   useEffect(() => {
     let alive = true;
-    if (!group) resolveHomeGroupId().then((id) => alive && setGroupId(id));
+    if (!group) resolveHomeGroupId().then((id) => alive && !groupTouched.current && setGroupId(id));
     listGroupsWithBalances().then((all) => {
       if (alive) setGroups(all.filter((g) => g.status === "ACTIVE" || g.id === groupId));
     });
@@ -50,7 +64,10 @@ export default function ImportStatement() {
     setBusy(true);
     try {
       setImportedInto(groupName);
-      setSummary(await runImport(file, setProgress, groupId));
+      const done = await runImport(file, setProgress, groupId);
+      setSummary(done);
+      // A shared file that did not finish stays, so it can be tried again.
+      if (!done.error) setSharedPending(null);
     } catch (err) {
       setNeedsKey(err instanceof MissingApiKeyError || err instanceof PdfPasswordError);
       setError(err instanceof Error ? err.message : String(err));
@@ -71,16 +88,17 @@ export default function ImportStatement() {
     reset();
     const picked = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true });
     if (picked.canceled) return;
+    setSharedPending(null);
     await start(picked.assets[0]);
   };
 
-  // A statement shared to the app starts importing straight away, once per shared file.
+  // A statement shared to the app is held until the owner taps Import (once per shared file), so "Import into" can be set first.
   const handled = useRef<string | null>(null);
   useEffect(() => {
     if (!sharedFile || handled.current === sharedFile) return;
     handled.current = sharedFile;
     reset();
-    void start({ uri: sharedFile });
+    setSharedPending(sharedFile);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sharedFile]);
 
@@ -122,10 +140,28 @@ export default function ImportStatement() {
           label="Import into"
           value={groupName}
           options={groups.map((g) => g.name)}
-          onChange={(name) => setGroupId(groups.find((g) => g.name === name)?.id ?? MAIN_GROUP_ID)}
+          onChange={(name) => {
+            groupTouched.current = true;
+            setGroupId(groups.find((g) => g.name === name)?.id ?? MAIN_GROUP_ID);
+          }}
           disabled={busy}
         />
         <UnlockGate>
+          {sharedPending ? (
+            <View style={{ gap: 8 }}>
+              <T style={styles.text} numberOfLines={1}>
+                Shared file: {sharedFileName(sharedPending)}
+              </T>
+              <Button
+                label={busy ? "Working…" : `Import shared file into ${groupName}`}
+                onPress={() => {
+                  reset();
+                  void start({ uri: sharedPending });
+                }}
+                disabled={busy}
+              />
+            </View>
+          ) : null}
           <Button label={busy ? "Working…" : "Choose statement file"} onPress={pick} disabled={busy} />
         </UnlockGate>
 
@@ -192,6 +228,19 @@ export default function ImportStatement() {
                 </T>
                 <Button
                   label={`Review ${suggestionCount()} AI suggestion${suggestionCount() === 1 ? "" : "s"}`}
+                  onPress={() => router.push("/suggestions")}
+                  color={colors.importAction}
+                />
+              </View>
+            ) : null}
+            {unsuggestedCount() > 0 ? (
+              <View style={{ gap: 8 }}>
+                <T style={styles.small}>
+                  The AI could not place {unsuggestedCount()} of them and has no idea where {unsuggestedCount() === 1 ? "it" : "they"} could go. Choose
+                  {unsuggestedCount() === 1 ? " its" : " their"} category yourself.
+                </T>
+                <Button
+                  label={`Choose a category for ${unsuggestedCount()}`}
                   onPress={() => router.push("/suggestions")}
                   color={colors.importAction}
                 />

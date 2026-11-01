@@ -180,6 +180,10 @@ subcategory, already in your list). Approve (one entry or all in the card; `appr
 category and subcategory to `categories` if missing and files the entries under them as `manual`. Reject
 just forgets the suggestion. When none are left the screen says "All reviewed" with Home and Config
 buttons. Both lists are shared by all groups, and suggestions are not part of the backup file.
+Entries the AI left in Others : Uncategorised with no usable suggestion are tracked too (`addUnsuggested` in `suggestionStore.ts`,
+written by `applyClassifications`, read by `listUnsuggested`): the suggestions screen lists them under "No AI suggestion", each with its
+entry's own category picker with a Save button, and Re-classify / import results mention them. Memory only, like the suggestions.
+Both the suggestion cards and those entries use `src/ui/CategoryPicker.tsx`: Category and Sub Category dropdowns over the owner's list, each ending in "+ Add new" (a box to type a name not in the list); an AI idea that is not in the list starts in that typing mode.
 
 **PDF statements** (import, on the device). A PDF statement is read with `pdfjs-dist` 3.11 (legacy
 CommonJS build; version pinned) in `src/pdf/readPdf.ts`: it opens the file with each saved password in
@@ -198,7 +202,7 @@ from the previous one and the sums must equal the printed TOTAL row, otherwise t
 the reasons (`services.ts`); nothing is half-saved. Saved PDF passwords live in
 `src/settings/statementPasswords.ts` (same secure storage as the AI key) and Config > Statement passwords.
 A statement shared from Mail/Files ("Open in") arrives through `CFBundleDocumentTypes` in `app.json` and
-`src/app/+native-intent.tsx`, which redirects to `/import?file=...`; this needs a rebuilt app, not Expo Go.
+`src/app/+native-intent.tsx`, which redirects to `/import?file=...`. The import screen does not start by itself: it shows "Import into" (set to the Home group, changeable) and an "Import shared file" button, so the rows go into the group the owner sees. This needs a rebuilt app, not Expo Go.
 Not verified: pdf.js under real Hermes (speed, memory, bundling through Metro), the share sheet, other banks.
 Fixtures: `tests/fixtures/*.pdf` are synthetic (invented data); never commit a real statement.
 Layouts for other banks are added the same way (a header row with these column names works as is).

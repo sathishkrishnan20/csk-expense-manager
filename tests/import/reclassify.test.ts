@@ -45,8 +45,8 @@ test("rows that now fit a category are moved; rows that still do not stay uncate
   assert.equal(applied.length, 3);
 });
 
-test("a credit that stays Income / Others counts as uncategorised", async () => {
-  const summary = await reclassify(deps([cand("c", "credit")], () => ({ category: "Income", subcategory: "Others" })));
+test("a credit left in Others : Uncategorised counts as uncategorised", async () => {
+  const summary = await reclassify(deps([cand("c", "credit")], () => ({ category: "Others", subcategory: "Uncategorised" })));
   assert.equal(summary.stillUncategorised, 1);
   assert.equal(summary.moved, 0);
 });

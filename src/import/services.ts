@@ -8,6 +8,7 @@ import type { ParsedTransaction } from "../domain/statementParser";
 import type { Classification, Direction } from "../domain/taxonomy";
 import { importParsed, importStatement, type ImportSummary } from "./importStatement";
 import { reclassify, type ReclassifyCandidate, type ReclassifySummary } from "./reclassify";
+import { startSuggestions } from "./suggestionStore";
 import { isExcelBinary, excelToCSV } from "../domain/excelReader";
 import { readPickedBytes, type PickedFile } from "../platform/files";
 import { PdfStatementError, parseStatementPdf } from "../domain/pdfStatement";
@@ -37,6 +38,7 @@ export async function runImport(
   onProgress: (message: string) => void,
   groupId: string,
 ): Promise<ImportSummary> {
+  startSuggestions();
   const classifier = await createClassifier();
 
   onProgress("Reading file…");
@@ -118,6 +120,7 @@ export async function restoreDeletedRows(
 }
 
 export async function runReclassify(onProgress: (message: string) => void): Promise<ReclassifySummary> {
+  startSuggestions();
   const classifier = await createClassifier();
   return reclassify({
     list: listReclassifyCandidates,

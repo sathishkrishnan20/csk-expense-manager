@@ -5,6 +5,7 @@ import { exportBackup, restoreBackup } from "../db/backup";
 import { BackupError, backupFileName, parseBackup, serializeBackup } from "../domain/backup";
 import { readPickedText, saveCsvFile } from "../platform/files";
 import { T } from "./Text";
+import { describeRestore } from "./restoreMessage";
 import { Button } from "./forms";
 import { colors } from "./theme";
 
@@ -45,14 +46,7 @@ export function DataBackupSection() {
       const { backup, skipped } = parseBackup(text);
       const r = await restoreBackup(backup, skipped);
 
-      const parts = [
-        `${count(r.transactionsAdded, "transaction")} added`,
-        `${r.transactionsAlreadyPresent} already on this device`,
-        `${count(r.categoriesAdded, "category", "categories")} and ${count(r.paymentMethodsAdded, "payment mode")} added`,
-      ];
-      if (r.groupsAdded > 0) parts.push(`${count(r.groupsAdded, "group")} added`);
-      if (r.skipped > 0) parts.push(`${count(r.skipped, "damaged entry", "damaged entries")} skipped`);
-      return `${parts.join(", ")}.`;
+      return describeRestore(r);
     });
 
   return (

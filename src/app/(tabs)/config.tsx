@@ -5,6 +5,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { addPaymentMethod, loadPaymentMethods, removePaymentMethod } from "../../db/config";
 import { countReclassifyCandidates, countUnresolved, retryUnresolved } from "../../db/transactions";
 import { runReclassify } from "../../import/services";
+import { suggestionCount } from "../../import/suggestionStore";
 import { DEFAULT_OLLAMA_URL, PROVIDER_LABEL, providerNeedsKey, type Provider } from "../../llm/providers";
 import { confirmAction } from "../../platform/dialogs";
 import { secureStorageLabel } from "../../platform/secureStorage";
@@ -21,6 +22,7 @@ import {
   saveProvider,
 } from "../../settings/settings";
 import { CategoriesSection } from "../../ui/CategoriesSection";
+import { CloudBackupSection } from "../../ui/CloudBackupSection";
 import { DataBackupSection } from "../../ui/DataBackupSection";
 import { StatementPasswordsSection } from "../../ui/StatementPasswordsSection";
 import { AiStatus, ActiveAiLine } from "../../ui/ActiveAi";
@@ -30,7 +32,7 @@ import { Button, OutlinedInput, TextButton } from "../../ui/forms";
 import { UnlockGate } from "../../ui/UnlockGate";
 import { colors } from "../../ui/theme";
 
-type Section = "payments" | "category" | "ai" | "passwords" | "backup" | "reclassify" | "";
+type Section = "payments" | "category" | "ai" | "passwords" | "backup" | "cloud" | "reclassify" | "";
 
 export default function Config() {
   const router = useRouter();
@@ -55,6 +57,9 @@ export default function Config() {
         </Accordion>
         <Accordion title="Export and Import" open={expanded === "backup"} onToggle={() => toggle("backup")}>
           <DataBackupSection />
+        </Accordion>
+        <Accordion title="Cloud backup" open={expanded === "cloud"} onToggle={() => toggle("cloud")}>
+          <CloudBackupSection />
         </Accordion>
         <Accordion
           title="Re-classify Uncategorised"
@@ -269,8 +274,10 @@ function AiSection() {
 }
 
 function ReclassifySection() {
+  const router = useRouter();
   const [pending, setPending] = useState(0);
   const [unresolved, setUnresolved] = useState(0);
+  const [suggestions, setSuggestions] = useState(0);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const [result, setResult] = useState<{ text: string; isError: boolean } | null>(null);
@@ -279,6 +286,7 @@ function ReclassifySection() {
     useCallback(() => {
       countReclassifyCandidates().then(setPending);
       countUnresolved(null).then(setUnresolved);
+      setSuggestions(suggestionCount());
     }, []),
   );
 
@@ -293,6 +301,13 @@ function ReclassifySection() {
         text: s.error ? `${parts.join(", ")}. Stopped: ${s.error}` : `${parts.join(", ")}.`,
         isError: s.error !== null,
       });
+      // Straight to the suggestions when some entries could not be placed and the AI has ideas for them.
+      if (s.stillUncategorised > 0 && suggestionCount() > 0) {
+        router.push({
+          pathname: "/suggestions",
+          params: { moved: String(s.moved), still: String(s.stillUncategorised), total: String(s.total), skipped: String(s.notProcessed) },
+        });
+      }
     } catch (err) {
       setResult({ text: err instanceof Error ? err.message : String(err), isError: true });
     } finally {
@@ -300,6 +315,7 @@ function ReclassifySection() {
       setProgress("");
       countReclassifyCandidates().then(setPending);
       countUnresolved(null).then(setUnresolved);
+      setSuggestions(suggestionCount());
     }
   };
 
@@ -333,6 +349,12 @@ function ReclassifySection() {
         <TextButton label={`Try the ${unresolved} it couldn't categorise again`} onPress={retry} />
       ) : null}
       {result ? <T style={result.isError ? styles.error : styles.muted}>{result.text}</T> : null}
+      {suggestions > 0 ? (
+        <TextButton
+          label={`Review ${suggestions} AI suggestion${suggestions === 1 ? "" : "s"}`}
+          onPress={() => router.push("/suggestions")}
+        />
+      ) : null}
     </View>
   );
 }

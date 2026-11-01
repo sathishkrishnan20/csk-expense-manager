@@ -2,7 +2,7 @@
 // with, and the same for a duplicate of such an entry.
 
 import type { Direction } from "./taxonomy";
-import { INCOME_CATEGORY, INCOME_FALLBACK, type CategoryDef, type Classification } from "./masterData";
+import { FALLBACK, INCOME_CATEGORY, type CategoryDef, type Classification } from "./masterData";
 
 export interface GroupPlan {
   name: string;
@@ -70,12 +70,13 @@ export interface OpeningIncome {
   description: string | null;
 }
 
-// "Account Transfer" under Income when the owner still has it, otherwise Income : Others (always present).
+// "Account Transfer" under Income when the owner still has it, otherwise the first Income subcategory
+// (Income has no "Others" of its own), and Others : Uncategorised only if Income is somehow empty.
 export function incomeClassFor(categories: readonly CategoryDef[]): Classification {
   const income = categories.find((c) => c.category === INCOME_CATEGORY);
-  return income?.subcategories.includes("Account Transfer")
-    ? { category: INCOME_CATEGORY, subcategory: "Account Transfer" }
-    : INCOME_FALLBACK;
+  if (income?.subcategories.includes("Account Transfer")) return { category: INCOME_CATEGORY, subcategory: "Account Transfer" };
+  const first = income?.subcategories[0];
+  return first ? { category: INCOME_CATEGORY, subcategory: first } : FALLBACK;
 }
 
 export function openingIncomeFor(

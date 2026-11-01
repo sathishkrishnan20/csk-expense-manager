@@ -33,8 +33,8 @@ export interface Filterable {
   classifiedBy?: string;
 }
 
-// "Uncategorised" is the fallback the AI uses for debits that fit none of the owner's
-// categories (the fallback for credits, Income : Others, is a normal Income entry).
+// "Uncategorised" is the fallback the AI uses for a debit or a credit that fits none of the owner's
+// categories (older credits labelled Income : Others are a normal Income entry).
 export function isUncategorised(t: Pick<Filterable, "category" | "subcategory">): boolean {
   return t.category === FALLBACK.category && t.subcategory === FALLBACK.subcategory;
 }

@@ -1,4 +1,4 @@
-import { FALLBACK, INCOME_FALLBACK } from "../domain/masterData";
+import { FALLBACK } from "../domain/masterData";
 import type { Classification, Direction } from "../domain/taxonomy";
 
 export interface ReclassifyCandidate {
@@ -30,9 +30,8 @@ export interface ReclassifySummary {
 
 const DEFAULT_BATCH_SIZE = 20;
 
-function isFallback(direction: Direction, c: Classification): boolean {
-  const fb = direction === "credit" ? INCOME_FALLBACK : FALLBACK;
-  return c.category === fb.category && c.subcategory === fb.subcategory;
+function isFallback(c: Classification): boolean {
+  return c.category === FALLBACK.category && c.subcategory === FALLBACK.subcategory;
 }
 
 export async function reclassify(deps: ReclassifyDeps): Promise<ReclassifySummary> {
@@ -76,7 +75,7 @@ export async function reclassify(deps: ReclassifyDeps): Promise<ReclassifySummar
           return;
         }
         updates.push({ id: row.id, classification });
-        if (isFallback(direction, classification)) summary.stillUncategorised++;
+        if (isFallback(classification)) summary.stillUncategorised++;
         else summary.moved++;
       });
       await deps.apply(updates);

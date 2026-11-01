@@ -52,13 +52,13 @@ test("new groups: name needed, unique among existing and among each other, dates
   assert.equal(errors[5], null);
 });
 
-test("the opening income uses Account Transfer when it exists, otherwise Income : Others", () => {
+test("the opening income uses Account Transfer when it exists, otherwise the first Income subcategory", () => {
   assert.deepEqual(incomeClassFor([{ category: "Income", subcategories: ["Salary", "Account Transfer"] }]), {
     category: "Income",
     subcategory: "Account Transfer",
   });
-  assert.deepEqual(incomeClassFor([{ category: "Income", subcategories: ["Salary"] }]), { category: "Income", subcategory: "Others" });
-  assert.deepEqual(incomeClassFor([]), { category: "Income", subcategory: "Others" });
+  assert.deepEqual(incomeClassFor([{ category: "Income", subcategories: ["Salary", "Annuities"] }]), { category: "Income", subcategory: "Salary" });
+  assert.deepEqual(incomeClassFor([]), { category: "Others", subcategory: "Uncategorised" });
 });
 
 test("the opening income mirrors the entry as a credit", () => {

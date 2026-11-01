@@ -2,7 +2,7 @@ import { Platform } from "react-native";
 import * as SQLite from "expo-sqlite";
 import { DEFAULT_CATEGORIES, DEFAULT_PAYMENT_METHODS, FALLBACK } from "../domain/masterData";
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 8;
 
 const SCHEMA = `
 -- A group is a separate ledger (see domain/groups.ts). 'main' holds everything entered before groups existed.
@@ -125,6 +125,11 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
     if (!now.some((c) => c.name === "created_group_id")) {
       await txn.execAsync("ALTER TABLE transactions ADD COLUMN created_group_id TEXT");
     }
+    // Version 7 stored the AI's suggestions on the row; version 8 keeps them in memory instead (import/suggestionStore.ts)
+    // and drops the columns.
+    for (const column of ["suggested_category", "suggested_subcategory", "suggestion_rejected"]) {
+      if (now.some((c) => c.name === column)) await txn.execAsync(`ALTER TABLE transactions DROP COLUMN ${column}`);
+    }
     // Version 6 added a description per subcategory.
     const catColumns = await txn.getAllAsync<{ name: string }>("SELECT name FROM pragma_table_info('categories')");
     if (!catColumns.some((c) => c.name === "description")) {
@@ -161,8 +166,7 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
            category, subcategory, payee, payment_method, description, narration, vpa, note,
            payee_bank, upi_ref, classified_by, created_at, updated_at)
         SELECT dedupe_key, dedupe_key, 'import', 'ACTIVE', txn_date, direction, amount_paise, balance_paise,
-               CASE direction WHEN 'credit' THEN 'Income' ELSE 'Others' END,
-               CASE direction WHEN 'credit' THEN 'Others' ELSE 'Uncategorised' END,
+               'Others', 'Uncategorised',
                payee, CASE WHEN upi_ref IS NOT NULL THEN 'UPI' END, note, narration, vpa, note,
                payee_bank, upi_ref, 'migrated', imported_at, imported_at
         FROM transactions_v1;

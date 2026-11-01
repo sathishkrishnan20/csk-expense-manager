@@ -22,11 +22,11 @@ test("debit prompt lists the user's expense categories, never Income, and names 
   assert.match(prompt, /category "Others" and subcategory "Uncategorised"/);
 });
 
-test("credit prompt lists only Income and falls back to Income / Others", () => {
+test("credit prompt lists only Income and falls back to Others / Uncategorised", () => {
   const prompt = buildSystemPrompt(DEFAULT_CATEGORIES, "credit");
   assert.match(prompt, /- Income: Salary, Personal Savings/);
   assert.doesNotMatch(prompt, /- Food & Groceries:/);
-  assert.match(prompt, /category "Income" and subcategory "Others"/);
+  assert.match(prompt, /category "Others" and subcategory "Uncategorised"/);
 });
 
 test("a category added by the user shows up in the prompt and the schema", () => {
@@ -102,8 +102,8 @@ test("credits can only land in Income", async () => {
   });
   const out = await classifyBatch([row(), row(), row()], "credit", DEFAULT_CATEGORIES, call);
   assert.deepEqual(out.get(0), { category: "Income", subcategory: "Salary" });
-  assert.deepEqual(out.get(1), { category: "Income", subcategory: "Others" });
-  assert.deepEqual(out.get(2), { category: "Income", subcategory: "Others" });
+  assert.deepEqual(out.get(1), { category: "Others", subcategory: "Uncategorised" });
+  assert.deepEqual(out.get(2), { category: "Others", subcategory: "Uncategorised" });
 });
 
 test("a malformed answer is rejected", async () => {
@@ -125,4 +125,54 @@ test("a subcategory's description goes into the prompt next to its name, and oth
   assert.match(debit, /- Food: Chaats \(Dikky poori, Panipoori and roadside food\), Snacks\n/);
   assert.match(debit, /text in brackets/);
   assert.doesNotMatch(buildSystemPrompt([{ category: "Food", subcategories: ["Snacks"] }], "debit"), /Snacks \(/);
+});
+
+test("the schema asks for suggestions, and the fallback category is allowed for credits too", async () => {
+  const schema = buildSchema(["A"]) as { properties: { results: { items: { required: string[] } } } };
+  assert.deepEqual(schema.properties.results.items.required, ["id", "category", "subcategory", "suggestedCategory", "suggestedSubcategory"]);
+
+  let seen: JsonSchema | null = null;
+  await classifyBatch([row()], "credit", DEFAULT_CATEGORIES, async (_s, _u, sch) => {
+    seen = sch;
+    return { results: [{ id: 0, category: "Income", subcategory: "Salary", suggestedCategory: "", suggestedSubcategory: "" }] };
+  });
+  const enumValues = ((seen as unknown as { properties: { results: { items: { properties: { category: { enum: string[] } } } } } }).properties.results.items.properties.category.enum);
+  assert.deepEqual(enumValues, ["Income", "Others"]);
+});
+
+test("a suggestion is kept only with the fallback answer, and only when it is usable", async () => {
+  const call: LlmCall = async () => ({
+    results: [
+      // placed: the suggestion is ignored
+      { id: 0, category: "Food & Groceries", subcategory: "Snacks", suggestedCategory: "Entertainment", suggestedSubcategory: "Carrom" },
+      // not placed, with a suggestion for a new subcategory under an existing category (spelling snaps to the list)
+      { id: 1, category: "Others", subcategory: "Uncategorised", suggestedCategory: "entertainment", suggestedSubcategory: "  Carrom  " },
+      // not placed, a new category
+      { id: 2, category: "Others", subcategory: "Uncategorised", suggestedCategory: "Pets", suggestedSubcategory: "Vet" },
+      // unusable suggestions: Income for a debit, the fallback category, empty
+      { id: 3, category: "Others", subcategory: "Uncategorised", suggestedCategory: "Income", suggestedSubcategory: "Gift" },
+      { id: 4, category: "Others", subcategory: "Uncategorised", suggestedCategory: "Others", suggestedSubcategory: "Misc" },
+      { id: 5, category: "Others", subcategory: "Uncategorised", suggestedCategory: "", suggestedSubcategory: "" },
+      // missing fields entirely
+      { id: 6, category: "Others", subcategory: "Uncategorised" },
+    ],
+  });
+  const out = await classifyBatch(Array.from({ length: 7 }, () => row()), "debit", DEFAULT_CATEGORIES, call);
+  assert.equal(out.get(0)?.suggestion, undefined);
+  assert.deepEqual(out.get(1), { category: "Others", subcategory: "Uncategorised", suggestion: { category: "Entertainment", subcategory: "Carrom" } });
+  assert.deepEqual(out.get(2)?.suggestion, { category: "Pets", subcategory: "Vet" });
+  for (const i of [3, 4, 5, 6]) assert.equal(out.get(i)?.suggestion, undefined, `row ${i}`);
+});
+
+test("a credit's suggestion always goes under Income", async () => {
+  const call: LlmCall = async () => ({
+    results: [{ id: 0, category: "Others", subcategory: "Uncategorised", suggestedCategory: "Whatever", suggestedSubcategory: "Cashback" }],
+  });
+  const out = await classifyBatch([row()], "credit", DEFAULT_CATEGORIES, call);
+  assert.deepEqual(out.get(0)?.suggestion, { category: "Income", subcategory: "Cashback" });
+});
+
+test("the prompts explain when to suggest", () => {
+  assert.match(buildSystemPrompt(DEFAULT_CATEGORIES, "debit"), /suggestedCategory and suggestedSubcategory/);
+  assert.match(buildSystemPrompt(DEFAULT_CATEGORIES, "credit"), /suggestedSubcategory/);
 });

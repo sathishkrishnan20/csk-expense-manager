@@ -52,7 +52,7 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
             "For a locked PDF, save its password under Config > Statement passwords first. The app tries every saved password, and checks that the balances and totals on the statement add up before saving anything; if they do not, nothing is imported.",
             "Rows you imported before are skipped, so importing an overlapping statement is safe. A row you deleted is not added again on its own: the import summary lists such rows and offers Add them back and categorise, so you decide. That restores them and asks the AI again (a category you set by hand is kept).",
             "Debits go to your expense categories; credits go to the subcategories under Income.",
-            "Anything the AI cannot place goes to Others : Uncategorised. It never invents a category.",
+            "Anything the AI cannot place, an expense or a credit, goes to Others : Uncategorised. It never puts an entry in a category you do not have. Instead it can suggest one: see AI suggestions under Categories and Re-classify.",
             "If an import stops part-way (no internet, wrong key, rate limit), fix the cause and import the same file again: saved rows are skipped and the rest are done.",
           ],
         },
@@ -124,6 +124,7 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
             "Each subcategory has a \"What goes here\" box in its edit form. Write the things that belong in it, such as local dish or product names (for example, Chaats: Dikky poori, Panipoori, roadside food). The AI reads it with the names and places entries much better. It is saved in your backup file too.",
             "Config > Re-classify Uncategorised asks the AI again for imported rows left in Others : Uncategorised and for entries waiting for AI.",
             "A category you choose yourself is never changed by the AI. Changing a category on any transaction makes it yours.",
+            "When the AI cannot place an entry it also suggests a category and subcategory, for expenses and for credits (credits go under Income). After Re-classify, if some entries could not be placed, the app opens the suggestions straight away with how many were categorised and how many were not. After an import, the result has a Review button. The suggestions are kept only until you close the app, so review them while you are there; anything you leave stays in Others : Uncategorised, and a later Re-classify asks the AI again. When you have answered them all, the screen offers buttons back to Home or Config. For each entry you can change the names, then Approve, which adds the category or subcategory to your list and files the entry under it, or Reject, which leaves it in Others : Uncategorised. Entries with the same suggestion sit together so you can approve them all at once.",
             "If the AI cannot place a transaction after 3 attempts (the import is the first), it stops asking and moves the transaction to a Couldn't categorise list. Home shows a red card with the count; tap it to choose a category for each one, or find them under Transactions, Filters.",
           ],
         },
@@ -148,8 +149,8 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
       blocks: [
         {
           text: web
-            ? "Your transactions, categories and payment modes are stored in this browser, in a private database for this web address. They are not uploaded anywhere. Clearing this site's data in the browser deletes them, and the phone app and other browsers have their own separate copies. Use Export and Import to move data or keep a copy."
-            : "Your transactions, categories and payment modes are stored in a database file inside this app on your iPhone. They are not uploaded anywhere. Deleting the app deletes them. Use Export and Import to keep a copy or to move data to another device.",
+            ? "Your transactions, categories and payment modes are stored in this browser, in a private database for this web address. They are not uploaded anywhere unless you turn on Cloud backup. Clearing this site's data in the browser deletes them, and the phone app and other browsers have their own separate copies. Use Export and Import, or Cloud backup, to move data or keep a copy."
+            : "Your transactions, categories and payment modes are stored in a database file inside this app on your iPhone. They are not uploaded anywhere unless you turn on Cloud backup. Deleting the app deletes them. Use Export and Import, or Cloud backup, to keep a copy or to move data to another device.",
         },
         {
           bullets: [
@@ -206,7 +207,9 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
             "Open it in Excel: your transactions are on the left, then your category list, then your payment modes, then your groups, separated by empty columns. Each transaction's Group Id says which group it belongs to. Keep the column headings as they are.",
             "Import adds whatever is missing from such a file. It never changes or removes what is already here, so it is safe to run twice. You can add rows in Excel before importing; leave Category and Subcategory empty to have the AI fill them in later.",
             "Your API key is not part of the file. Enter it again on the new device.",
-            "Export now and then. It is the only backup, and it is also how you move data between the phone and a browser.",
+            "Export now and then, or use Cloud backup below. Export is also how you move data between the phone and a browser.",
+            "Config > Cloud backup keeps an encrypted copy on a free backup server. Turn it on, write down the recovery code it shows, and press Back up now; backing up again replaces the earlier copy. The copy is encrypted on this phone before it is sent, so the server cannot read it and holds no name, email or phone number. To get it back on a new phone, open Cloud backup, choose I already have a recovery code, type the code and restore. Restore only adds what is missing.",
+            "Keep the recovery code away from this phone (a password manager or paper). Without it nobody can open your cloud copy, and anyone who has it can. Delete the cloud copy any time from the same screen.",
           ],
         },
       ],

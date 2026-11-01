@@ -112,11 +112,11 @@ export default function AddTransaction() {
 
   const subcategoryOptions = useMemo(() => {
     const subs = sortOthersLast(categories.find((c) => c.category === category)?.subcategories ?? []);
-    // Only an expense being updated can be handed back to the AI.
-    if (editing && direction === "debit" && category === FALLBACK.category) subs.push(RECATEGORISE.subcategory);
+    // An entry being updated (expense or credit) can be handed back to the AI.
+    if (editing && category === FALLBACK.category) subs.push(RECATEGORISE.subcategory);
     return subcategory && !subs.includes(subcategory) ? [...subs, subcategory] : subs;
-  }, [categories, category, subcategory, editing, direction]);
-  const recategorise = editing && direction === "debit" && isRecategorise(category, subcategory);
+  }, [categories, category, subcategory, editing]);
+  const recategorise = editing && isRecategorise(category, subcategory);
 
   const changeDirection = (next: Direction) => {
     setDirection(next);
@@ -249,7 +249,8 @@ export default function AddTransaction() {
           value={category}
           options={categoryOptions}
           onChange={changeCategory}
-          disabled={direction === "credit" || categoriseLater}
+          // A credit is under Income, unless it is still uncategorised and needs one chosen.
+          disabled={(direction === "credit" && category === INCOME_CATEGORY) || categoriseLater}
         />
         <SelectField
           label="Sub Category"

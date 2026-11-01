@@ -24,19 +24,31 @@ interface Editing {
 }
 
 export function CategoriesSection() {
-  const [categories, setCategories] = useState<CategoryDef[]>([]);
+  // null until the list has loaded, so the Add button is not drawn first and pushed down when the categories arrive.
+  const [loaded, setLoaded] = useState<CategoryDef[] | null>(null);
+  const categories = loaded ?? [];
   const [expanded, setExpanded] = useState("");
   const [edit, setEdit] = useState<Editing | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Rows whose "What goes here" box is open; it stays closed until the note icon is tapped, to save space.
+  const [notesOpen, setNotesOpen] = useState<Set<number>>(new Set());
 
-  const reload = useCallback(() => loadCategories().then(setCategories), []);
+  const reload = useCallback(() => loadCategories().then(setLoaded), []);
   useEffect(() => {
     reload();
   }, [reload]);
 
+  const toggleNotes = (key: number) =>
+    setNotesOpen((open) => {
+      const next = new Set(open);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+
   const startEdit = (def: CategoryDef) => {
     setError(null);
+    setNotesOpen(new Set());
     setEdit({
       original: def.category,
       name: def.category,
@@ -47,6 +59,7 @@ export function CategoriesSection() {
 
   const startNew = () => {
     setError(null);
+    setNotesOpen(new Set());
     setEdit({ original: null, name: "", rows: [{ key: 0, original: null, name: "", description: "" }], nextKey: 1 });
   };
 
@@ -129,19 +142,32 @@ export function CategoriesSection() {
                   />
                 </View>
                 {locked ? (
-                  <View style={styles.removeSlot} />
+                  <>
+                    <View style={styles.removeSlot} />
+                    <View style={styles.removeSlot} />
+                  </>
                 ) : (
-                  <Pressable
-                    hitSlop={8}
-                    style={styles.removeSlot}
-                    onPress={() => setEdit({ ...edit, rows: edit.rows.filter((r) => r.key !== row.key) })}
-                    accessibilityLabel="Remove subcategory"
-                  >
-                    <MaterialIcons name="highlight-off" size={26} color={colors.error} />
-                  </Pressable>
+                  <>
+                    <Pressable
+                      hitSlop={8}
+                      style={styles.removeSlot}
+                      onPress={() => toggleNotes(row.key)}
+                      accessibilityLabel={row.description ? "Edit what goes here" : "Add what goes here"}
+                    >
+                      <MaterialIcons name="notes" size={24} color={row.description ? colors.primary : colors.textSecondary} />
+                    </Pressable>
+                    <Pressable
+                      hitSlop={8}
+                      style={styles.removeSlot}
+                      onPress={() => setEdit({ ...edit, rows: edit.rows.filter((r) => r.key !== row.key) })}
+                      accessibilityLabel="Remove subcategory"
+                    >
+                      <MaterialIcons name="highlight-off" size={26} color={colors.error} />
+                    </Pressable>
+                  </>
                 )}
               </View>
-              {locked ? null : (
+              {locked || !notesOpen.has(row.key) ? null : (
                 <View style={[styles.row, { marginLeft: 24 }]}>
                   <View style={{ flex: 1 }}>
                     <OutlinedInput
@@ -153,6 +179,7 @@ export function CategoriesSection() {
                       }
                     />
                   </View>
+                  <View style={styles.removeSlot} />
                   <View style={styles.removeSlot} />
                 </View>
               )}
@@ -172,6 +199,8 @@ export function CategoriesSection() {
       </View>
     );
   }
+
+  if (loaded === null) return null;
 
   return (
     <View>

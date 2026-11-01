@@ -6,7 +6,6 @@ import {
   FALLBACK,
   RECATEGORISE,
   isRecategorise,
-  INCOME_FALLBACK,
   isProtectedCategory,
   isProtectedSubcategory,
   sortOthersLast,
@@ -39,12 +38,13 @@ test("default categories are the owner's own list, Income first, fallback last",
   assert.deepEqual(last, { category: FALLBACK.category, subcategories: [FALLBACK.subcategory] });
 });
 
-test("no category repeats a subcategory name, and the Income fallback exists", () => {
+test("no category repeats a subcategory name, and Income has no Others", () => {
   for (const c of DEFAULT_CATEGORIES) {
     assert.equal(new Set(c.subcategories).size, c.subcategories.length, c.category);
   }
-  const income = DEFAULT_CATEGORIES.find((c) => c.category === INCOME_FALLBACK.category);
-  assert.ok(income?.subcategories.includes(INCOME_FALLBACK.subcategory));
+  // Income has no "Others": an entry nothing fits stays in Others : Uncategorised, credit or debit.
+  const income = DEFAULT_CATEGORIES.find((c) => c.category === "Income");
+  assert.ok(income && income.subcategories.length > 0 && !income.subcategories.includes("Others"));
 });
 
 test("payment modes match the web app", () => {

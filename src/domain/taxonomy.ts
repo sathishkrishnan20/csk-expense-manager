@@ -1,7 +1,6 @@
 import {
   FALLBACK,
   INCOME_CATEGORY,
-  INCOME_FALLBACK,
   isIncomeCategory,
   isOthersLike,
   type CategoryDef,
@@ -21,8 +20,9 @@ export function allowedCategories(all: CategoryDef[], direction: Direction): Cat
 // ("Categorise later"). Re-classify picks these up; once labelled the value becomes the model id.
 export const PENDING_AI = "pending";
 
-export function fallbackFor(direction: Direction): Classification {
-  return direction === "credit" ? INCOME_FALLBACK : FALLBACK;
+// The same for both directions: an entry the AI cannot place stays in Others : Uncategorised.
+export function fallbackFor(_direction: Direction): Classification {
+  return FALLBACK;
 }
 
 // Validates a model answer against the user's current categories (case-insensitive).

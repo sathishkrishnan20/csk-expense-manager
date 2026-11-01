@@ -7,6 +7,7 @@ import { MAIN_GROUP_ID, type Group } from "../domain/groups";
 import type { ImportSummary } from "../import/importStatement";
 import { formatLongDate, formatRupees } from "../domain/format";
 import { MissingApiKeyError, restoreDeletedRows, runImport } from "../import/services";
+import { suggestionCount } from "../import/suggestionStore";
 import type { PickedFile } from "../platform/files";
 import { PdfPasswordError } from "../pdf/errors";
 import { ActiveAiLine } from "../ui/ActiveAi";
@@ -180,6 +181,19 @@ export default function ImportStatement() {
                 {summary.error ? ` — ${summary.error}` : ""}. Fix the cause and upload the same file again; saved rows
                 will be skipped.
               </T>
+            ) : null}
+            {suggestionCount() > 0 ? (
+              <View style={{ gap: 8 }}>
+                <T style={styles.small}>
+                  The AI could not place {suggestionCount()} of them, but has an idea where {suggestionCount() === 1 ? "it" : "they"} could go.
+                  These ideas are kept only until you close the app.
+                </T>
+                <Button
+                  label={`Review ${suggestionCount()} AI suggestion${suggestionCount() === 1 ? "" : "s"}`}
+                  onPress={() => router.push("/suggestions")}
+                  color={colors.importAction}
+                />
+              </View>
             ) : null}
             <View style={styles.cardAction}>
               {groupId === MAIN_GROUP_ID ? (

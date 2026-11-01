@@ -10,9 +10,16 @@ export const MAX_SUBCATEGORY_DESCRIPTION = 200;
 // One line, trimmed, as it is stored and sent to the AI.
 export const cleanDescription = (text: string): string => text.replace(/\s+/g, " ").trim();
 
+export interface Suggestion {
+  category: string;
+  subcategory: string;
+}
+
 export interface Classification {
   category: string;
   subcategory: string;
+  // Only on a fallback answer: where the AI thinks the entry belongs, for the owner to approve (see domain/suggestions.ts).
+  suggestion?: Suggestion;
 }
 
 // The one category whose subcategories are money-in. Fixed because the Add form,
@@ -23,7 +30,7 @@ export function isIncomeCategory(name: string): boolean {
   return name === INCOME_CATEGORY;
 }
 
-// Used when nothing in the user's categories fits. It lives in the category
+// Used when nothing in the user's categories fits, for a debit or a credit. It lives in the category
 // list like any other row but cannot be deleted or renamed.
 export const FALLBACK: Classification = { category: "Others", subcategory: "Uncategorised" };
 
@@ -35,9 +42,6 @@ export function isRecategorise(category: string, subcategory: string): boolean {
   return category === RECATEGORISE.category && subcategory === RECATEGORISE.subcategory;
 }
 
-// Used when a credit does not fit any Income subcategory.
-export const INCOME_FALLBACK: Classification = { category: INCOME_CATEGORY, subcategory: "Others" };
-
 export function isProtectedSubcategory(category: string, subcategory: string): boolean {
   return category === FALLBACK.category && subcategory === FALLBACK.subcategory;
 }
@@ -47,10 +51,9 @@ export function isProtectedCategory(category: string): boolean {
 }
 
 // Seeded on first run (a fresh install, or a new device with no categories yet). This is the owner's own
-// Config list, spelling kept as-is so existing history lines up. Income : Others is added to it because it is
-// the fallback for a credit the AI cannot place. Existing installs keep their categories; edit them in Config.
+// Config list, spelling kept as-is so existing history lines up. Existing installs keep their categories; edit them in Config.
 export const DEFAULT_CATEGORIES: CategoryDef[] = [
-  { category: "Income", subcategories: ["Salary", "Personal Savings", "Part-time work", "Annuities", "Account Transfer", "Others"] },
+  { category: "Income", subcategories: ["Salary", "Personal Savings", "Part-time work", "Annuities", "Account Transfer"] },
   {
     category: "Entertainment",
     subcategories: [

@@ -189,7 +189,7 @@ test("CSV: an empty category means categorise later", () => {
   const csv = ["Date,Type,Amount,Category,Subcategory,Payee,Description", "01/10/2026,Debit,80,,,Ravi Stores,vegetables", "02/10/2026,Credit,500,,,Anil,"].join("\n");
   const [debit, credit] = parseBackup(csv).backup.transactions;
   assert.deepEqual([debit.category, debit.subcategory, debit.classifiedBy], ["Others", "Uncategorised", "pending"]);
-  assert.deepEqual([credit.category, credit.subcategory, credit.classifiedBy], ["Income", "Others", "pending"]);
+  assert.deepEqual([credit.category, credit.subcategory, credit.classifiedBy], ["Others", "Uncategorised", "pending"]);
 });
 
 test("CSV: bad rows are skipped and counted, wrong files rejected", () => {

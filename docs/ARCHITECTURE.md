@@ -34,7 +34,7 @@ Screens (src/app, Expo Router) read SQLite.
 | App | Expo SDK 58, React Native 0.88, TypeScript. iOS is the target; a web build is supported in code but untested (see "Web" in section 3) |
 | Navigation | Expo Router 58. Tabs come from `expo-router/js-tabs` with a custom `tabBar`; Add/Edit and Import are root-stack screens above the tabs |
 | Look | Theme values copied from the web app (`src/ui/theme.ts`): primary `#7F3DFF`, gradient `#9061ed` to `#5d3ba2`, income `#00A86B`, expense `#FD3C4A`, Roboto, Georgia for the Home numbers, MUI-style outlined fields and bottom bar |
-| Storage | `expo-sqlite`, file `expenses.db`, schema version 4 |
+| Storage | `expo-sqlite`, file `expenses.db`, schema version 8 |
 | Money | Integer paise; `amount_paise` is always positive and `direction` says which way |
 | API key | iOS Keychain via `expo-secure-store`; AES-GCM-encrypted in browser `localStorage` on web, with the key derived from a passkey (WebAuthn PRF) (`src/platform/secureStorage*.ts`) |
 | LLM | One active provider chosen in Config > AI: Gemini (default, `gemini-3.5-flash-lite`), Claude (`claude-haiku-5-5`), ChatGPT / OpenAI (`gpt-6-luna`, Chat Completions with strict `json_schema`) or Ollama (`llama3.2`, `POST {address}/api/chat` with the schema in `format`, no key). The model name is editable per provider; defaults live in `src/llm/providers.ts` (`MODELS`) |
@@ -75,7 +75,8 @@ deleted. `Income` cannot be renamed or deleted (income logic keys off it). The m
 may only choose categories that exist now; answers are validated case-insensitively.
 A known category with an unknown subcategory falls to that category's own
 "Others"/"Other", otherwise to the fallback. Credits are classified only into
-`Income` subcategories, falling back to `Income : Others`.
+`Income` subcategories, and fall back to `Others : Uncategorised` like debits: `Income` has no
+"Others" of its own (the fallback category is always allowed in the answer schema, for credits too).
 
 **Re-classify.** After adding categories, Config > "Re-classify Uncategorised"
 re-runs the model on imported rows sitting in the fallback (and rows migrated from
@@ -111,7 +112,7 @@ excluded from lists, totals and charts.
 
 **Migration.** `PRAGMA user_version` 2. Data from the first release (single table,
 old built-in categories) is carried over: rows become `Others : Uncategorised`
-(credits `Income : Others`), `classified_by = 'migrated'`, ready for re-classify.
+(debits and credits), `classified_by = 'migrated'`, ready for re-classify.
 
 **Transaction filters** (Transactions tab, a collapsible "Filters" bar above the list):
 date range (inclusive, either end can be left open), type (all / debit / credit), category,
@@ -142,20 +143,43 @@ categorise · tap to choose", Home shows a card with the count that opens Transa
 `uncategorised: "unresolved"`, and the filter panel has a matching option. Choosing a category by hand
 makes the row `'manual'`, which removes it from the list. Config > Re-classify offers "try again", which
 sets the rows back to `pending` with fresh attempts. Rows the AI did not answer for (errors, omitted
-ids) are not counted. Credits are never unresolved (their fallback, Income : Others, is a real
-category). `ai_attempts` is not exported in the CSV backup; `Classified By = unresolved` is, so the
+ids) are not counted. Debits and credits are treated alike (older credits labelled `Income : Others` are
+ordinary Income entries and are not retried). `ai_attempts` is not exported in the CSV backup; `Classified By = unresolved` is, so the
 list survives a restore.
 
 **"Recategorise with AI".** The Update form (not Add) lists a built-in extra subcategory under Others,
 "Recategorise with AI" (`RECATEGORISE` in `src/domain/masterData.ts`). It is not in the `categories`
 table, so it is not in Config, filters, charts or the prompt, and the AI can never answer with it
-(`normalizeClassification` would turn it into the fallback). Choosing it on an expense (credits always
-stay in Income) saves the row as pending (`categoriseLater`) with `ai_attempts` set to
+(`normalizeClassification` would turn it into the fallback). Choosing it on an expense or a credit saves the row as pending (`categoriseLater`) with `ai_attempts` set to
 `RECATEGORISE_ATTEMPTS_USED` (`MAX_AI_ATTEMPTS - 1`, `updateTransaction`'s `recategorise` flag). The
 next Re-classify sends it with the user's current categories; one failed answer reaches `MAX_AI_ATTEMPTS`,
 so the row returns to Others : Uncategorised as `unresolved` (the "Couldn't categorise" list) and is not
 sent again until the owner chooses the option again. Because `ai_attempts` is not in the CSV backup, a
 pending row restored from a backup gets the normal 3 attempts.
+
+**AI suggestions for entries it cannot place.** Besides the fallback answer, the model
+returns `suggestedCategory` / `suggestedSubcategory` (empty strings when not needed; both are required
+in the response schema). `classifyBatch` keeps them only with a fallback answer and only when
+`acceptSuggestion` (`src/domain/suggestions.ts`) accepts them: names are tidied to one line, at most
+40 characters, case snapped to existing spelling, a debit may not use Income or Others, and a credit's
+category is forced to Income. **They are kept in memory only** (`src/import/suggestionStore.ts`, a map of
+entry id to suggestion, in the same style as `pendingDuplicate`): `insert` (import) and
+`applyClassifications` (Re-classify) add to it, a new import or Re-classify empties it first
+(`startSuggestions`), and it is gone when the app closes. Nothing is written to the database, and the
+entry stays in Others : Uncategorised; nothing is added to the category list until the owner approves.
+(Version 7 stored them as `suggested_category`, `suggested_subcategory` and `suggestion_rejected` columns;
+version 8 dropped those, so an unanswered suggestion cannot be reviewed on another day and a rejected one
+can be suggested again by a later Re-classify, until the entry has used its 3 attempts.)
+The **AI suggestions** screen (`src/app/suggestions.tsx`) is opened automatically at the end of Config >
+Re-classify when entries stayed uncategorised and have suggestions (the run's counts go as route params for
+the "X categorised out of Y" banner), from a "Review N AI suggestions" button on the import result and in
+the Re-classify section of Config. `listSuggestions` (`src/db/suggestions.ts`) loads the waiting entries
+from the database and drops from memory any that were categorised or deleted since. The screen groups
+entries with the same suggestion in one card with editable names and a status (new category, new
+subcategory, already in your list). Approve (one entry or all in the card; `approveSuggestions`) adds the
+category and subcategory to `categories` if missing and files the entries under them as `manual`. Reject
+just forgets the suggestion. When none are left the screen says "All reviewed" with Home and Config
+buttons. Both lists are shared by all groups, and suggestions are not part of the backup file.
 
 **PDF statements** (import, on the device). A PDF statement is read with `pdfjs-dist` 3.11 (legacy
 CommonJS build; version pinned) in `src/pdf/readPdf.ts`: it opens the file with each saved password in
@@ -188,7 +212,7 @@ changes (storage, key handling, what is sent to the AI), update that file too.
 
 **"Categorise later" for hand entries.** On the Add form the category is optional: tick
 "Categorise later with AI" and the row is stored in the fallback (Others : Uncategorised
-for a debit, Income : Others for a credit) with `classified_by = 'pending'`
+for a debit or a credit) with `classified_by = 'pending'`
 (`PENDING_AI` in `src/domain/taxonomy.ts`), not `'manual'`; the list shows it as "Waiting
 for AI". **Re-classify Uncategorised** includes pending rows and sends the payee,
 description, amount and type (hand entries have no bank narration); the result replaces
@@ -251,7 +275,7 @@ prompt (importing into a closed group simply works).
 **Create a group for an entry** (schema version 5). A new entry in Main (Add form; not edits, not inside a group) has a "Create a
 group for this entry" option. The entry stays in Main, and `addEntries` (`src/db/transactions.ts`) saves, in one db transaction,
 the group, an opening income in it equal to the amount (Income : Account Transfer if the owner still has it, otherwise
-Income : Others; `src/domain/entryGroup.ts`) and the entry, which remembers the group in `transactions.created_group_id`
+the first Income subcategory; `src/domain/entryGroup.ts`) and the entry, which remembers the group in `transactions.created_group_id`
 (also in the CSV backup as `Created Group Id`). The group is prefilled, all editable: name `Category - Subcategory` (else
 the description, else the payee), start = the entry's date, end = the last day of that month. Duplicate uses the link:
 a copy of an entry that created a group offers its own new group (only for copies going into Main), with the name, dates
@@ -320,6 +344,42 @@ First save creates the passkey; if the browser only returns the secret on a seco
 Save asks to be pressed again. Limits: needs PRF support (recent Safari/Chrome); a deleted
 passkey makes the stored key unreadable ("Forget saved key" resets); malware or a malicious
 extension running while unlocked can still read the key.
+
+### Cloud backup (Config > Cloud backup)
+
+An encrypted copy of the same data as Export, kept on a free Cloudflare Worker + KV (`server/`). Chosen
+for: free without a card, never pauses when idle, a tiny server we control, works from Expo Go.
+
+- **Identity is one random secret per owner**, made on the phone (`expo-crypto` `getRandomBytesAsync`;
+  the synchronous version falls back to `Math.random` in dev builds, so it is not used), shown as a
+  34-character Crockford base32 **recovery code** with a 1-byte check so typos are caught
+  (`src/domain/cloudBackup.ts`). It is kept in the Keychain (`secureStorage`), not SQLite: the Keychain
+  usually survives a reinstall, and it must not be in a backup file. No user id column was added.
+- **Two values are derived from it with HKDF-SHA256** and cannot be turned back into the secret: the backup
+  **id** (64 hex characters, the KV key) and the AES **key**. Backing up again computes the same id, so the
+  server replaces that one blob; nothing links the id to a person.
+- **Sealed on the phone:** CSV (`serializeBackup`) -> gzip -> AES-256-GCM with a fresh 12-byte nonce and the
+  header `EMB\x01` as associated data -> base64 text. Compression comes first because ciphertext does not
+  compress. The server holds only that text and an `updatedAt`.
+- **Protocol** (`server/src/worker.ts`, client `src/cloud/client.ts`): `PUT|GET|DELETE /backup/<id>`. The
+  Worker accepts only ids of 64 lowercase hex, bodies that start like a sealed backup (`RU1CA`) and at most
+  10,000,000 characters (`MAX_UPLOAD_CHARS`, the same in the app, checked before upload; KV allows 25 MiB).
+  CORS is open so the web build can call it.
+- **Restore is the same merge as Import** (`restoreBackup`): it never changes what is on the phone. A code
+  typed on a new phone is saved only after it opened a backup. Delete removes the server copy; Turn off
+  forgets the code on this phone and leaves the server copy.
+- **Skip unchanged:** a keyed fingerprint of the CSV is kept in plain storage; if it equals the last upload,
+  nothing is sent. The free tier allows about 1,000 KV writes a day for the whole account (one backup = one
+  write); D1 (100,000 a day) is the upgrade path, with no change to the app.
+- **Server address:** `EXPO_PUBLIC_BACKUP_URL` in `.env` (see `server/README.md`). Without it the section says
+  cloud backup is not set up.
+- **Limits, stated honestly:** whoever has the id can read the (encrypted) blob, replace or delete it, and the
+  id is unguessable but there are no accounts, so anyone who finds the address can store junk under random ids
+  (size cap + shape check only). A lost recovery code means a lost cloud copy. Stored data never expires.
+- Unit tests: `tests/domain/cloudBackup.test.ts` (code, keys against Node's own HKDF, AES-GCM against Node's
+  own decipher, tamper detection), `tests/server/worker.test.ts`, `tests/cloud/client.test.ts` (app and
+  Worker together with an in-memory store). **Not verified:** the code in the app on an iPhone, Metro bundling
+  of `@noble/*` and `fflate`, real Cloudflare KV, and speed of the pure-JS AES on a multi-megabyte backup.
 
 ## 4. Differences from the web app (deliberate)
 

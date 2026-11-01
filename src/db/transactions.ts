@@ -3,9 +3,10 @@ import type { ImportedTransaction, TransactionStore } from "../import/importStat
 import { scopeStore, type KeyedStore } from "../import/scopedStore";
 import type { ReclassifyCandidate } from "../import/reclassify";
 import type { Classification, Direction } from "../domain/taxonomy";
-import { FALLBACK } from "../domain/masterData";
+import { FALLBACK, type Suggestion } from "../domain/masterData";
 import { RECATEGORISE_ATTEMPTS_USED, UNRESOLVED, aiAttemptOutcome } from "../domain/classificationOutcome";
 import { PENDING_AI, fallbackFor } from "../domain/taxonomy";
+import { addSuggestions } from "../import/suggestionStore";
 import { getDb, inTransaction } from "./database";
 import { insertGroup, type GroupInput } from "./groups";
 import type { OpeningIncome } from "../domain/entryGroup";
@@ -325,11 +326,12 @@ const keyedSqliteStore: KeyedStore = {
 
   async insert(rows: ImportedTransaction[], groupId: string) {
     const db = await getDb();
+    const saved: { id: string; suggestion: Suggestion | undefined }[] = [];
     await inTransaction(db, async (txn) => {
       for (const r of rows) {
         // The import is the AI's first attempt at this transaction.
-        const outcome = aiAttemptOutcome(0, couldNotPlace(r.direction, r));
-        await txn.runAsync(
+        const outcome = aiAttemptOutcome(0, couldNotPlace(r));
+        const inserted = await txn.runAsync(
           `INSERT OR IGNORE INTO transactions
              (id, dedupe_key, group_id, source, txn_date, direction, amount_paise, balance_paise, category, subcategory,
               payee, payment_method, description, narration, vpa, note, payee_bank, upi_ref, classified_by, ai_attempts)
@@ -356,20 +358,22 @@ const keyedSqliteStore: KeyedStore = {
             outcome.attempts,
           ],
         );
+        if (inserted.changes > 0) saved.push({ id: r.dedupeKey, suggestion: r.suggestion });
       }
     });
+    // Where the AI thinks the rows it could not place belong, for the suggestions screen (memory only).
+    addSuggestions(saved);
   },
 };
 
 // The importer's store for one group: every row of the file goes into that group.
 export const createSqliteStore = (groupId: string): TransactionStore => scopeStore(keyedSqliteStore, groupId);
 
-// Debits the AI answered with the fallback; counts as one failed attempt (credits have a real fallback, Income : Others).
-const couldNotPlace = (direction: Direction, c: Classification): boolean =>
-  direction === "debit" && c.category === FALLBACK.category && c.subcategory === FALLBACK.subcategory;
+// The AI answered with the fallback (a debit or a credit); counts as one failed attempt.
+const couldNotPlace = (c: Classification): boolean => c.category === FALLBACK.category && c.subcategory === FALLBACK.subcategory;
 
 const CANDIDATE_WHERE = `status = 'ACTIVE' AND classified_by NOT IN ('manual', '${UNRESOLVED}')
-  AND (classified_by IN ('${PENDING_AI}', 'migrated') OR (direction = 'debit' AND category = ? AND subcategory = ?))`;
+  AND (classified_by IN ('${PENDING_AI}', 'migrated') OR (category = ? AND subcategory = ?))`;
 
 // Rows the AI left in the fallback, rows that came from the earlier version of the app, and
 // hand entries waiting for the AI ("Categorise later"); never rows the user categorised by hand.
@@ -416,24 +420,28 @@ export async function applyClassifications(
 ): Promise<void> {
   if (updates.length === 0) return;
   const db = await getDb();
+  const updated: { id: string; suggestion: Suggestion | undefined }[] = [];
   await inTransaction(db, async (txn) => {
     for (const { id, classification } of updates) {
-      const row = await txn.getFirstAsync<{ direction: Direction; ai_attempts: number }>(
-        "SELECT direction, ai_attempts FROM transactions WHERE id = ? AND classified_by != 'manual'",
+      const row = await txn.getFirstAsync<{ ai_attempts: number }>(
+        "SELECT ai_attempts FROM transactions WHERE id = ? AND classified_by != 'manual'",
         [id],
       );
       if (!row) continue;
       // Each failed answer is an attempt; after MAX_AI_ATTEMPTS the AI stops being asked and the
       // owner is shown the transaction in the "Couldn't categorise" list.
-      const outcome = aiAttemptOutcome(row.ai_attempts, couldNotPlace(row.direction, classification));
+      const outcome = aiAttemptOutcome(row.ai_attempts, couldNotPlace(classification));
       await txn.runAsync(
         `UPDATE transactions SET category = ?, subcategory = ?, classified_by = ?, ai_attempts = ?,
            updated_at = datetime('now')
          WHERE id = ? AND classified_by != 'manual'`,
         [classification.category, classification.subcategory, outcome.unresolved ? UNRESOLVED : label, outcome.attempts, id],
       );
+      updated.push({ id, suggestion: classification.suggestion });
     }
   });
+  // Where the AI thinks the entries it could not place belong, for the suggestions screen (memory only).
+  addSuggestions(updated);
 }
 
 // How many transactions the AI gave up on and that wait for the owner; null counts every group.

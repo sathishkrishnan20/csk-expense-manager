@@ -33,7 +33,7 @@ export function DataBackupSection() {
   const exportData = () =>
     run(async () => {
       const backup = await exportBackup();
-      await saveCsvFile(backupFileName(new Date()), serializeBackup(backup), "Export Expense Manager data");
+      await saveCsvFile(backupFileName(new Date()), serializeBackup(backup), "Export CSK Manager data");
       return `Exported ${count(backup.transactions.length, "transaction")}, ${count(backup.categories.length, "category row")} and ${count(backup.paymentMethods.length, "payment mode")}.`;
     });
 

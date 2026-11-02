@@ -1,12 +1,12 @@
 // Runs when the phone hands the app a link or a file (outside the app's own state). A statement shared
-// from Mail or Files ("Open in Expense Manager") arrives as a file path; send it to the import screen,
+// from Mail or Files ("Open in CSK Manager") arrives as a file path; send it to the import screen,
 // which holds it until the owner picks the group and taps Import, then reads it (unlocking a locked PDF) and imports it.
 // Everything else is left alone.
 const STATEMENT_FILE = /\.(pdf|xls|xlsx|csv)(\?|#|$)/i;
 
 export function redirectSystemPath({ path }: { path: string; initial: boolean }): string {
   try {
-    if (STATEMENT_FILE.test(path) && !path.startsWith("expensemanager:")) {
+    if (STATEMENT_FILE.test(path) && !path.startsWith("cskmanager:")) {
       const uri = path.startsWith("/") ? `file://${path}` : path;
       return `/import?file=${encodeURIComponent(uri)}`;
     }

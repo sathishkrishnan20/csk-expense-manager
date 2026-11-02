@@ -22,7 +22,9 @@ import { cleanDescription } from "./masterData";
 import { parseAmountPaise, parseDate } from "./statementParser";
 import { PENDING_AI, fallbackFor } from "./taxonomy";
 
-export const BACKUP_FORMAT = "expense-manager-backup";
+export const BACKUP_FORMAT = "csk-manager-backup";
+// The name the first version (JSON files) wrote when the app was called Expense Manager; such files still restore.
+const LEGACY_BACKUP_FORMAT = "expense-manager-backup";
 export const BACKUP_VERSION = 4;
 
 export interface BackupTransaction {
@@ -302,8 +304,8 @@ function parseJsonBackup(text: string): ParsedBackup {
   } catch {
     throw new BackupError("This is not a valid backup file (it is not JSON).");
   }
-  if (!isObject(raw) || raw.format !== BACKUP_FORMAT) {
-    throw new BackupError("This is not an Expense Manager backup file.");
+  if (!isObject(raw) || raw.format !== BACKUP_FORMAT && raw.format !== LEGACY_BACKUP_FORMAT) {
+    throw new BackupError("This is not a CSK Manager backup file.");
   }
   if (typeof raw.version !== "number" || raw.version > BACKUP_VERSION) {
     throw new BackupError("This backup was made by a newer version of the app. Update the app and try again.");
@@ -380,7 +382,7 @@ function parseJsonBackup(text: string): ParsedBackup {
 
 export function backupFileName(now: Date): string {
   const p = (n: number) => String(n).padStart(2, "0");
-  return `expense-manager-backup-${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}.csv`;
+  return `csk-manager-backup-${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}.csv`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -592,7 +594,7 @@ function parseCsvBackup(text: string): ParsedBackup {
   const at = (name: string) => header.indexOf(name.toLowerCase());
   const required = ["Date", "Type", "Amount", "Category", "Subcategory"];
   if (required.some((name) => at(name) < 0)) {
-    throw new BackupError("This is not an Expense Manager backup file (its Date, Type, Amount, Category and Subcategory columns were not found).");
+    throw new BackupError("This is not a CSK Manager backup file (its Date, Type, Amount, Category and Subcategory columns were not found).");
   }
 
   const idx = Object.fromEntries(COLUMNS.map((c) => [c.header, at(c.header)])) as Record<string, number>;

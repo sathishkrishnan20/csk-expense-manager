@@ -19,7 +19,7 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
       title: "What this app does",
       blocks: [
         {
-          text: "A personal expense manager for one person. Download your bank statement, import it, and AI sorts each transaction into your own categories. Cash and other payments are added by hand with the + button. Everything is kept on this device, with no account and no server of ours.",
+          text: "A personal app for one person, starting with expenses and growing to the rest of your day-to-day needs (gifts, assets, train alarms). Download your bank statement, import it, and AI sorts each transaction into your own categories. Cash and other payments are added by hand with the + button. Everything is kept on this device, with no account and no server of ours.",
         },
       ],
     },
@@ -48,7 +48,7 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
       blocks: [
         {
           bullets: [
-            "Works with the CSV, XLS, XLSX or PDF statement from your bank (UPI narrations are read for the payee and your note). In Mail or Files you can tap a statement, then Share, then Expense Manager.",
+            "Works with the CSV, XLS, XLSX or PDF statement from your bank (UPI narrations are read for the payee and your note). In Mail or Files you can tap a statement, then Share, then CSK Manager.",
             "For a locked PDF, save its password under Config > Statement passwords first. The app tries every saved password, and checks that the balances and totals on the statement add up before saving anything; if they do not, nothing is imported.",
             "Rows you imported before are skipped, so importing an overlapping statement is safe. A row you deleted is not added again on its own: the import summary lists such rows and offers Add them back and categorise, so you decide. That restores them and asks the AI again (a category you set by hand is kept).",
             "Debits go to your expense categories; credits go to the subcategories under Income.",
@@ -151,6 +151,25 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
             "On a gold gift you received, Add to assets starts an asset from it with the weight and the giver filled in. A gift can be added only once; after that the gift shows In your assets, and opens it.",
             "Mutual funds, NPS and similar holdings cannot be read from any app or API, so note what you invested yourself and look up today's value at your bank or fund provider.",
             "Assets are included in Export and in Cloud backup.",
+          ],
+        },
+      ],
+    },
+    {
+      id: "train",
+      title: "Train alarms",
+      blocks: [
+        {
+          text: "Advance booking for a train opens at 8:00 AM, 60 days before the journey, and Tatkal booking opens the day before the journey (10:00 AM for AC classes, 11:00 AM for sleeper and non-AC). Save a journey date and the app works out those dates and sets alarms so you wake up and are ready. Journeys are for your information only: they are not transactions and are never part of any balance, group, chart or category, and nothing in them is sent to the AI or to any server.",
+        },
+        {
+          bullets: [
+            "Open Train alarms from the menu: tap the menu button at the top left of Home, then Train alarms. Add journey: type where you are going, pick the journey date, choose Advance booking alarms and/or a Tatkal alarm, and how long before the opening the wake-up alarm rings. The screen shows the booking dates and every alarm that will be set.",
+            "Advance booking sets three things: a reminder at 8:00 PM the evening before, the wake-up alarm (15 to 60 minutes before 8:00 AM), and a second alarm 5 minutes before. Tatkal sets just one wake-up alarm, the day before the journey, before 10:00 AM (AC) or 11:00 AM (sleeper and non-AC). An alarm that is already in the past is not set; if booking is already open for the date, the screen says so.",
+            "In the installed app (AltStore) the alarms are real iOS alarms that ring like the Clock app: on the lock screen, with the silent switch on, and when the app is closed. The first save asks iOS to allow alarms. In Expo Go real alarms are not available, so the same times are set as notifications, repeated a minute apart; a notification is easier to miss on silent or in a Focus mode.",
+            "Config > Train alarms has a Test alarm in 1 minute button. Use it once to hear what will ring, with the phone locked and on silent, before relying on it for a real booking.",
+            "Deleting or changing a journey cancels or replaces its alarms. The alarms are rebuilt from your saved journeys every time the app opens. Journeys are not in Export or Cloud backup yet.",
+            "If the installed app stops opening after a week, AltStore needs to refresh it (free Apple ID apps expire after 7 days); open AltStore on a Wi-Fi it can reach your computer on.",
           ],
         },
       ],

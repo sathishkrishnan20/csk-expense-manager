@@ -26,6 +26,8 @@ import { CloudBackupSection } from "../ui/CloudBackupSection";
 import { DataBackupSection } from "../ui/DataBackupSection";
 import { DevToolsSection } from "../ui/DevToolsSection";
 import { StatementPasswordsSection } from "../ui/StatementPasswordsSection";
+import { TrainAlarmSection } from "../ui/TrainAlarmSection";
+import { AppUpdateSection } from "../ui/AppUpdateSection";
 import { AiStatus, ActiveAiLine } from "../ui/ActiveAi";
 import { WithAddButton, useAddClearance } from "../ui/AddMenu";
 import { AppHeader } from "../ui/Header";
@@ -35,7 +37,7 @@ import { UnlockGate } from "../ui/UnlockGate";
 import { useTabBack } from "../ui/useGoBack";
 import { colors } from "../ui/theme";
 
-type Section = "payments" | "category" | "ai" | "passwords" | "backup" | "cloud" | "reclassify" | "dev" | "";
+type Section = "payments" | "category" | "ai" | "passwords" | "backup" | "cloud" | "reclassify" | "train" | "updates" | "dev" | "";
 
 export default function Config() {
   const router = useRouter();
@@ -73,6 +75,12 @@ export default function Config() {
             onToggle={() => toggle("reclassify")}
           >
             <ReclassifySection />
+          </Accordion>
+          <Accordion title="Train alarms" open={expanded === "train"} onToggle={() => toggle("train")}>
+            <TrainAlarmSection />
+          </Accordion>
+          <Accordion title="App updates" open={expanded === "updates"} onToggle={() => toggle("updates")}>
+            <AppUpdateSection />
           </Accordion>
           {/* Development builds only: __DEV__ is false in a release build, so this is not shown there. */}
           {__DEV__ ? (

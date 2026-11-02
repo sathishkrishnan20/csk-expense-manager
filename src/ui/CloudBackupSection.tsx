@@ -80,7 +80,7 @@ export function CloudBackupSection() {
 
   const shareCode = () =>
     run(async () => {
-      if (code) await Share.share({ message: `Expense Manager recovery code: ${code}` });
+      if (code) await Share.share({ message: `CSK Manager recovery code: ${code}` });
       return null;
     });
 

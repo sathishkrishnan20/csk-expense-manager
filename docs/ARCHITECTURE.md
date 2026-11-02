@@ -6,7 +6,8 @@ re-propose them without new information.
 
 ## 1. What the app is
 
-A personal, single-user iOS expense manager. It looks and behaves like the web
+A personal, single-user iOS app (**CSK Manager**; it started as an expense manager and is meant to cover the owner's other day-to-day
+needs too: gifts, assets, train alarms). The expense part looks and behaves like the web
 "Expense Manager" the owner built earlier (React, Material UI, Google Sheets;
 repo `csk-expense-manager`), but everything is stored on the phone.
 
@@ -34,7 +35,7 @@ Screens (src/app, Expo Router) read SQLite.
 | App | Expo SDK 58, React Native 0.88, TypeScript. iOS is the target; a web build is supported in code but untested (see "Web" in section 3) |
 | Navigation | Expo Router 58. **One flat root `Stack`** (`src/app/_layout.tsx`): every page, including Home, Transactions, Charts, Config and a group's pages, is a screen of it and slides in like any other (no tab navigator, no bottom bar). Pages are reached from the menu drawer, and the floating + button is `AddMenu` (`WithAddButton` puts it on each page). Add/Edit and Import are screens of the same stack |
 | Look | Theme values copied from the web app (`src/ui/theme.ts`): primary `#7F3DFF`, gradient `#9061ed` to `#5d3ba2`, income `#00A86B`, expense `#FD3C4A`, Roboto, Georgia for the Home numbers, MUI-style outlined fields and bottom bar |
-| Storage | `expo-sqlite`, file `expenses.db`, schema version 12 |
+| Storage | `expo-sqlite`, file `expenses.db`, schema version 13 |
 | Money | Integer paise; `amount_paise` is always positive and `direction` says which way |
 | API key | iOS Keychain via `expo-secure-store`; AES-GCM-encrypted in browser `localStorage` on web, with the key derived from a passkey (WebAuthn PRF) (`src/platform/secureStorage*.ts`) |
 | LLM | One active provider chosen in Config > AI: Gemini (default, `gemini-3.5-flash-lite`), Claude (`claude-haiku-5-5`), ChatGPT / OpenAI (`gpt-6-luna`, Chat Completions with strict `json_schema`) or Ollama (`llama3.2`, `POST {address}/api/chat` with the schema in `format`, no key). The model name is editable per provider; defaults live in `src/llm/providers.ts` (`MODELS`) |
@@ -228,7 +229,7 @@ revisit if waiting turns out to be annoying. Code: `categoryFor` / `updateTransa
 `CANDIDATE_WHERE` in `src/db/transactions.ts`, `src/app/add.tsx`.
 
 **Export and import of all data** (Config > "Export and Import"). Export writes one CSV
-(UTF-8 with a BOM so Excel reads it correctly, `expense-manager-backup-YYYY-MM-DD.csv`) and
+(UTF-8 with a BOM so Excel reads it correctly, `csk-manager-backup-YYYY-MM-DD.csv`) and
 opens the iOS share sheet (Save to Files, AirDrop) or downloads it in a browser. One header
 row, then blocks side by side: **transactions** (readable columns first: Date as `23-Oct-2026`,
 Type, Amount in rupees, Category, Subcategory, Payee, Payment Method, Description, Balance,
@@ -390,7 +391,7 @@ occasion edit/rename/delete menu, a per-person view, a gold rate setting. Holdin
 slides over the page from the left; the way to open it is the menu button at the top left of the Home tab's purple block
 (`HomeView`, through `useOpenDrawer`; a plain white icon near the left edge like a group's back button; the wallet circle is shown only where there is no drawer). It is **not** shown in a group's page, which keeps its back
 arrow and options button, and swiping from the edge is off on purpose (`swipeEnabled={false}`). Items, in order, from `MENU_PAGES`:
-Home, Transactions, Groups, Charts, Assets, Gifts, Config, How it works; a wide browser window shows the same list in the permanent
+Home, Transactions, Groups, Charts, Assets, Gifts, Train alarms, Config, How it works; a wide browser window shows the same list in the permanent
 `Sidebar`, so a page is added in one place. **Look:** a purple gradient header with the logo and name, then a white list of flat full-width rows (`MenuButton`: icon and label, and for the current page a light purple background with a purple bar at its left edge); the browser's `Sidebar` adds an "Add" section below a divider. It was first white pill buttons on the gradient, which looked like cards and was replaced. **No bottom bar and no tab navigators.** An earlier version had `js-tabs` layouts for Home/Transactions/Charts/Config (`(tabs)/_layout.tsx`) and for a group's pages (`groups/[id]/_layout.tsx`); with the bar gone they only caused a different, un-animated switch from the stack screens (Assets, Gifts, Groups), so both layouts were deleted and the pages moved up into the root stack (`src/app/index.tsx`, `transactions.tsx`, `charts.tsx`, `config.tsx`; `groups/[id]/index.tsx`, `transactions.tsx`, `charts.tsx`). Addresses did not change (a folder in parentheses never was part of them). Each of those pages is wrapped in `WithAddButton` (`src/ui/AddMenu.tsx`): a full-page, touch-through layer holding `AddMenu align="right"`, so the + button floats at the bottom right over the page, slides with it, and opens Credit, Debit, Import and Add list (it reads the group from the address, `groupIdFromPath`, so on a group page it adds to that group). The layer must fill the page so the button is inside its parent's bounds (iOS ignores touches outside them). **Only Home has the menu button** (its purple block); every other page, including Transactions, Charts, Config, Assets and Gifts, has a back arrow (`useGoBack`: the page before, or Home; Transactions, Charts and Config use `useTabBack`, which gives no arrow in a wide browser window where the Sidebar is), so switching pages means going back to Home and opening the menu again. The exception is a group, whose pages are reached only through the drawer: the Overview's bar and `GroupHeader` show the menu button beside the options button, and the drawer there lists the group's pages. **Inside a group the drawer lists that group's pages** (`groupMenuPages`: Overview, Transactions, Charts, Groups, Main; the same list as the browser's `Sidebar`; the group is read from the address with `groupIdFromPath`), everywhere else it lists `MENU_PAGES`. The pages' lists end with `useAddClearance()` of space (button height, gaps and bottom inset) so the last row is not under the button; it is 0 in a wide browser window. **How it is built:** `AppDrawer` wraps the root
 `Stack` in `_layout.tsx` and renders `Drawer` from `react-native-drawer-layout` (4.2.12), the same panel Expo Router's `expo-router/drawer`
 navigator is made of. The navigator itself was not used: it shows only the screens declared in its layout, so using it would have meant
@@ -419,6 +420,53 @@ block after the gifts (`Assets Id|Type|Name|Quantity|Unit|Purity|Invested|Acquir
 older files restore with no assets and the cloud backup carries them. Dev cleanup also empties the table. Not built: valuation, interest,
 a gold total line, photos, partial pledges.
 
+**Train alarms** (schema version 13, reshaped in 14; `src/domain/trainAlarms.ts`, `src/db/trainJourneys.ts`, `src/alarms/`). The owner books trains on the day
+booking opens (advance booking at 8:00 AM, Tatkal the day before the journey), so a saved journey date produces alarms that wake them for it. Information only, like Gifts and Assets:
+table `train_journeys` (`label`, `journey_date`, `advance` 0|1, `tatkal` none|ac|non_ac, `wake_lead_min`, `note`, `status`; version 14 added the last two Tatkal-related columns by `ALTER TABLE` for a database made at 13, and dropped the `rule` column of a 2-month option the owner did not want, which such a database keeps unused), nothing in `transactions`, no
+group, no AI, no server. **The journeys in SQLite are the source of truth; the alarms in iOS are rebuilt from them** by `syncTrainAlarms`
+(`src/alarms/sync.ts`) at every launch (`_layout.tsx`, never prompting) and after every save or delete (`ask: true`, which may prompt for
+permission), so it is safe to run any number of times. `bookingOpenDate` is 60 days before the journey (IRCTC's window, as the owner understood it; the owner confirmed 60 days only, no
+"2 months" option) at 8:00 AM local time. A journey has **advance** alarms (ticked by default): an
+**evening reminder** (notification, 8 PM the day before), a **wake-up alarm** (15/30/45/60 minutes before 8:00) and a **second alarm 5
+minutes before**; and/or a **Tatkal** choice (none, AC or sleeper/non-AC): **just one wake-up alarm**, the day before the journey, the same lead
+before the opening (10:00 AM AC, 11:00 AM non-AC, as the owner understood IRCTC; those hours are in `TATKAL_CLASSES` to confirm). At least one
+of the two is required. Alarms already in the past are left out (`planJourneyAlarms`, tested). The list row and `journeyStatus` describe the next
+opening still to come (advance, then Tatkal). Two ways to ring, chosen at run time:
+- **AlarmKit** (iOS 26): a real system alarm, rings through the silent switch and Focus with the app closed. It comes from the
+  `expo-alarm-kit` native module (not in Expo Go), looked up with `requireOptionalNativeModule` in `src/alarms/alarmKit.ts` rather than
+  imported, so Expo Go and the web build fall back instead of crashing. Reasons for this module and not `react-native-alarm-scheduler`: the
+  scheduler only schedules "the next 7:30", not an exact date 60 days away (it passes hour and minute to AlarmKit, not a date);
+  `expo-alarm-kit` uses `Alarm.Schedule.fixed(date)`. Its `configure(appGroup)` is never called (it only keeps a list of ids in an App
+  Group, which a free Apple ID cannot sign); the app derives each alarm's UUID from journey id and kind (`alarmUuid`, sha256), so it can
+  cancel or replace an alarm without storing anything. The module's pod needs iOS 26.1, so `app.json` has `ios.deploymentTarget` 26.1
+  and `NSAlarmKitUsageDescription`. The "AlarmKit allowed" answer is remembered in plain storage (`train_alarmkit_ok`) so a launch never
+  prompts; if iOS later refuses every alarm the flag is dropped and notifications take over.
+- **Local notifications** (`expo-notifications`): the fallback in Expo Go, or when AlarmKit is denied. The wake-up, Tatkal and 5-minute alarms are
+  repeated a minute apart (5, 5 and 3 copies) because one notification is easy to sleep through; only the soonest 60 are kept since iOS keeps
+  at most 64 pending (`capNotifications`). `interruptionLevel: "timeSensitive"` is set, but the time-sensitive entitlement is **not**
+  added (a free Apple ID may not be able to sign it), so iOS probably treats them as normal notifications. The `expo-notifications`
+  plugin has `enableRemoteNotifications: false` for the same reason (no push entitlement; nothing is pushed).
+The owner installs through AltStore with a free Apple ID (`npm run ipa`); such an app must be refreshed every 7 days, and it is **not known**
+whether already-scheduled AlarmKit alarms survive a refresh or reinstall. Config > Train alarms has "Test alarm in 1 minute" to check the
+mechanism on the phone. **Not verified (nothing was run):** the Swift module compiling against the iOS 26 SDK with Expo 58, AlarmKit
+accepting an alarm weeks ahead, the permission prompt, the free-account signing of the new capabilities, and the screens. **Not built:**
+Export and Cloud backup of journeys (they are short-lived; add a backup block like Assets if wanted), a server-side backup alarm (Pushover
+emergency priority or a phone call from the Cloudflare Worker, designed but dropped for now), and a "booking opened" follow-up. The 60 days and the Tatkal
+hours are the owner's to confirm. The owner has since run the Test alarm on the phone: the AlarmKit alarm rang.
+
+
+**Over-the-air updates (EAS Update, no Apple account).** The owner installs through AltStore with a free Apple ID, and reinstalling for every
+JavaScript-only change was flaky, so the app has `expo-updates`. EAS Update only hosts the JS bundle (a free Expo account); EAS *Build* for
+iOS needs the paid Apple program, so builds stay local (`npm run ipa`). `app.json`: `runtimeVersion.policy = "fingerprint"` (an update only
+applies to an install with the same native code, so a native change cannot receive JS that expects it; `/ios` is gitignored, so it is not
+part of the fingerprint), `updates.requestHeaders["expo-channel-name"] = "production"` (the channel for a build that is not made by EAS
+Build; docs.expo.dev "Get started with EAS Update"), `checkAutomatically` ON_LOAD, `fallbackToCacheTimeout` 0 (launch never waits on the
+network; a downloaded update is used from the next launch). **`updates.url` and `extra.eas.projectId` are deliberately absent until the owner runs
+`npx eas-cli@latest update:configure` (it needs their login), so until then updates stay off.** Publish with `npm run update`. Config > App
+updates (`src/ui/AppUpdateSection.tsx`) checks, downloads and restarts on demand, and says so in Expo Go, dev builds and the browser, where
+`Updates.isEnabled` is false. It does not fix the 7-day signing refresh. Local `.env` values (`EXPO_PUBLIC_BACKUP_URL`) may not reach a
+bundle exported by `eas update --environment production`; if cloud backup says "not set up" after an update, add the value to the EAS
+environment. Not verified: any of this on the phone, `eas update` itself, and the fingerprint matching between `npm run ipa` and `eas update`.
 
 **Embeddings, vector search and RAG were dropped** (an earlier learning goal; not
 needed for classifying a short note into a list). They can return later, for example
@@ -522,8 +570,18 @@ for: free without a card, never pauses when idle, a tiny server we control, work
   `BottomTabBarProps` type from `expo-router/js-tabs`; importing `Tabs` from
   `expo-router` is deprecated). A custom bar receives `state` and
   `navigateToTab(routeKey)`, not a `navigation` object.
-- **Keep `slug` as `ai-expense-manager` in `app.json`.** Expo Go stores app data
-  per slug; changing it makes existing data look lost.
+- **Keep `slug` as `csk-manager` and `ios.bundleIdentifier` as `com.sathish.cskmanager` in `app.json`.** Expo Go stores app data
+  per slug, and an AltStore install is keyed by the bundle id; changing either makes existing data look lost (a second, empty app).
+  Both were renamed once, when the app became CSK Manager, a personal all-purpose app that started as an expense manager (slug was
+  `ai-expense-manager`, bundle id `com.sathish.aiexpensemanager`, URL scheme `expensemanager`, now `cskmanager`). That install was a
+  new app; the owner moved data with Export and Import. **Names that were left on purpose:** the `expense-manager ...` strings that
+  derive the cloud-backup id and key and the web key (`src/domain/cloudBackup.ts`, `src/platform/secureStorage.web.ts`; they are
+  key-derivation labels, not names, and changing one makes every existing cloud backup and saved key unreadable). A JSON backup
+  written by the first version under the old format name `expense-manager-backup` still restores (`LEGACY_BACKUP_FORMAT` in
+  `src/domain/backup.ts`). The backup Worker was renamed `csk-manager-backup` in `wrangler.toml`; it gets a new address when next
+  deployed (`npx wrangler deploy`) and keeps its data because it is bound to the same KV namespace id, so `EXPO_PUBLIC_BACKUP_URL`
+  in `.env` must be changed to the new address (the old Worker keeps answering until it is deleted). After a rename, delete the
+  generated `ios/` folder once before `npm run ipa` (it is gitignored; prebuild otherwise keeps the old project beside the new one).
 - **`react` stays at 19.3.0.** The React Native 0.88 renderer is pinned to it.
   TypeScript 7 is used though Expo lists ~6.0.3 (`expo.install.exclude` keeps
   `expo-doctor` green; it only type-checks).

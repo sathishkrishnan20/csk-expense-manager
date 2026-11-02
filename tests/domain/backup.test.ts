@@ -72,9 +72,9 @@ test("missing optional fields are read as null", () => {
 
 test("wrong or damaged files are rejected with a clear message", () => {
   assert.throws(() => parseBackup("{ not json"), (e: unknown) => e instanceof BackupError && /not JSON/.test(e.message));
-  assert.throws(() => parseBackup("just some text"), /not an Expense Manager backup/);
-  assert.throws(() => parseBackup(JSON.stringify({ hello: 1 })), /not an Expense Manager backup/);
-  assert.throws(() => parseBackup(JSON.stringify([1, 2])), /not an Expense Manager backup/);
+  assert.throws(() => parseBackup("just some text"), /not a CSK Manager backup/);
+  assert.throws(() => parseBackup(JSON.stringify({ hello: 1 })), /not a CSK Manager backup/);
+  assert.throws(() => parseBackup(JSON.stringify([1, 2])), /not a CSK Manager backup/);
   assert.throws(() => parseBackup(JSON.stringify({ ...backup(), version: 99 })), /newer version/);
   assert.throws(() => parseBackup(JSON.stringify({ ...backup(), transactions: undefined })), /incomplete/);
 });
@@ -104,7 +104,7 @@ test("bad rows are skipped and counted, good rows are kept", () => {
 });
 
 test("file name carries the date", () => {
-  assert.equal(backupFileName(new Date(2026, 9, 5)), "expense-manager-backup-2026-10-05.csv");
+  assert.equal(backupFileName(new Date(2026, 9, 5)), "csk-manager-backup-2026-10-05.csv");
 });
 
 // --- CSV -------------------------------------------------------------------------------------
@@ -219,7 +219,7 @@ test("CSV: bad rows are skipped and counted, wrong files rejected", () => {
   assert.deepEqual(read.categories, [{ category: "Pets", subcategory: "Vet" }]);
   assert.equal(skipped, 4 + 1); // four bad transactions and one category without a subcategory
 
-  assert.throws(() => parseBackup("name,age\nAnil,30"), /not an Expense Manager backup/);
+  assert.throws(() => parseBackup("name,age\nAnil,30"), /not a CSK Manager backup/);
   assert.throws(() => parseBackup(""), BackupError);
 });
 
@@ -276,6 +276,12 @@ test("JSON: groups round-trip too", () => {
     transactions: [tx({ groupId: "g-abc" })],
   });
   assert.deepEqual(parseBackup(JSON.stringify(original)).backup, original);
+});
+
+test("a JSON file written under the old app name (Expense Manager) still restores", () => {
+  const old = { format: "expense-manager-backup", version: 1, exportedAt: "", categories: [], paymentMethods: [], transactions: [{ ...tx(), groupId: undefined }] };
+  assert.equal(parseBackup(JSON.stringify(old)).backup.transactions.length, 1);
+  assert.throws(() => parseBackup(JSON.stringify({ ...old, format: "something-else" })), /not a CSK Manager backup/);
 });
 
 test("a version 1 file (no groups, no Group Id) restores everything into Main", () => {

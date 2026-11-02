@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "expo-router";
 import { MenuButton } from "./MenuButton";
 import { MENU_PAGES, groupMenuPages, type IconName } from "./menuPages";
 import { T } from "./Text";
+import { VersionText } from "./VersionText";
 import { colors } from "./theme";
 import { SIDEBAR_WIDTH } from "./useLayout";
 
@@ -46,7 +47,7 @@ export function Sidebar() {
           <MaterialIcons name="account-balance-wallet" size={26} color={colors.primary} />
         </View>
         <T weight="black" style={styles.title}>
-          Expense Manager
+          CSK Manager
         </T>
       </LinearGradient>
 
@@ -74,6 +75,7 @@ export function Sidebar() {
           />
         ))}
       </ScrollView>
+      <VersionText />
     </View>
   );
 }

@@ -18,6 +18,7 @@ export const MENU_PAGES: MenuPage[] = [
   { label: "Charts", icon: "pie-chart", path: "/charts" },
   { label: "Assets", icon: "savings", path: "/assets" },
   { label: "Gifts", icon: "redeem", path: "/gifts" },
+  { label: "Train alarms", icon: "train", path: "/train" },
   { label: "Config", icon: "settings", path: "/config" },
   { label: "How it works", icon: "help-outline", path: "/help" },
 ];

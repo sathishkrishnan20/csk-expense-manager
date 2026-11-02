@@ -1,4 +1,4 @@
-# Expense Manager
+# CSK Manager
 
 An iOS app that looks and works like the web Expense Manager, with everything stored on
 your phone. Import your bank statement CSV and AI files each transaction under **your
@@ -30,7 +30,7 @@ Press `i` for the iOS simulator, or open the project in Expo Go on your iPhone. 
    the address of your server (on an iPhone: your computer's address on the same Wi-Fi, with
    Ollama started using `OLLAMA_HOST=0.0.0.0`). You can change the model name too. Only the
    selected AI is used; each keeps its own key and model.
-2. **+ > Import**: choose the statement (CSV, Excel or PDF), or in Mail or Files tap the statement, then Share, then Expense Manager. For a locked PDF, first save its password in **Config > Statement passwords**. The summary shows how many rows were saved,
+2. **+ > Import**: choose the statement (CSV, Excel or PDF), or in Mail or Files tap the statement, then Share, then CSK Manager. For a locked PDF, first save its password in **Config > Statement passwords**. The summary shows how many rows were saved,
    skipped as already imported, or not saved.
 3. After adding categories in Config, use **Config > Re-classify Uncategorised** to
    re-run AI on imported rows that ended up in Others : Uncategorised. A transaction the AI cannot place
@@ -53,7 +53,7 @@ renewed by building again. It runs without your Mac or the dev server.
    This needs Xcode and CocoaPods. The first run creates the `ios/` folder.
 4. If it stops at signing: open `ios/*.xcworkspace` in Xcode, select the app target, then
    Signing & Capabilities > tick "Automatically manage signing" and choose your Personal Team.
-   If Apple says the bundle id `com.sathish.aiexpensemanager` is taken, change it to a unique one.
+   If Apple says the bundle id `com.sathish.cskmanager` is taken, change it to a unique one.
 5. On the iPhone, trust your Apple ID in Settings > General > VPN & Device Management.
 6. Every 7 days run `npm run ios:device` again; installing over the top keeps your data (do not
    delete the app first). EAS cloud builds cannot make an iPhone install without the paid program.
@@ -83,6 +83,33 @@ its own data, so pick one and move data between them with Export and Import.
    in SideStore.
 4. An expired app keeps its data: refresh it from AltStore or SideStore, do not delete it.
    If AltStore itself expired, reinstall it from AltServer over the cable.
+
+### Ship changes without reinstalling (EAS Update, free, no Apple account)
+
+A change that only touches JavaScript (screens, logic, text) can reach the installed app over the air, so it needs no new `.ipa`
+and no AltStore reinstall. EAS Update only hosts the JavaScript bundle on Expo's servers: it needs a free Expo account, **not**
+an Apple developer account (EAS *Build* for iOS would, which is why the app is still built with `npm run ipa`). No transactions,
+API keys or other data are in the bundle. It does not remove the 7-day AltStore refresh; that is Apple's signing, not the code.
+
+One-time setup (`expo-updates` is a native module, so the next `.ipa` is the last reinstall for a while):
+
+```bash
+npx eas-cli@latest login          # a free expo.dev account
+npx eas-cli@latest update:configure   # adds updates.url and the project id to app.json; commit the change
+npm run ipa                       # build the .ipa once more and install it through AltStore
+```
+
+Then, for every JavaScript-only change:
+
+```bash
+npm run update                    # publishes to the "production" channel, named after the last git commit
+```
+
+Open the app (twice if needed): it looks for an update at every launch and uses a downloaded one the next time it opens, or use
+Config > App updates > Check for updates, then Restart now. If something changes native code (a new native package, a plugin or
+`app.json` native setting), the update is ignored by the old install (the runtime version is a fingerprint of the native code),
+and you build and install a new `.ipa`. If cloud backup says it is not set up after an update, the `.env` value did not reach
+the bundle: add it to the EAS environment (`npx eas-cli@latest env:create`) as `EXPO_PUBLIC_BACKUP_URL`.
 
 ### In a browser (untested)
 

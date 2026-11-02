@@ -2,7 +2,7 @@ import { Platform } from "react-native";
 import * as SQLite from "expo-sqlite";
 import { DEFAULT_CATEGORIES, DEFAULT_PAYMENT_METHODS, FALLBACK } from "../domain/masterData";
 
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 14;
 
 const SCHEMA = `
 -- A group is a separate ledger (see domain/groups.ts). 'main' holds everything entered before groups existed.
@@ -124,6 +124,24 @@ CREATE TABLE IF NOT EXISTS assets (
   updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS assets_gift_idx ON assets (gift_id);
+
+-- Train journeys (schema version 13, reshaped in 14; see domain/trainAlarms.ts). Information only, like gifts and assets: each row is a
+-- journey date the owner wants alarms for. advance = alarms for the advance booking (60 days before, 8:00 AM); tatkal = the class whose
+-- Tatkal opening (the day before the journey) to wake for. The alarms themselves live in iOS (AlarmKit and local notifications) and are
+-- rebuilt from these rows by alarms/sync.ts. wake_lead_min is how many minutes before the opening the wake-up alarm rings.
+-- (Version 13 had a 'rule' column for a 2-month option that was removed; a database made then keeps it, unused, with its default.)
+CREATE TABLE IF NOT EXISTS train_journeys (
+  id            TEXT PRIMARY KEY NOT NULL,
+  label         TEXT NOT NULL,
+  journey_date  TEXT NOT NULL,
+  advance       INTEGER NOT NULL DEFAULT 1,
+  tatkal        TEXT NOT NULL DEFAULT 'none' CHECK (tatkal IN ('none', 'ac', 'non_ac')),
+  wake_lead_min INTEGER NOT NULL DEFAULT 30,
+  note          TEXT,
+  status        TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'DELETED')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `;
 
 // Runs the work in one transaction. Native uses an exclusive transaction; the web build of
@@ -209,6 +227,16 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
            SELECT t.amount_paise FROM transactions t
            WHERE t.created_group_id = expense_groups.id AND t.direction = 'credit' AND t.status = 'ACTIVE' LIMIT 1), 0)
          WHERE id != 'main'`,
+      );
+    }
+    // Version 14 added Tatkal alarms to the train journeys table that version 13 created.
+    const journeyColumns = await txn.getAllAsync<{ name: string }>("SELECT name FROM pragma_table_info('train_journeys')");
+    if (!journeyColumns.some((c) => c.name === "advance")) {
+      await txn.execAsync("ALTER TABLE train_journeys ADD COLUMN advance INTEGER NOT NULL DEFAULT 1");
+    }
+    if (!journeyColumns.some((c) => c.name === "tatkal")) {
+      await txn.execAsync(
+        "ALTER TABLE train_journeys ADD COLUMN tatkal TEXT NOT NULL DEFAULT 'none' CHECK (tatkal IN ('none', 'ac', 'non_ac'))",
       );
     }
     // Version 6 added a description per subcategory.

@@ -1,20 +1,47 @@
 {
   "expo": {
-    "name": "Expense Manager",
-    "slug": "ai-expense-manager",
+    "name": "CSK Manager",
+    "slug": "csk-manager",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.sathish.aiexpensemanager",
+      "bundleIdentifier": "com.sathish.cskmanager",
+      "deploymentTarget": "26.1",
       "infoPlist": {
+        "NSAlarmKitUsageDescription": "CSK Manager rings an alarm when train booking opens for a journey you saved.",
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         },
-        "NSLocalNetworkUsageDescription": "Expense Manager connects to an Ollama server on your network to categorise transactions, if you choose Ollama.",
+        "NSLocalNetworkUsageDescription": "CSK Manager connects to an Ollama server on your network to categorise transactions, if you choose Ollama.",
         "CFBundleDocumentTypes": [
+          {
+            "CFBundleTypeName": "Bank statement (PDF)",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": [
+              "com.adobe.pdf"
+            ]
+          },
+          {
+            "CFBundleTypeName": "Bank statement (Excel)",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": [
+              "com.microsoft.excel.xls",
+              "org.openxmlformats.spreadsheetml.sheet"
+            ]
+          },
+          {
+            "CFBundleTypeName": "Bank statement (CSV)",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": [
+              "public.comma-separated-values-text"
+            ]
+          },
           {
             "CFBundleTypeName": "Bank statement (PDF)",
             "CFBundleTypeRole": "Viewer",
@@ -49,8 +76,25 @@
       "expo-router",
       "@react-native-community/datetimepicker",
       "expo-font",
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-notifications",
+        {
+          "enableRemoteNotifications": false
+        }
+      ]
     ],
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0,
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      },
+      "url": "https://u.expo.dev/290d40a9-c607-49d1-b8fb-a99444c7cb98"
+    },
     "platforms": [
       "ios",
       "web"
@@ -59,6 +103,17 @@
       "bundler": "metro",
       "output": "single"
     },
-    "scheme": "expensemanager"
+    "scheme": "cskmanager",
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "290d40a9-c607-49d1-b8fb-a99444c7cb98"
+      }
+    },
+    "android": {}
   }
 }

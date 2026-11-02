@@ -1,9 +1,9 @@
-name = "expense-manager-backup"
+name = "csk-manager-backup"
 main = "src/worker.ts"
 compatibility_date = "2026-10-01"
 
-# Create the store with `npx wrangler kv namespace create ExpenseManagerBackups` and paste only the id it prints here.
-# Keep the binding name BACKUPS: the Worker code reads env.BACKUPS. The store's own name (ExpenseManagerBackups) can be anything.
+# Create the store with `npx wrangler kv namespace create CskManagerBackups` and paste only the id it prints here.
+# Keep the binding name BACKUPS: the Worker code reads env.BACKUPS. The store's own name (CskManagerBackups) can be anything.
 [[kv_namespaces]]
 binding = "BACKUPS"
 id = "08d03f86deff4bdd8111c72dd8f23686"

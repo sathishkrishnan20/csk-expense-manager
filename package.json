@@ -1,5 +1,5 @@
 {
-  "name": "expense-manager",
+  "name": "csk-manager",
   "version": "1.0.0",
   "main": "expo-router/entry",
   "dependencies": {
@@ -12,6 +12,7 @@
     "@react-native-community/datetimepicker": "9.2.1",
     "@ungap/structured-clone": "^1.4.0",
     "expo": "~58.0.19",
+    "expo-alarm-kit": "^0.1.11",
     "expo-constants": "~58.0.13",
     "expo-crypto": "~58.0.7",
     "expo-document-picker": "~58.0.4",
@@ -19,11 +20,13 @@
     "expo-font": "~58.0.10",
     "expo-linear-gradient": "~58.0.3",
     "expo-linking": "~58.0.14",
+    "expo-notifications": "~58.1.7",
     "expo-router": "~58.0.26",
     "expo-secure-store": "~58.0.2",
     "expo-sharing": "~58.0.20",
     "expo-sqlite": "~58.0.14",
     "expo-status-bar": "~58.0.4",
+    "expo-updates": "~58.0.20",
     "fflate": "^0.8.3",
     "papaparse": "^5.7.0",
     "pdfjs-dist": "3.11.174",
@@ -58,6 +61,7 @@
     "web:serve": "npx serve dist",
     "ios:device": "expo run:ios --device --configuration Release",
     "ipa": "bash scripts/build-ipa.sh",
+    "update": "npx eas-cli@latest update --channel production --environment production --auto",
     "test": "tsx --test \"tests/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
   },

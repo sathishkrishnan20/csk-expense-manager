@@ -40,6 +40,15 @@ test("the guide explains Gifts, and that they are information only", () => {
   }
 });
 
+test("the guide explains Train alarms, and that they stay on the phone", () => {
+  for (const platform of ["ios", "web"] as const) {
+    const train = helpTopics(platform).find((t) => t.id === "train");
+    assert.ok(train, platform);
+    assert.match(textOf(train.blocks), /never part of any balance/);
+    assert.match(textOf(train.blocks), /Test alarm in 1 minute/);
+  }
+});
+
 test("the guide explains Assets, pledging, and that they are information only", () => {
   for (const platform of ["ios", "web"] as const) {
     const assets = helpTopics(platform).find((t) => t.id === "assets");

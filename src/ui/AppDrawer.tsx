@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MenuButton } from "./MenuButton";
 import { MENU_PAGES, groupMenuPages } from "./menuPages";
 import { T } from "./Text";
+import { VersionText } from "./VersionText";
 import { colors } from "./theme";
 import { useIsDesktop } from "./useLayout";
 import { groupIdFromPath } from "./useRouteGroupId";
@@ -78,15 +79,19 @@ function DrawerMenu({ onClose }: { onClose: () => void }) {
           <MaterialIcons name="account-balance-wallet" size={28} color={colors.primary} />
         </View>
         <T weight="black" style={styles.title}>
-          Expense Manager
+          CSK Manager
         </T>
       </LinearGradient>
 
-      <ScrollView contentContainerStyle={[styles.menu, { paddingBottom: insets.bottom + 16 }]}>
+      <ScrollView contentContainerStyle={styles.menu}>
         {pages.map((p) => (
           <MenuButton key={p.path} label={p.label} icon={p.icon} selected={pathname === p.path} onPress={() => go(p.path)} />
         ))}
       </ScrollView>
+
+      <View style={{ paddingBottom: insets.bottom + 8 }}>
+        <VersionText />
+      </View>
     </View>
   );
 }

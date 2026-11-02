@@ -45,7 +45,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   if (request.method === "OPTIONS") return reply(204);
 
   const { pathname } = new URL(request.url);
-  if (pathname === "/") return reply(200, "Expense Manager backup server", { "content-type": "text/plain" });
+  if (pathname === "/") return reply(200, "CSK Manager backup server", { "content-type": "text/plain" });
 
   const match = /^\/backup\/([^/]+)$/.exec(pathname);
   if (!match || !ID.test(match[1])) return reply(404, "Not found");

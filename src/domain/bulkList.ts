@@ -172,7 +172,7 @@ export function parseBulkList(text: string, categories: readonly CategoryDef[]):
   });
 }
 
-export const BULK_TEMPLATE_FILE_NAME = "expense-manager-list-template.csv";
+export const BULK_TEMPLATE_FILE_NAME = "csk-manager-list-template.csv";
 
 // Only Payee and Amount are needed; the rest can stay empty (the default date is chosen on the screen, and an empty
 // category is left for the AI).

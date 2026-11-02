@@ -17,24 +17,24 @@ DELETE /backup/<id>   remove it
 
    ```bash
    npx wrangler login
-   npx wrangler kv namespace create ExpenseManagerBackups
+   npx wrangler kv namespace create CskManagerBackups
    ```
 
-3. Paste the `id` that the second command prints into `wrangler.toml` (replace `REPLACE_WITH_THE_ID_FROM_WRANGLER`). Copy only the `id`: wrangler also prints a `binding = "..."` line, but leave `binding = "BACKUPS"` as it is, because the Worker code reads it by that name. `ExpenseManagerBackups` is just the store's name in your Cloudflare dashboard.
+3. Paste the `id` that the second command prints into `wrangler.toml` (replace `REPLACE_WITH_THE_ID_FROM_WRANGLER`). Copy only the `id`: wrangler also prints a `binding = "..."` line, but leave `binding = "BACKUPS"` as it is, because the Worker code reads it by that name. `CskManagerBackups` is just the store's name in your Cloudflare dashboard.
 4. Deploy:
 
    ```bash
    npx wrangler deploy
    ```
 
-   It prints the address, like `https://expense-manager-backup.<your-name>.workers.dev`.
+   It prints the address, like `https://csk-manager-backup.<your-name>.workers.dev`.
 5. In the project folder create a file named `.env` containing that address, then restart Expo (`npx expo start -c`):
 
    ```
-   EXPO_PUBLIC_BACKUP_URL=https://expense-manager-backup.<your-name>.workers.dev
+   EXPO_PUBLIC_BACKUP_URL=https://csk-manager-backup.<your-name>.workers.dev
    ```
 
-Open the address in a browser: it should say "Expense Manager backup server".
+Open the address in a browser: it should say "CSK Manager backup server".
 
 ## Free-tier limits (Cloudflare changes these; check the KV pricing page)
 

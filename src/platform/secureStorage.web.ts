@@ -86,8 +86,8 @@ async function registerPasskey(): Promise<void> {
   const salt = random(32);
   const credential = await navigator.credentials.create({
     publicKey: {
-      rp: { name: "Expense Manager" },
-      user: { id: random(16), name: "expense-manager", displayName: "Expense Manager" },
+      rp: { name: "CSK Manager" },
+      user: { id: random(16), name: "csk-manager", displayName: "CSK Manager" },
       challenge: random(32),
       pubKeyCredParams: [
         { type: "public-key", alg: -7 },

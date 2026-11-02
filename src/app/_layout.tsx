@@ -11,6 +11,7 @@ import {
   Roboto_900Black,
   useFonts,
 } from "@expo-google-fonts/roboto";
+import { configureAlarmNotifications, syncTrainAlarms } from "../alarms/sync";
 import { getDb } from "../db/database";
 import { AppDrawer } from "../ui/AppDrawer";
 import { Sidebar } from "../ui/Sidebar";
@@ -29,6 +30,14 @@ export default function RootLayout() {
       .then(() => setDbReady(true))
       .catch((err) => setDbError(err instanceof Error ? err.message : String(err)));
   }, []);
+
+  // Train alarms are rebuilt from the saved journeys at every launch, so they stay right after a restore, a clock change or the
+  // app being re-signed. It never asks for permission here (a save does), and a failure only means the alarms stay as they were.
+  useEffect(() => {
+    if (!dbReady) return;
+    configureAlarmNotifications();
+    syncTrainAlarms().catch(() => {});
+  }, [dbReady]);
 
   if (dbError) {
     return (

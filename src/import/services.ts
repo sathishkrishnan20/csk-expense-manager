@@ -18,7 +18,7 @@ export class MissingApiKeyError extends Error {}
 
 // Reads the user's current categories once per run, so edits made in Config
 // apply to the next import or re-classify straight away.
-async function createClassifier() {
+export async function createClassifier() {
   const { provider, apiKey, model, ollamaUrl } = await loadSettings();
   if (providerNeedsKey(provider) && !apiKey) throw new MissingApiKeyError("Add your AI API key in Config before importing.");
 

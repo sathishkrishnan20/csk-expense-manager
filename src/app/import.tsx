@@ -182,6 +182,12 @@ export default function ImportStatement() {
               New transactions saved: {summary.imported} (into {importedInto})
             </T>
             <T style={styles.text}>Already imported (skipped): {summary.alreadyStored}</T>
+            {summary.enriched > 0 ? (
+              <T style={styles.text}>
+                Filled in from this statement: {summary.enriched} payment{summary.enriched === 1 ? "" : "s"} that came from a bank SMS (full name, UPI note, balance)
+                {summary.recategorised > 0 ? `; ${summary.recategorised} got a better category from the note` : ""}
+              </T>
+            ) : null}
             {summary.deletedEarlier.length > 0 ? (
               <View style={styles.deleted}>
                 <T weight="medium" style={styles.text}>

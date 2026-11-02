@@ -6,8 +6,10 @@
 //   5 empty columns [ Groups Id | Name | Start Date | End Date | Status | Parent Id | Pinned | Held ]
 //   5 empty columns [ Occasions Id | Title | Date | Status ] 5 empty columns [ Gifts Id | Occasion Id | Occasion | Name | Direction | Type | Value | Unit | Rate | Note | Status | Created | Updated ]
 //   5 empty columns [ Assets Id | Type | Name | Quantity | Unit | Purity | Invested | Acquired | Description | Gift Id | Lender | Ticket | Pledged On | Due On | Loan | Pledge Note | Status | Created | Updated ]
+//   5 empty columns [ Journeys Id | Label | Date | Booking | Alarm Times | Note | Created ]
 // Files made before gifts existed have neither block (version 3 added them); they restore with no gifts. Files made before assets
-// existed have no assets block (version 4); they restore with no assets.
+// existed have no assets block (version 4); they restore with no assets. Files made before train journeys were included have no
+// journeys block (version 5); they restore with none. Only journeys still ahead are written (one that is over has no alarm to set).
 // Files without a Subcategory Description column (made before descriptions existed) simply have none.
 // Version 1 files have no Group Id column and no groups block; their transactions all go to Main. Files without Parent Id and
 // Pinned (made before groups could sit inside groups) restore every group as a separate one, not pinned.
@@ -15,6 +17,7 @@
 // Files from the first version of the app were JSON; those are still read.
 
 import Papa from "papaparse";
+import { BOOKINGS, MAX_ALARMS, bookingInfo, normalizeTimes, type Booking } from "./trainAlarms";
 import { ASSET_TYPES, ASSET_UNITS, GOLD_PURITIES, normaliseAsset, type AssetFields, type AssetStatus } from "./assets";
 import { gramsInputText, parseGramsInput, type GiftDirection, type GiftType, type GiftUnit } from "./gifts";
 import { MAIN_GROUP_ID, type GroupStatus } from "./groups";
@@ -25,7 +28,7 @@ import { PENDING_AI, fallbackFor } from "./taxonomy";
 export const BACKUP_FORMAT = "csk-manager-backup";
 // The name the first version (JSON files) wrote when the app was called Expense Manager; such files still restore.
 const LEGACY_BACKUP_FORMAT = "expense-manager-backup";
-export const BACKUP_VERSION = 4;
+export const BACKUP_VERSION = 5;
 
 export interface BackupTransaction {
   id: string;
@@ -96,6 +99,16 @@ export interface BackupAsset extends Omit<AssetFields, "status"> {
   updatedAt: string | null;
 }
 
+export interface BackupJourney {
+  id: string;
+  label: string;
+  journeyDate: string; // yyyy-mm-dd
+  booking: Booking;
+  alarmTimes: string[]; // "HH:MM", in time order
+  note: string | null;
+  createdAt: string | null;
+}
+
 export interface BackupCategory {
   category: string;
   subcategory: string;
@@ -112,6 +125,7 @@ export interface Backup {
   giftOccasions: BackupGiftOccasion[];
   gifts: BackupGift[];
   assets: BackupAsset[];
+  journeys: BackupJourney[];
   transactions: BackupTransaction[];
 }
 
@@ -284,6 +298,28 @@ function readAsset(raw: unknown): BackupAsset | null {
   return { ...fields, id: raw.id, giftId: s.giftId, status, createdAt: s.createdAt, updatedAt: s.updatedAt };
 }
 
+const BOOKING_VALUES = BOOKINGS.map((b) => b.value);
+
+function readJourney(raw: unknown): BackupJourney | null {
+  if (!isObject(raw) || !nonEmpty(raw.id) || !nonEmpty(raw.label)) return null;
+  const booking = BOOKING_VALUES.find((b) => b === raw.booking);
+  const journeyDate = isoDateOrNull(raw.journeyDate);
+  if (!booking || !journeyDate) return null;
+  if (raw.alarmTimes != null && !(Array.isArray(raw.alarmTimes) && raw.alarmTimes.every((t) => typeof t === "string"))) return null;
+  const note = optionalString(raw.note);
+  const createdAt = optionalString(raw.createdAt);
+  if (note === undefined || createdAt === undefined) return null;
+  return {
+    id: raw.id,
+    label: raw.label.trim(),
+    journeyDate,
+    booking,
+    alarmTimes: normalizeTimes((raw.alarmTimes as string[] | null | undefined) ?? []).slice(0, MAX_ALARMS),
+    note,
+    createdAt,
+  };
+}
+
 export interface ParsedBackup {
   backup: Backup;
   skipped: number;
@@ -363,6 +399,13 @@ function parseJsonBackup(text: string): ParsedBackup {
     else skipped++;
   }
 
+  const journeys: BackupJourney[] = [];
+  for (const item of Array.isArray(raw.journeys) ? raw.journeys : []) {
+    const j = readJourney(item);
+    if (j) journeys.push(j);
+    else skipped++;
+  }
+
   return {
     backup: {
       format: BACKUP_FORMAT,
@@ -374,6 +417,7 @@ function parseJsonBackup(text: string): ParsedBackup {
       giftOccasions,
       gifts,
       assets,
+      journeys,
       transactions,
     },
     skipped,
@@ -508,6 +552,18 @@ const ASSET_COLUMNS = [
   { header: "Assets Updated", write: (a: BackupAsset) => a.updatedAt ?? "" },
 ];
 
+// The train journeys block, after the assets. Alarm times are written "07:45 07:55 07:58 08:00" (a space between), the booking as its
+// name (Advance booking, Tatkal AC, Tatkal Non AC).
+const JOURNEY_COLUMNS = [
+  { header: "Journeys Id", write: (j: BackupJourney) => guard(j.id) },
+  { header: "Journeys Label", write: (j: BackupJourney) => guard(j.label) },
+  { header: "Journeys Date", write: (j: BackupJourney) => csvDate(j.journeyDate) },
+  { header: "Journeys Booking", write: (j: BackupJourney) => bookingInfo(j.booking).label },
+  { header: "Journeys Alarm Times", write: (j: BackupJourney) => j.alarmTimes.join(" ") },
+  { header: "Journeys Note", write: (j: BackupJourney) => guard(j.note) },
+  { header: "Journeys Created", write: (j: BackupJourney) => j.createdAt ?? "" },
+];
+
 export function serializeBackup(backup: Backup): string {
   const blanks = (n: number) => Array<string>(n).fill("");
   const header = [
@@ -526,6 +582,8 @@ export function serializeBackup(backup: Backup): string {
     ...GIFT_COLUMNS.map((c) => c.header),
     ...blanks(GAP_COLUMNS),
     ...ASSET_COLUMNS.map((c) => c.header),
+    ...blanks(GAP_COLUMNS),
+    ...JOURNEY_COLUMNS.map((c) => c.header),
   ];
 
   const titles = new Map(backup.giftOccasions.map((o) => [o.id, o.title]));
@@ -537,6 +595,7 @@ export function serializeBackup(backup: Backup): string {
     backup.giftOccasions.length,
     backup.gifts.length,
     backup.assets.length,
+    backup.journeys.length,
   );
   const rows: string[][] = [header];
   for (let i = 0; i < count; i++) {
@@ -546,6 +605,7 @@ export function serializeBackup(backup: Backup): string {
     const o = backup.giftOccasions[i];
     const gift = backup.gifts[i];
     const asset = backup.assets[i];
+    const journey = backup.journeys[i];
     rows.push([
       ...(t ? COLUMNS.map((col) => col.write(t)) : blanks(COLUMNS.length)),
       ...blanks(GAP_COLUMNS),
@@ -562,6 +622,8 @@ export function serializeBackup(backup: Backup): string {
       ...(gift ? GIFT_COLUMNS.map((col) => col.write(gift, titles)) : blanks(GIFT_COLUMNS.length)),
       ...blanks(GAP_COLUMNS),
       ...(asset ? ASSET_COLUMNS.map((col) => col.write(asset)) : blanks(ASSET_COLUMNS.length)),
+      ...blanks(GAP_COLUMNS),
+      ...(journey ? JOURNEY_COLUMNS.map((col) => col.write(journey)) : blanks(JOURNEY_COLUMNS.length)),
     ]);
   }
   // The BOM makes Excel read the file as UTF-8 (names and notes in other scripts).
@@ -606,6 +668,7 @@ function parseCsvBackup(text: string): ParsedBackup {
   const occasionCols = GIFT_OCCASION_COLUMNS.map((c) => at(c.header));
   const giftCols = GIFT_COLUMNS.map((c) => at(c.header));
   const assetCols = ASSET_COLUMNS.map((c) => at(c.header));
+  const journeyCols = JOURNEY_COLUMNS.map((c) => at(c.header));
   const cell = (row: string[], i: number) => (i < 0 ? "" : unguard((row[i] ?? "").trim()));
 
   let skipped = 0;
@@ -616,6 +679,7 @@ function parseCsvBackup(text: string): ParsedBackup {
   const giftOccasions: BackupGiftOccasion[] = [];
   const gifts: BackupGift[] = [];
   const assets: BackupAsset[] = [];
+  const journeys: BackupJourney[] = [];
   const seen = new Map<string, number>();
 
   for (const row of rows.slice(1)) {
@@ -725,10 +789,42 @@ function parseCsvBackup(text: string): ParsedBackup {
       if (asset) assets.push(asset);
       else skipped++;
     }
+
+    const [jId, jLabel, jDate, jBooking, jTimes, jNote, jCreated] = journeyCols.map((i) => cell(row, i));
+    if (jId || jLabel) {
+      const date = jDate === "" ? null : parseDate(jDate);
+      const wanted = jBooking.toLowerCase().replace(/[\s_]+/g, " ").trim();
+      const booking = BOOKINGS.find((b) => b.label.toLowerCase() === wanted || b.value.replace(/_/g, " ") === wanted);
+      const journey = date
+        ? readJourney({
+            id: jId,
+            label: jLabel,
+            journeyDate: date,
+            booking: booking?.value,
+            alarmTimes: jTimes.split(/[\s,;]+/).filter((t) => t !== ""),
+            note: jNote === "" ? null : jNote,
+            createdAt: TIMESTAMP.test(jCreated) ? jCreated : null,
+          })
+        : null;
+      if (journey) journeys.push(journey);
+      else skipped++;
+    }
   }
 
   return {
-    backup: { format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: "", categories, paymentMethods, groups, giftOccasions, gifts, assets, transactions },
+    backup: {
+      format: BACKUP_FORMAT,
+      version: BACKUP_VERSION,
+      exportedAt: "",
+      categories,
+      paymentMethods,
+      groups,
+      giftOccasions,
+      gifts,
+      assets,
+      journeys,
+      transactions,
+    },
     skipped,
   };
 }

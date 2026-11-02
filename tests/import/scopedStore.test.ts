@@ -65,3 +65,37 @@ test("a row deleted in one group is reported there only", async () => {
   assert.equal(main.deletedEarlier.length, 0);
   assert.equal(main.imported, 2);
 });
+
+test("sms keys and enrichment go through the group's scoped keys", async () => {
+  const seen: { sms: string[]; enriched: string[]; recategorised: string[] } = { sms: [], enriched: [], recategorised: [] };
+  const inner: KeyedStore = {
+    existingKeys: async (keys) => new Set(keys),
+    smsKeys: async (keys) => {
+      seen.sms = keys;
+      return new Set(keys);
+    },
+    enrich: async (rows) => {
+      seen.enriched = rows.map((r) => r.dedupeKey);
+      return { updated: rows.length, aiLabelled: rows };
+    },
+    recategorise: async (items) => {
+      seen.recategorised = items.map((i) => i.dedupeKey);
+      return items.length;
+    },
+    insert: async () => {},
+  };
+  const row = { dedupeKey: "upi:111122223333:D" } as never;
+
+  const inGroup = scopeStore(inner, "g-x");
+  assert.deepEqual([...(await inGroup.smsKeys!(["upi:111122223333:D"]))], ["upi:111122223333:D"]);
+  assert.deepEqual(seen.sms, ["g-x|upi:111122223333:D"]);
+  const done = await inGroup.enrich!([row]);
+  assert.equal(done.updated, 1);
+  assert.deepEqual(seen.enriched, ["g-x|upi:111122223333:D"]);
+  assert.deepEqual(done.aiLabelled.map((r) => r.dedupeKey), ["upi:111122223333:D"]); // back to the bank's own key
+  await inGroup.recategorise!([{ dedupeKey: "upi:111122223333:D", classification: { category: "Food", subcategory: "Groceries" } }], "m");
+  assert.deepEqual(seen.recategorised, ["g-x|upi:111122223333:D"]);
+
+  await scopeStore(inner, "main").enrich!([row]);
+  assert.deepEqual(seen.enriched, ["upi:111122223333:D"]);
+});

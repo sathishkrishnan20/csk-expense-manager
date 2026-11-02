@@ -164,12 +164,35 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
         },
         {
           bullets: [
-            "Open Train alarms from the menu: tap the menu button at the top left of Home, then Train alarms. Add journey: type where you are going, pick the journey date, choose Advance booking alarms and/or a Tatkal alarm, and how long before the opening the wake-up alarm rings. The screen shows the booking dates and every alarm that will be set.",
-            "Advance booking sets three things: a reminder at 8:00 PM the evening before, the wake-up alarm (15 to 60 minutes before 8:00 AM), and a second alarm 5 minutes before. Tatkal sets just one wake-up alarm, the day before the journey, before 10:00 AM (AC) or 11:00 AM (sleeper and non-AC). An alarm that is already in the past is not set; if booking is already open for the date, the screen says so.",
-            "In the installed app (AltStore) the alarms are real iOS alarms that ring like the Clock app: on the lock screen, with the silent switch on, and when the app is closed. The first save asks iOS to allow alarms. In Expo Go real alarms are not available, so the same times are set as notifications, repeated a minute apart; a notification is easier to miss on silent or in a Focus mode.",
+            "Open Train alarms from the menu: tap the menu button at the top left of Home, then Train alarms. Add journey: type where you are going, leave the journey date empty until you pick it, choose Advance booking, Tatkal AC or Tatkal Non AC, and set your alarm times. Once the date is picked, the box at the bottom says in plain words when your booking opens and on which day and at what times you will be woken.",
+            "Advance booking opens 60 days before the journey date at 8:00 AM. Tatkal opens 1 day before the journey date: 10:00 AM for AC classes, 11:00 AM for Tatkal Non AC (sleeper and the rest).",
+            "The alarm times are yours to edit. A new journey starts with 7:45, 7:55, 7:58 and 8:00 AM for advance booking, 9:45, 9:55, 9:58 and 10:00 AM for Tatkal AC, and 10:45, 10:55, 10:58 and 11:00 AM for Tatkal Non AC. Tap a time to change it, the red cross removes it, Add alarm time adds another (up to 8). They all ring on the booking day. Changing the booking type brings back that booking's usual times.",
+            "You also get two notifications for each journey, at 8:00 PM the evening before the booking day and at 7:00 AM on it. Anything already in the past is not set; if the booking has already opened, the screen says so.",
+            "Open a journey and tap Duplicate to make a copy for another trip: everything is filled in except the journey date, which you pick.",
+            "In the installed app (AltStore) the alarms are real iOS alarms that ring like the Clock app: on the lock screen, with the silent switch on, and when the app is closed. The first save asks iOS to allow alarms. In Expo Go real alarms are not available, so each alarm is set as three notifications a minute apart; a notification is easier to miss on silent or in a Focus mode. The two notifications are always notifications.",
             "Config > Train alarms has a Test alarm in 1 minute button. Use it once to hear what will ring, with the phone locked and on silent, before relying on it for a real booking.",
-            "Deleting or changing a journey cancels or replaces its alarms. The alarms are rebuilt from your saved journeys every time the app opens. Journeys are not in Export or Cloud backup yet.",
+            "Deleting or changing a journey cancels or replaces its alarms. The alarms are rebuilt from your saved journeys every time the app opens. Journeys that are still ahead are in Export and Cloud backup.",
             "If the installed app stops opening after a week, AltStore needs to refresh it (free Apple ID apps expire after 7 days); open AltStore on a Wi-Fi it can reach your computer on.",
+          ],
+        },
+      ],
+    },
+    {
+      id: "sms",
+      title: "Bank SMS (automatic)",
+      blocks: [
+        {
+          text: "The app can add a transaction by itself when your bank sends a UPI payment message, in addition to importing a statement. iOS does not let an app read your messages, so a Shortcut on your iPhone hands each bank message to this app (through the Add bank SMS action), and the app adds the payment the next time you open it. The message text stays on your phone.",
+        },
+        {
+          bullets: [
+            "Set it up once in Config > Bank SMS (automatic): follow the steps on that screen to make the Shortcut. It needs the newest build of the app, which has the Add bank SMS action.",
+            "Choose which group these entries go to under Add these entries to. If you choose nothing they go to Main.",
+            "The app reads UPI messages that have an amount and a 12-digit UPI number. The payment is saved with the UPI number, and the AI gives it a category like an imported row. If the AI cannot be reached (no internet, no key), the payment is still saved, in Others : Uncategorised, and Re-classify categorises it later. Paste a message under Try a message to see how the app reads it.",
+            "When you later import your bank statement, the same payment is not added twice. The statement fills in what the message did not have (the full name, the UPI note, the balance), and the AI looks at the payment again with that note, so its category is usually better. A category you chose yourself is never changed.",
+            "Only UPI payment messages become entries. A message that is not a UPI payment (a card or ATM message, an OTP) is skipped.",
+            "A UPI message the app cannot read (another bank's wording) is listed on that screen so you can send it to be added. Importing a statement still works for everything.",
+            "The app works quietly: no pop-ups. If a payment cannot be saved it tries again a few times first. Only if that fails, or a message cannot be read, a red bar appears at the top of Home with what went wrong. Tap it to open Bank SMS, or tap the cross to hide it. Importing your bank statement fills in anything that was missed.",
           ],
         },
       ],
@@ -262,9 +285,9 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
       blocks: [
         {
           bullets: [
-            "Config > Export and Import > Export saves everything (transactions, groups, gifts, assets, categories, payment modes) as one CSV file" +
+            "Config > Export and Import > Export saves everything (transactions, groups, gifts, assets, upcoming train journeys, categories, payment modes) as one CSV file" +
               (web ? ", downloaded by the browser." : ", using the share sheet (Save to Files, AirDrop)."),
-            "Open it in Excel: your transactions are on the left, then your category list, then your payment modes, then your groups, then your gifts, then your assets, separated by empty columns. Each transaction's Group Id says which group it belongs to. Keep the column headings as they are.",
+            "Open it in Excel: your transactions are on the left, then your category list, then your payment modes, then your groups, then your gifts, then your assets, then your upcoming train journeys, separated by empty columns. Each transaction's Group Id says which group it belongs to. Keep the column headings as they are.",
             "Import adds whatever is missing from such a file. It never changes or removes what is already here, so it is safe to run twice. You can add rows in Excel before importing; leave Category and Subcategory empty to have the AI fill them in later.",
             "Your API key is not part of the file. Enter it again on the new device.",
             "Export now and then, or use Cloud backup below. Export is also how you move data between the phone and a browser.",

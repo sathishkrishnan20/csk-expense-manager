@@ -19,17 +19,19 @@ export function TrainAlarmSection() {
     try {
       const r = await scheduleTestAlarm();
       const when = formatClock(r.at);
+      const why = r.problem ? ` The reason: ${r.problem}.` : "";
       if (r.backend === "alarmkit") {
         setMessage({ text: `A real alarm will ring at ${when}. Lock the phone, and try it with the silent switch on.`, isError: false });
       } else if (r.backend === "notifications") {
         setMessage({
           text:
-            `Five notifications, a minute apart from ${when}. ` +
-            (r.alarmKitDenied ? "iOS did not allow alarms for this app (Settings > CSK Manager)." : "Real alarms need the installed app, not Expo Go."),
+            `Three notifications, a minute apart from ${when}. ` +
+            (r.alarmKitDenied ? "iOS did not allow alarms for this app (Settings > CSK Manager)." : "Real alarms need the installed app, not Expo Go.") +
+            why,
           isError: false,
         });
       } else {
-        setMessage({ text: "Nothing was set: notifications are switched off for this app in iOS Settings.", isError: true });
+        setMessage({ text: `Nothing was set: notifications are switched off for this app in iOS Settings.${why}`, isError: true });
       }
     } catch (err) {
       setMessage({ text: err instanceof Error ? err.message : String(err), isError: true });

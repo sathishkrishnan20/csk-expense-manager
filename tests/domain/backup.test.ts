@@ -9,6 +9,7 @@ import {
   serializeBackup,
   type Backup,
   type BackupAsset,
+  type BackupJourney,
   type BackupTransaction,
 } from "../../src/domain/backup";
 
@@ -49,6 +50,7 @@ const backup = (over: Partial<Backup> = {}): Backup => ({
   giftOccasions: [],
   gifts: [],
   assets: [],
+  journeys: [],
   transactions: [tx()],
   ...over,
 });
@@ -150,16 +152,18 @@ test("CSV layout: transactions, 5 empty columns, category list, 5 empty columns,
   assert.equal(header[list + 27], "Occasions Id");
   assert.deepEqual(header.slice(list + 31, list + 36), ["", "", "", "", ""]);
   assert.equal(header[list + 36], "Gifts Id");
-  // then 5 empty columns and the assets block (19)
+  // then 5 empty columns and the assets block (19), and 5 empty columns and the train journeys block (7)
   assert.deepEqual(header.slice(list + 49, list + 54), ["", "", "", "", ""]);
   assert.equal(header[list + 54], "Assets Id");
-  assert.equal(header.length, list + 73);
+  assert.deepEqual(header.slice(list + 73, list + 78), ["", "", "", "", ""]);
+  assert.equal(header[list + 78], "Journeys Id");
+  assert.equal(header.length, list + 85);
   assert.deepEqual(header.slice(0, 5), ["Date", "Type", "Amount", "Category", "Subcategory"]);
 
   // 1 transaction but 3 payment modes: later rows have empty transaction cells.
   assert.equal(lines.length, 1 + 3); // header + one row per payment mode
   assert.match(lines[1], /^23-Oct-2026,Debit,1355\.00,Personal,Clothing,SATHISH KR,UPI,for dresse,2553\.65,Active,/);
-  assert.match(lines[3], new RegExp(`^,{${list + 8}}Card,{64}$`));
+  assert.match(lines[3], new RegExp(`^,{${list + 8}}Card,{76}$`));
 });
 
 test("CSV: text that Excel would run as a formula is protected and restored", () => {
@@ -443,7 +447,7 @@ test("assets: gold, land, funds and a pledged piece survive CSV and JSON", () =>
 test("assets: a file from before assets existed restores with none, and damaged asset rows are skipped", () => {
   const old = serializeBackup(backup({ assets: [goldAsset()] }))
     .split("\r\n")
-    .map((line) => line.split(",").slice(0, -24).join(","))
+    .map((line) => line.split(",").slice(0, -36).join(","))
     .join("\r\n");
   const read = parseBackup(old);
   assert.deepEqual(read.backup.assets, []);
@@ -459,4 +463,63 @@ test("assets: only gold keeps a pledge, even if a file says otherwise", () => {
   const land = goldAsset({ id: "as-9", type: "land", unit: "cent", purityK: null, lender: "Bank", loanPaise: 100 });
   const read = parseBackup(JSON.stringify({ ...backup(), assets: [land] })).backup.assets[0];
   assert.deepEqual([read.lender, read.loanPaise], [null, null]);
+});
+
+const journey = (over: Partial<BackupJourney> = {}): BackupJourney => ({
+  id: "tj-1",
+  label: "Chennai to Madurai",
+  journeyDate: "2026-12-20",
+  booking: "advance",
+  alarmTimes: ["07:45", "07:55", "07:58", "08:00"],
+  note: null,
+  createdAt: "2026-11-02 09:00:00",
+  ...over,
+});
+
+test("train journeys: every booking, the times and a note survive CSV and JSON", () => {
+  const original = backup({
+    journeys: [
+      journey({ note: "Vaigai, 3A" }),
+      journey({ id: "tj-2", label: "Madurai to Chennai", journeyDate: "2026-12-27", booking: "tatkal_ac", alarmTimes: ["09:45", "10:00"], createdAt: null }),
+      journey({ id: "tj-3", label: "=Weekend trip", journeyDate: "2027-01-02", booking: "tatkal_non_ac", alarmTimes: ["10:58"] }),
+    ],
+  });
+  const csv = parseBackup(serializeBackup(original));
+  assert.equal(csv.skipped, 0);
+  assert.deepEqual(csv.backup.journeys, original.journeys);
+  assert.deepEqual(parseBackup(JSON.stringify(original)).backup.journeys, original.journeys);
+
+  // readable in Excel: the date with a month name, the booking by name, the times in one cell
+  const rows = csvRows(serializeBackup(original));
+  assert.match(rows[1], /,tj-1,Chennai to Madurai,20-Dec-2026,Advance booking,07:45 07:55 07:58 08:00,"Vaigai, 3A",2026-11-02 09:00:00$/);
+  assert.match(rows[2], /,tj-2,Madurai to Chennai,27-Dec-2026,Tatkal AC,09:45 10:00,,$/);
+});
+
+test("train journeys: a file from before they were included restores with none, and damaged rows are skipped", () => {
+  const old = serializeBackup(backup({ journeys: [journey()] }))
+    .split("\r\n")
+    .map((line) => line.split(",").slice(0, -12).join(","))
+    .join("\r\n");
+  const read = parseBackup(old);
+  assert.deepEqual(read.backup.journeys, []);
+  assert.equal(read.skipped, 0);
+
+  const withJson = { ...backup() } as Partial<Backup>;
+  delete withJson.journeys;
+  assert.deepEqual(parseBackup(JSON.stringify(withJson)).backup.journeys, []);
+
+  const badBooking = parseBackup(serializeBackup(backup({ journeys: [journey()] })).replace("Advance booking", "Rail pass"));
+  assert.equal(badBooking.skipped, 1);
+  assert.equal(badBooking.backup.journeys.length, 0);
+  const badDate = parseBackup(serializeBackup(backup({ journeys: [journey()] })).replace("20-Dec-2026", "soon"));
+  assert.equal(badDate.skipped, 1);
+});
+
+test("train journeys: times are tidied (valid, once each, in order, at most 8) and may be missing", () => {
+  const messy = { ...backup(), journeys: [{ ...journey(), alarmTimes: ["08:00", "7:45", "07:45", "07:45", "25:00"] }, { ...journey(), id: "tj-9", alarmTimes: undefined }] };
+  const read = parseBackup(JSON.stringify(messy)).backup.journeys;
+  assert.deepEqual(read[0].alarmTimes, ["07:45", "08:00"]);
+  assert.deepEqual(read[1].alarmTimes, []);
+  const many = { ...backup(), journeys: [{ ...journey(), alarmTimes: ["01:00", "02:00", "03:00", "04:00", "05:00", "06:00", "07:00", "08:00", "09:00", "10:00"] }] };
+  assert.equal(parseBackup(JSON.stringify(many)).backup.journeys[0].alarmTimes.length, 8);
 });

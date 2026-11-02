@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 import type { ImportedTransaction, TransactionStore } from "../import/importStatement";
+import { inferPaymentMethod } from "../domain/statementParser";
 import { scopeStore, type KeyedStore } from "../import/scopedStore";
 import type { ReclassifyCandidate } from "../import/reclassify";
 import type { Classification, Direction } from "../domain/taxonomy";
@@ -335,6 +336,70 @@ const keyedSqliteStore: KeyedStore = {
       for (const row of rows) found.add(row.dedupe_key);
     }
     return found;
+  },
+
+  // Entries added from a bank SMS: from an import, with a UPI reference, but none of what a statement row always has (narration, balance).
+  async smsKeys(keys) {
+    const db = await getDb();
+    const found = new Set<string>();
+    for (let i = 0; i < keys.length; i += KEY_CHUNK) {
+      const chunk = keys.slice(i, i + KEY_CHUNK);
+      const rows = await db.getAllAsync<{ dedupe_key: string }>(
+        `SELECT dedupe_key FROM transactions
+         WHERE status = 'ACTIVE' AND source = 'import' AND balance_paise IS NULL AND COALESCE(narration, '') = ''
+           AND upi_ref IS NOT NULL AND dedupe_key IN (${chunk.map(() => "?").join(",")})`,
+        chunk,
+      );
+      for (const row of rows) found.add(row.dedupe_key);
+    }
+    return found;
+  },
+
+  // The statement's details for those entries. The category is not touched here. The payee is replaced only when the SMS's (usually
+  // cut short) is the start of the statement's, so a payee the owner typed over stays; the description is filled only when empty.
+  // Also says which of them the AI categorised (not the owner), so the importer can categorise those again with the new details.
+  async enrich(rows) {
+    const db = await getDb();
+    let updated = 0;
+    const aiLabelled: typeof rows = [];
+    await inTransaction(db, async (txn) => {
+      for (const r of rows) {
+        const before = await txn.getFirstAsync<{ classified_by: string }>(
+          "SELECT classified_by FROM transactions WHERE dedupe_key = ? AND status = 'ACTIVE'",
+          [r.dedupeKey],
+        );
+        const result = await txn.runAsync(
+          `UPDATE transactions SET
+             balance_paise = ?, narration = ?, vpa = ?, note = ?, payee_bank = ?,
+             payee = CASE WHEN payee IS NULL OR payee = '' OR instr(lower(?), lower(payee)) = 1 THEN COALESCE(?, payee) ELSE payee END,
+             payment_method = COALESCE(payment_method, ?),
+             description = CASE WHEN description IS NULL OR description = '' THEN ? ELSE description END,
+             updated_at = datetime('now')
+           WHERE dedupe_key = ? AND status = 'ACTIVE'`,
+          [r.balancePaise, r.narration, r.vpa, r.note, r.payeeBank, r.payee ?? "", r.payee, inferPaymentMethod(r.narration), r.note, r.dedupeKey],
+        );
+        updated += result.changes;
+        if (result.changes > 0 && before && before.classified_by !== "manual") aiLabelled.push(r);
+      }
+    });
+    return { updated, aiLabelled };
+  },
+
+  // The category the AI gives an entry now that it knows the UPI note. An entry the owner categorised in the meantime is left alone.
+  async recategorise(items, label) {
+    const db = await getDb();
+    let changed = 0;
+    await inTransaction(db, async (txn) => {
+      for (const { dedupeKey, classification } of items) {
+        const result = await txn.runAsync(
+          `UPDATE transactions SET category = ?, subcategory = ?, classified_by = ?, updated_at = datetime('now')
+           WHERE dedupe_key = ? AND status = 'ACTIVE' AND classified_by != 'manual'`,
+          [classification.category, classification.subcategory, label, dedupeKey],
+        );
+        changed += result.changes;
+      }
+    });
+    return changed;
   },
 
   async insert(rows: ImportedTransaction[], groupId: string) {

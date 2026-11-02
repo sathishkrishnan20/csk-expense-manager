@@ -1,4 +1,4 @@
-import type { JourneyFields, TatkalClass } from "../domain/trainAlarms";
+import { bookingFromColumns, bookingInfo, bookingToColumns, normalizeTimes, type JourneyFields } from "../domain/trainAlarms";
 import { getDb } from "./database";
 
 // Train journeys are information only: nothing here touches transactions, groups or balances (see domain/trainAlarms.ts).
@@ -15,24 +15,29 @@ interface JourneyRow {
   label: string;
   journey_date: string;
   advance: number;
-  tatkal: TatkalClass;
-  wake_lead_min: number;
+  tatkal: string;
+  alarm_times: string;
   note: string | null;
   created_at: string;
+}
+
+// The times the owner chose, or the booking's usual times for a journey saved before they could be edited.
+function readTimes(r: JourneyRow): string[] {
+  const times = normalizeTimes(r.alarm_times.split(","));
+  return times.length > 0 ? times : bookingInfo(bookingFromColumns(r.advance !== 0, r.tatkal)).defaultTimes;
 }
 
 const toRecord = (r: JourneyRow): JourneyRecord => ({
   id: r.id,
   label: r.label,
   journeyDate: r.journey_date,
-  advance: r.advance !== 0,
-  tatkal: r.tatkal,
-  wakeLeadMinutes: r.wake_lead_min,
+  booking: bookingFromColumns(r.advance !== 0, r.tatkal),
+  alarmTimes: readTimes(r),
   note: r.note,
   createdAt: r.created_at,
 });
 
-const SELECT = "SELECT id, label, journey_date, advance, tatkal, wake_lead_min, note, created_at FROM train_journeys WHERE status = 'ACTIVE'";
+const SELECT = "SELECT id, label, journey_date, advance, tatkal, alarm_times, note, created_at FROM train_journeys WHERE status = 'ACTIVE'";
 
 const newId = (): string => `tj-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -63,16 +68,24 @@ export interface JourneyInput extends JourneyFields {
 // Adds a journey, or updates one when `id` is given. Returns its id.
 export async function saveJourney(input: JourneyInput, id?: string): Promise<string> {
   const db = await getDb();
-  const values = [input.label.trim(), input.journeyDate, input.advance ? 1 : 0, input.tatkal, input.wakeLeadMinutes, input.note?.trim() || null];
+  const columns = bookingToColumns(input.booking);
+  const values = [
+    input.label.trim(),
+    input.journeyDate,
+    columns.advance ? 1 : 0,
+    columns.tatkal,
+    normalizeTimes(input.alarmTimes).join(","),
+    input.note?.trim() || null,
+  ];
   if (id) {
     await db.runAsync(
-      "UPDATE train_journeys SET label = ?, journey_date = ?, advance = ?, tatkal = ?, wake_lead_min = ?, note = ?, updated_at = datetime('now') WHERE id = ?",
+      "UPDATE train_journeys SET label = ?, journey_date = ?, advance = ?, tatkal = ?, alarm_times = ?, note = ?, updated_at = datetime('now') WHERE id = ?",
       [...values, id],
     );
     return id;
   }
   const created = newId();
-  await db.runAsync("INSERT INTO train_journeys (id, label, journey_date, advance, tatkal, wake_lead_min, note) VALUES (?, ?, ?, ?, ?, ?, ?)", [
+  await db.runAsync("INSERT INTO train_journeys (id, label, journey_date, advance, tatkal, alarm_times, note) VALUES (?, ?, ?, ?, ?, ?, ?)", [
     created,
     ...values,
   ]);

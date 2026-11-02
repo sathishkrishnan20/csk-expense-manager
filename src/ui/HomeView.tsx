@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
+import { useDataVersion } from "../import/dataVersion";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { listGroupsWithBalances } from "../db/groups";
 import { countUnresolved, getTotals, listTransactions, type Totals, type TransactionRecord } from "../db/transactions";
@@ -20,6 +21,7 @@ import {
 import { T } from "./Text";
 import { Button, Chip } from "./forms";
 import { GroupCard } from "./GroupCard";
+import { SmsProblemBar } from "./SmsProblemBar";
 import { RowDivider, TransactionRow } from "./TransactionRow";
 import { useAddClearance } from "./AddMenu";
 import { useOpenDrawer } from "./AppDrawer";
@@ -49,6 +51,7 @@ export function HomeView({ groupId, groupBar }: { groupId: string; groupBar?: Gr
   const [recent, setRecent] = useState<TransactionRecord[] | null>(null);
   const [unresolved, setUnresolved] = useState(0);
   const [allGroups, setAllGroups] = useState<GroupWithBalance[]>([]);
+  const dataVersion = useDataVersion();
 
   useFocusEffect(
     useCallback(() => {
@@ -69,7 +72,7 @@ export function HomeView({ groupId, groupBar }: { groupId: string; groupBar?: Gr
       return () => {
         alive = false;
       };
-    }, [groupId, main]),
+    }, [groupId, main, dataVersion]),
   );
 
   // Pages of a group live under /groups/<id>; Main's are at the top level (/transactions, /charts).
@@ -167,6 +170,8 @@ export function HomeView({ groupId, groupBar }: { groupId: string; groupBar?: Gr
             </Pressable>
           </View>
         </View>
+
+        {homeScreen ? <SmsProblemBar /> : null}
 
         {/* Groups are only made from an entry (Add > "Create a group for this entry"), so there is no New group button here. */}
         {strip.length > 0 ? (

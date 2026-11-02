@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useDataVersion } from "../import/dataVersion";
 import { loadCategories } from "../db/config";
 import { listGroupsWithBalances } from "../db/groups";
 import { listTransactions, type TransactionRecord } from "../db/transactions";
@@ -16,6 +17,7 @@ import { colors } from "./theme";
 // the other filters and select-then-duplicate. `header` is the page's title bar.
 export function TransactionsView({ groupId, header }: { groupId: string; header: ReactNode }) {
   const [items, setItems] = useState<TransactionRecord[] | null>(null);
+  const dataVersion = useDataVersion();
   const [categories, setCategories] = useState<CategoryDef[]>([]);
   const [filters, setFilters] = useState<TransactionFilters>(NO_FILTERS);
   const [groups, setGroups] = useState<GroupWithBalance[]>([]);
@@ -50,7 +52,7 @@ export function TransactionsView({ groupId, header }: { groupId: string; header:
         alive = false;
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [key]),
+    }, [key, dataVersion]),
   );
 
   return (

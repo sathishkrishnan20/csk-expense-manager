@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { addPaymentMethod, loadPaymentMethods, removePaymentMethod } from "../db/config";
 import { countReclassifyCandidates, countUnresolved, retryUnresolved } from "../db/transactions";
 import { runReclassify } from "../import/services";
@@ -26,6 +26,7 @@ import { CloudBackupSection } from "../ui/CloudBackupSection";
 import { DataBackupSection } from "../ui/DataBackupSection";
 import { DevToolsSection } from "../ui/DevToolsSection";
 import { StatementPasswordsSection } from "../ui/StatementPasswordsSection";
+import { SmsCaptureSection } from "../ui/SmsCaptureSection";
 import { TrainAlarmSection } from "../ui/TrainAlarmSection";
 import { AppUpdateSection } from "../ui/AppUpdateSection";
 import { AiStatus, ActiveAiLine } from "../ui/ActiveAi";
@@ -37,13 +38,18 @@ import { UnlockGate } from "../ui/UnlockGate";
 import { useTabBack } from "../ui/useGoBack";
 import { colors } from "../ui/theme";
 
-type Section = "payments" | "category" | "ai" | "passwords" | "backup" | "cloud" | "reclassify" | "train" | "updates" | "dev" | "";
+type Section = "payments" | "category" | "ai" | "passwords" | "backup" | "cloud" | "reclassify" | "sms" | "train" | "updates" | "dev" | "";
 
 export default function Config() {
   const router = useRouter();
   const clearance = useAddClearance();
   const goBack = useTabBack();
-  const [expanded, setExpanded] = useState<Section>("payments");
+  // A link can open a section straight away (the Home screen's bank SMS bar opens "sms"); `at` makes the same link work twice.
+  const { open, at } = useLocalSearchParams<{ open?: string; at?: string }>();
+  const [expanded, setExpanded] = useState<Section>(open === "sms" ? "sms" : "payments");
+  useEffect(() => {
+    if (open === "sms") setExpanded("sms");
+  }, [open, at]);
   const toggle = (section: Section) => setExpanded(expanded === section ? "" : section);
 
   return (
@@ -75,6 +81,9 @@ export default function Config() {
             onToggle={() => toggle("reclassify")}
           >
             <ReclassifySection />
+          </Accordion>
+          <Accordion title="Bank SMS (automatic)" open={expanded === "sms"} onToggle={() => toggle("sms")}>
+            <SmsCaptureSection />
           </Accordion>
           <Accordion title="Train alarms" open={expanded === "train"} onToggle={() => toggle("train")}>
             <TrainAlarmSection />

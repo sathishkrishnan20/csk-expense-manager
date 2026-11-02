@@ -7,13 +7,17 @@ import {
   type BackupGift,
   type BackupGiftOccasion,
   type BackupGroup,
+  type BackupJourney,
   type BackupTransaction,
 } from "../domain/backup";
+import { toISODate } from "../domain/format";
+import { bookingToColumns } from "../domain/trainAlarms";
 import type { AssetStatus, AssetType, AssetUnit } from "../domain/assets";
 import type { GiftDirection, GiftType, GiftUnit } from "../domain/gifts";
 import { MAIN_GROUP_ID } from "../domain/groups";
 import { cleanDescription } from "../domain/masterData";
 import { getDb, inTransaction } from "./database";
+import { listJourneys } from "./trainJourneys";
 
 interface TransactionRow {
   id: string;
@@ -147,6 +151,19 @@ export async function exportBackup(): Promise<Backup> {
        FROM assets ORDER BY created_at, rowid`,
     ),
   ]);
+  // Only journeys still ahead: one that is over has no alarm left to set.
+  const today = toISODate(new Date());
+  const upcoming: BackupJourney[] = (await listJourneys())
+    .filter((j) => j.journeyDate >= today)
+    .map((j) => ({
+      id: j.id,
+      label: j.label,
+      journeyDate: j.journeyDate,
+      booking: j.booking,
+      alarmTimes: j.alarmTimes,
+      note: j.note,
+      createdAt: j.createdAt,
+    }));
   return {
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,
@@ -220,6 +237,7 @@ export async function exportBackup(): Promise<Backup> {
         updatedAt: a.updated_at,
       }),
     ),
+    journeys: upcoming,
     transactions: transactions.map(toBackupTransaction),
   };
 }
@@ -232,6 +250,7 @@ export interface RestoreSummary {
   groupsAdded: number;
   giftsAdded: number;
   assetsAdded: number;
+  journeysAdded: number;
   skipped: number;
 }
 
@@ -247,6 +266,7 @@ export async function restoreBackup(backup: Backup, skipped: number): Promise<Re
     groupsAdded: 0,
     giftsAdded: 0,
     assetsAdded: 0,
+    journeysAdded: 0,
     skipped,
   };
 
@@ -340,6 +360,20 @@ export async function restoreBackup(backup: Backup, skipped: number): Promise<Re
         ],
       );
       summary.assetsAdded += r.changes;
+    }
+
+    // Train journeys stand alone. One whose date has passed is left out (nothing is left to wake anyone for), and one deleted on this
+    // phone stays deleted, because only an id that is not here yet is added. The alarms are rebuilt from the journeys afterwards.
+    const today = toISODate(new Date());
+    for (const j of backup.journeys) {
+      if (j.journeyDate < today) continue;
+      const columns = bookingToColumns(j.booking);
+      const r = await txn.runAsync(
+        `INSERT OR IGNORE INTO train_journeys (id, label, journey_date, advance, tatkal, alarm_times, note, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')))`,
+        [j.id, j.label, j.journeyDate, columns.advance ? 1 : 0, columns.tatkal, j.alarmTimes.join(","), j.note, j.createdAt],
+      );
+      summary.journeysAdded += r.changes;
     }
 
     for (const t of backup.transactions) {

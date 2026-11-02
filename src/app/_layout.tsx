@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { ActivityIndicator, AppState, StyleSheet, View } from "react-native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -13,6 +13,8 @@ import {
 } from "@expo-google-fonts/roboto";
 import { configureAlarmNotifications, syncTrainAlarms } from "../alarms/sync";
 import { getDb } from "../db/database";
+import { listenForPhoneMessages } from "../import/phoneInbox";
+import { pullSms } from "../import/smsCapture";
 import { AppDrawer } from "../ui/AppDrawer";
 import { Sidebar } from "../ui/Sidebar";
 import { T } from "../ui/Text";
@@ -37,6 +39,22 @@ export default function RootLayout() {
     if (!dbReady) return;
     configureAlarmNotifications();
     syncTrainAlarms().catch(() => {});
+  }, [dbReady]);
+
+  // Bank messages the Shortcut has handed over are collected when the app opens and each time it comes back to the front, and at once
+  // when the "Add bank SMS" action runs while the app is open. Nothing happens until the owner has made the Shortcut (Config > Bank
+  // SMS), and a failure (a save that fails, no AI key) leaves the messages in the queue for the next time.
+  useEffect(() => {
+    if (!dbReady) return;
+    pullSms().catch(() => {});
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") pullSms().catch(() => {});
+    });
+    const stopListening = listenForPhoneMessages(() => pullSms().catch(() => {}));
+    return () => {
+      subscription.remove();
+      stopListening();
+    };
   }, [dbReady]);
 
   if (dbError) {

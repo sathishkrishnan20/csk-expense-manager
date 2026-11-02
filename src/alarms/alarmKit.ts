@@ -41,21 +41,22 @@ export async function requestAlarmKit(): Promise<boolean> {
   }
 }
 
-// Schedules a one-time alarm at an exact moment. False when iOS refused it.
-export async function scheduleAlarmKit(id: string, at: Date, title: string): Promise<boolean> {
-  if (!native) return false;
+// Schedules a one-time alarm at an exact moment. Null when it was set; otherwise why it was not, in words for the owner.
+export async function scheduleAlarmKit(id: string, at: Date, title: string): Promise<string | null> {
+  if (!native) return "alarms are not available in this build";
   try {
-    return await native.scheduleAlarm({
+    const set = await native.scheduleAlarm({
       id,
       epochSeconds: at.getTime() / 1000,
       title,
       stopButtonLabel: "I'm up",
-      snoozeButtonLabel: "5 more min",
-      snoozeDuration: 300,
+      snoozeButtonLabel: "2 more min",
+      snoozeDuration: 120,
       tintColor: "#7F3DFF",
     });
-  } catch {
-    return false;
+    return set ? null : "iOS did not accept the alarm";
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
   }
 }
 

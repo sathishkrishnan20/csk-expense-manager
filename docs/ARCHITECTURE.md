@@ -35,7 +35,7 @@ Screens (src/app, Expo Router) read SQLite.
 | App | Expo SDK 58, React Native 0.88, TypeScript. iOS is the target; a web build is supported in code but untested (see "Web" in section 3) |
 | Navigation | Expo Router 58. **One flat root `Stack`** (`src/app/_layout.tsx`): every page, including Home, Transactions, Charts, Config and a group's pages, is a screen of it and slides in like any other (no tab navigator, no bottom bar). Pages are reached from the menu drawer, and the floating + button is `AddMenu` (`WithAddButton` puts it on each page). Add/Edit and Import are screens of the same stack |
 | Look | Theme values copied from the web app (`src/ui/theme.ts`): primary `#7F3DFF`, gradient `#9061ed` to `#5d3ba2`, income `#00A86B`, expense `#FD3C4A`, Roboto, Georgia for the Home numbers, MUI-style outlined fields and bottom bar |
-| Storage | `expo-sqlite`, file `expenses.db`, schema version 13 |
+| Storage | `expo-sqlite`, file `expenses.db`, schema version 16 |
 | Money | Integer paise; `amount_paise` is always positive and `direction` says which way |
 | API key | iOS Keychain via `expo-secure-store`; AES-GCM-encrypted in browser `localStorage` on web, with the key derived from a passkey (WebAuthn PRF) (`src/platform/secureStorage*.ts`) |
 | LLM | One active provider chosen in Config > AI: Gemini (default, `gemini-3.5-flash-lite`), Claude (`claude-haiku-5-5`), ChatGPT / OpenAI (`gpt-6-luna`, Chat Completions with strict `json_schema`) or Ollama (`llama3.2`, `POST {address}/api/chat` with the schema in `format`, no key). The model name is editable per provider; defaults live in `src/llm/providers.ts` (`MODELS`) |
@@ -48,9 +48,11 @@ TypeScript with unit tests that run under Node. All tests live in `tests/`, mirr
 
 ## 3. Decisions and why
 
-**CSV import, not email/SMS/Shortcuts capture.** Those cannot reliably see the UPI
+**CSV import first; SMS capture as an addition.** SMS and email cannot see the UPI
 note, which is what makes categorisation meaningful. A statement row has the note,
-amount, date and a unique UPI reference.
+amount, date and a unique UPI reference. A bank SMS has the amount, date, a cut-short
+payee and the same UPI reference, so it is used as an *additional*, automatic way in
+(see "Bank SMS" below); the statement import stays and completes those entries.
 
 **Everything on the phone; no backend.** The earlier AWS Lambda / Turso / Redis
 design was dropped. The user's own API key sits in the Keychain; the cost is that
@@ -420,18 +422,26 @@ block after the gifts (`Assets Id|Type|Name|Quantity|Unit|Purity|Invested|Acquir
 older files restore with no assets and the cloud backup carries them. Dev cleanup also empties the table. Not built: valuation, interest,
 a gold total line, photos, partial pledges.
 
-**Train alarms** (schema version 13, reshaped in 14; `src/domain/trainAlarms.ts`, `src/db/trainJourneys.ts`, `src/alarms/`). The owner books trains on the day
-booking opens (advance booking at 8:00 AM, Tatkal the day before the journey), so a saved journey date produces alarms that wake them for it. Information only, like Gifts and Assets:
-table `train_journeys` (`label`, `journey_date`, `advance` 0|1, `tatkal` none|ac|non_ac, `wake_lead_min`, `note`, `status`; version 14 added the last two Tatkal-related columns by `ALTER TABLE` for a database made at 13, and dropped the `rule` column of a 2-month option the owner did not want, which such a database keeps unused), nothing in `transactions`, no
-group, no AI, no server. **The journeys in SQLite are the source of truth; the alarms in iOS are rebuilt from them** by `syncTrainAlarms`
-(`src/alarms/sync.ts`) at every launch (`_layout.tsx`, never prompting) and after every save or delete (`ask: true`, which may prompt for
-permission), so it is safe to run any number of times. `bookingOpenDate` is 60 days before the journey (IRCTC's window, as the owner understood it; the owner confirmed 60 days only, no
-"2 months" option) at 8:00 AM local time. A journey has **advance** alarms (ticked by default): an
-**evening reminder** (notification, 8 PM the day before), a **wake-up alarm** (15/30/45/60 minutes before 8:00) and a **second alarm 5
-minutes before**; and/or a **Tatkal** choice (none, AC or sleeper/non-AC): **just one wake-up alarm**, the day before the journey, the same lead
-before the opening (10:00 AM AC, 11:00 AM non-AC, as the owner understood IRCTC; those hours are in `TATKAL_CLASSES` to confirm). At least one
-of the two is required. Alarms already in the past are left out (`planJourneyAlarms`, tested). The list row and `journeyStatus` describe the next
-opening still to come (advance, then Tatkal). Two ways to ring, chosen at run time:
+**Train alarms** (schema version 13, reshaped in 14 and 15, cleaned up in 16; `src/domain/trainAlarms.ts`, `src/db/trainJourneys.ts`, `src/alarms/`). The owner books
+trains on the day booking opens, so a saved journey date produces alarms that wake them for it. Information only, like Gifts and Assets:
+table `train_journeys` (`label`, `journey_date`, `advance` 0|1, `tatkal` none|ac|non_ac, `alarm_times`, `note`, `status`), nothing in
+`transactions`, no group, no AI, no server. A journey has **one booking**, a single dropdown: **Advance booking** (opens 60 days before the journey date,
+8:00 AM), **Tatkal AC** (1 day before, 10:00 AM) or **Tatkal Non AC** (1 day before, 11:00 AM); `BOOKINGS` holds these and their default alarm times, which are
+the owner's to confirm. The old `advance` and `tatkal` columns are kept and mapped to that one choice (`bookingFromColumns` / `bookingToColumns`; a row
+that had both reads as advance); version 14 added them, version 15 added `alarm_times` (`HH:MM` joined by commas, empty = the booking's defaults), and version 16 drops the
+`rule` (2-month option, version 13) and `wake_lead_min` (version 14) columns from a database that still has them (`ALTER TABLE ... DROP COLUMN`, each in its own
+try so a failure only leaves an unused column; `advance` and `tatkal` stay because they hold the booking choice). **The journey date starts empty** on the add form so it is clear what to
+fill in, and the bottom of the form (`describeSchedule`, tested) says in words when booking opens (with the weekday and "60 days" / "1 day before your
+journey date") and on which day and at what times the owner is woken. **The alarm times are free-form and per journey**: a list edited with a time wheel
+(`AlarmTimesField`, `TimePicker`; the browser's `<input type="time">` on web), 1 to `MAX_ALARMS` = 8, defaults 7:45, 7:55, 7:58, 8:00 (advance), 9:45, 9:55, 9:58,
+10:00 (Tatkal AC), 10:45, 10:55, 10:58, 11:00 (Tatkal Non AC) because the owner forgets a single alarm; the owner's message listed the Tatkal last times as 9:00
+and 10:00 and they were read as 10:00 and 11:00. Choosing another booking type replaces the times with that booking's defaults. Alarms are numbered `a0..a7` in time
+order and their AlarmKit ids come from journey id and that number (`alarmUuid`), so editing the list cancels and replaces them (the sync cancels all eight ids and
+the ids earlier builds used, `LEGACY_ALARM_KINDS`). Two **notifications** are always added: **8 PM the evening before** and **7:00 AM on the booking day**. Alarms already in
+the past are left out. **Duplicate** (button on an existing journey, `/train-journey?copy=<id>`) opens a new journey with everything copied except the date, which the owner
+picks. **The journeys in SQLite are the source of truth; the alarms in iOS are rebuilt from them** by `syncTrainAlarms` (`src/alarms/sync.ts`) at every launch
+(`_layout.tsx`, never prompting) and after every save or delete (`ask: true`, which may prompt for permission), so it is safe to run any number of times. Two ways to
+ring, chosen at run time:
 - **AlarmKit** (iOS 26): a real system alarm, rings through the silent switch and Focus with the app closed. It comes from the
   `expo-alarm-kit` native module (not in Expo Go), looked up with `requireOptionalNativeModule` in `src/alarms/alarmKit.ts` rather than
   imported, so Expo Go and the web build fall back instead of crashing. Reasons for this module and not `react-native-alarm-scheduler`: the
@@ -441,19 +451,69 @@ opening still to come (advance, then Tatkal). Two ways to ring, chosen at run ti
   cancel or replace an alarm without storing anything. The module's pod needs iOS 26.1, so `app.json` has `ios.deploymentTarget` 26.1
   and `NSAlarmKitUsageDescription`. The "AlarmKit allowed" answer is remembered in plain storage (`train_alarmkit_ok`) so a launch never
   prompts; if iOS later refuses every alarm the flag is dropped and notifications take over.
-- **Local notifications** (`expo-notifications`): the fallback in Expo Go, or when AlarmKit is denied. The wake-up, Tatkal and 5-minute alarms are
-  repeated a minute apart (5, 5 and 3 copies) because one notification is easy to sleep through; only the soonest 60 are kept since iOS keeps
+- **Local notifications** (`expo-notifications`): the fallback in Expo Go, or when AlarmKit is denied. Each alarm is
+  repeated a minute apart (`ALARM_CHAIN` = 3 copies each) because one notification is easy to sleep through; the two reminders are always
+  notifications, with AlarmKit too; only the soonest 60 are kept since iOS keeps
   at most 64 pending (`capNotifications`). `interruptionLevel: "timeSensitive"` is set, but the time-sensitive entitlement is **not**
   added (a free Apple ID may not be able to sign it), so iOS probably treats them as normal notifications. The `expo-notifications`
   plugin has `enableRemoteNotifications: false` for the same reason (no push entitlement; nothing is pushed).
 The owner installs through AltStore with a free Apple ID (`npm run ipa`); such an app must be refreshed every 7 days, and it is **not known**
 whether already-scheduled AlarmKit alarms survive a refresh or reinstall. Config > Train alarms has "Test alarm in 1 minute" to check the
 mechanism on the phone. **Not verified (nothing was run):** the Swift module compiling against the iOS 26 SDK with Expo 58, AlarmKit
-accepting an alarm weeks ahead, the permission prompt, the free-account signing of the new capabilities, and the screens. **Not built:**
-Export and Cloud backup of journeys (they are short-lived; add a backup block like Assets if wanted), a server-side backup alarm (Pushover
+accepting an alarm weeks ahead, the permission prompt, the free-account signing of the new capabilities, and the screens. **Backup:** Export and Cloud backup carry the journeys that are still ahead (backup version 5, a "Journeys Id | Label | Date | Booking | Alarm Times | Note | Created" block after Assets; one whose date has passed is left out, on the way out and on the way in, and a journey deleted on a phone stays deleted there). After an Import or a cloud restore that added journeys the alarms are rebuilt at once (`syncTrainAlarms({ ask: true })`). **Errors are shown, not swallowed:** `scheduleAlarmKit` and `scheduleNotification` return the reason they failed, `syncTrainAlarms` collects the first few in `SyncResult.errors`, and the message after a save (`describeSyncOutcome`, tested) says how many could not be set and why; saving the journey and setting its alarms are separate steps, so a failed alarm step never leaves the form open for a second Save to add the same journey again. **Not built:**
+a server-side backup alarm (Pushover
 emergency priority or a phone call from the Cloudflare Worker, designed but dropped for now), and a "booking opened" follow-up. The 60 days and the Tatkal
 hours are the owner's to confirm. The owner has since run the Test alarm on the phone: the AlarmKit alarm rang.
 
+
+**Bank SMS** (Config > "Bank SMS (automatic)", `src/ui/SmsCaptureSection.tsx`; no schema change). iOS gives apps no access to messages or to other apps'
+notifications, so the app publishes its own **Shortcuts action, "Add bank SMS"** (`app-intents/AddBankSmsIntent.swift`: a Swift `AppIntent` with one
+`Message` text parameter, compiled into the app target by Expo's `expo-app-intents` inline-module setup; `app-intents/AppIntentsSetup.swift` is the
+package's required setup module and must not be renamed). The owner's automation is "When I get a message containing <bank words>" (Message trigger,
+Run Immediately) -> Create New Shortcut -> "Add bank SMS" with the Shortcut Input as the message; the steps are written on that screen.
+`perform()` calls `AppIntentDispatcher.shared.dispatch(name: "addBankSms", params: ["text": ...])`, which writes the invocation to native storage
+(`UserDefaults`, up to 100, the oldest dropped) and returns; **it starts no JavaScript and does not open the app** (`openAppWhenRun` is left at its
+default, false), so the text waits until the app next starts or comes to the front. **No server is involved and the message text never leaves the
+phone.** `src/import/phoneInbox.ts` reads the queue (`getPendingInvocationsAsync`), removes an entry after it is saved (`removePendingInvocationAsync`)
+and listens for the action running while the app is open (`addAppIntentListener`); `_layout.tsx` runs `pullSms` (`src/import/smsCapture.ts`) at launch,
+each time the app returns to the front and on that listener. `pullSms` runs one check at a time and once more if asked during a run (the action may
+have fired after the queue was read). Delivery is at least once, which the UPI-number key makes harmless. Each message is read by `parseBankSms`
+(`src/domain/smsParser.ts`, written from the ICICI wording; UPI messages only: it needs an amount, a debit/credit word and the 12-digit UPI number)
+into a `ParsedTransaction` with **no narration, balance or note** and the key `upi:<ref>:<D|C>`, then goes through the **same `importParsed`** as a
+statement: de-duplication against everything stored (a deleted entry stays deleted), AI categorisation in the owner's categories,
+`createSqliteStore(group)`. The group is `resolveSmsGroupId` (`src/db/smsGroup.ts`): the group chosen on that screen while it is open, otherwise Main
+(not the Home group). A message leaves the queue only after its payment is in the app. **A message that does not mention UPI at all (card, ATM,
+balance, OTP) is skipped quietly** (`mentionsUpi`; `SmsPullResult.ignored`) and removed; one that mentions UPI but cannot be read is listed in Config
+to Dismiss and raises the Home bar. **A payment is always saved, whether or not the AI works** (`classifyOrFallback`, `src/import/safeClassify.ts`):
+with no AI key, no internet or a quota the entry goes into Others : Uncategorised with `classified_by = pending`, so Config > Re-classify picks it up
+later and the owner never has to re-enter it. **The statement completes the entry:**
+an SMS entry is recognised by being an import row with a UPI number but no balance and no narration (`smsKeys` in `src/db/transactions.ts`; no flag
+column, so it also survives a restore); when a statement contains the same key, `enrich` fills in the balance, narration, VPA, note and bank, replaces
+the payee only when the SMS's cut-short payee is the start of the statement's (a payee the owner typed over stays) and fills the description only when
+empty. **The category is looked at again, because the UPI note categorises far better than the cut-short payee did:** the entries whose category the
+AI chose (`classified_by` is not `manual`) are sent to the AI once more with the statement's row (`recategorise` in `importStatement.ts`), and a real
+category replaces theirs (`recategorise` in the store, which re-checks `manual` in SQL); an answer of Others : Uncategorised, or a failed call, changes
+nothing, and a category the owner chose is never touched. `ImportSummary.enriched` and `recategorised` count them. After a collection that added
+entries `bumpDataVersion` (`src/import/dataVersion.ts`) makes Home and Transactions reload, since they otherwise load only when focused.
+
+**Bank SMS: retries and the Home bar.** The collection stays silent: no pop-up, and nothing for new payments, for nothing new, or for entries saved
+without a category (Re-classify handles those). A failed save is retried before it counts as a problem, with `withBackoff` (`src/domain/backoff.ts`,
+the pause doubles): 3 tries (1, 2 s), each saving only the payments still missing (`pending`) and asking the database what is there, so a try that
+failed half way is not repeated. When the tries run out, `describeSmsProblem` (`src/domain/smsProblem.ts`) makes one line from two causes (messages that
+could not be saved, messages that could not be read), always ending with a pointer to importing the bank statement, and `reportSmsProblem`
+(`src/import/smsProblemStore.ts`, in memory) shows it in `SmsProblemBar` at the top of Home. Tapping it opens Config with the Bank SMS section open
+(`/config?open=sms&at=<time>`); the cross hides that line until the problem changes or the app is started again; the next good check clears it. An
+unreadable message stays in the queue until dismissed in Config, so its bar returns at each start until then.
+
+**Bank SMS history.** The first way was an iOS Shortcut posting each message to an inbox on the backup Worker (`POST /inbox/<token>`, a secret link,
+unencrypted KV, retries with backoff, a "could not reach the server" error). It worked on the phone but depended on the network and had many ways to
+fail, so once the App Intent route worked on the phone it was removed (the code is in git history, commit after `19a09a9`). The deployed Worker may
+still answer `/inbox/...` until it is redeployed (`npx wrangler deploy`); stored messages expire after 14 days. Ruled out: a notification from a Shortcut
+to the app (a Shortcut's notification belongs to the Shortcuts app), real push (needs a paid Apple account), opening the app by link on every SMS.
+**Needs a native build** (`npm run ipa`, then AltStore), not an OTA update; the `expo-app-intents` package is alpha. If prebuild keeps the old
+project, delete the generated `ios/` folder once. Verified on the owner's phone: the action appears in Shortcuts for a sideloaded build, Shortcut Input
+is accepted for the Message parameter, and a payment was added. **Not verified:** a credit message (the wording is a guess), other banks, a phone that is
+locked when the message arrives (the Expo docs do not say), and a build from a clean `ios/`.
 
 **Over-the-air updates (EAS Update, no Apple account).** The owner installs through AltStore with a free Apple ID, and reinstalling for every
 JavaScript-only change was flaky, so the app has `expo-updates`. EAS Update only hosts the JS bundle (a free Expo account); EAS *Build* for
@@ -464,9 +524,9 @@ Build; docs.expo.dev "Get started with EAS Update"), `checkAutomatically` ON_LOA
 network; a downloaded update is used from the next launch). **`updates.url` and `extra.eas.projectId` are deliberately absent until the owner runs
 `npx eas-cli@latest update:configure` (it needs their login), so until then updates stay off.** Publish with `npm run update`. Config > App
 updates (`src/ui/AppUpdateSection.tsx`) checks, downloads and restarts on demand, and says so in Expo Go, dev builds and the browser, where
-`Updates.isEnabled` is false. It does not fix the 7-day signing refresh. Local `.env` values (`EXPO_PUBLIC_BACKUP_URL`) may not reach a
-bundle exported by `eas update --environment production`; if cloud backup says "not set up" after an update, add the value to the EAS
-environment. Not verified: any of this on the phone, `eas update` itself, and the fingerprint matching between `npm run ipa` and `eas update`.
+`Updates.isEnabled` is false. It does not fix the 7-day signing refresh. `.env` is not tracked in git (`.env.example` is the template). The bundle takes
+`EXPO_PUBLIC_BACKUP_URL` from the `.env` of the machine that runs `eas update` (the owner has seen this work), or from the environment variable a
+CI job sets before building; if cloud backup says "not set up" after an update, the value was missing where the bundle was built. Not verified: any of this on the phone, `eas update` itself, and the fingerprint matching between `npm run ipa` and `eas update`.
 
 **Embeddings, vector search and RAG were dropped** (an earlier learning goal; not
 needed for classifying a short note into a list). They can return later, for example
@@ -592,6 +652,15 @@ for: free without a card, never pauses when idle, a tiny server we control, work
   because iOS ignores touches outside a parent's bounds.
 - Gemini free-tier access changes per model (`gemini-2.5-flash` is now limited to
   existing users). Check AI Studio if calls fail with quota errors.
+
+- **The update compatibility ID (runtime version) is a fingerprint of the project's native inputs, and `.gitignore` is one of them** (`bareGitIgnore`, as
+  well as `package.json` dependencies, the Expo config and the icon). Editing `.gitignore` changed the ID, so two updates were published that the phone's
+  installed build (built before the edit) silently never accepted ("Check for updates" said up to date). Before `npm run update`, compare
+  `npx expo-updates fingerprint:generate --platform ios` with the `EXUpdates.bundle/fingerprint` file inside the installed IPA; they must match, or the
+  change needs a new `npm run ipa` and reinstall. `.gitignore` is therefore left alone between builds.
+  The `scripts` in `package.json` are inputs too. `npm run update` used to pass `--environment production`, which makes EAS ignore the local `.env`
+  (the bundle then had no `EXPO_PUBLIC_BACKUP_URL`: Cloud backup said "not set up"); the flag was removed, and `.env` was
+  added back to `.gitignore`, together with the build that added `expo-app-intents` (any change like these needs a rebuild to stay compatible).
 
 ## 6. What was verified, and what was not
 

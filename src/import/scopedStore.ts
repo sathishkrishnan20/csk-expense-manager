@@ -1,10 +1,15 @@
 import { scopedKey } from "../domain/groups";
+import type { ParsedTransaction } from "../domain/statementParser";
+import type { Classification } from "../domain/taxonomy";
 import type { ImportedTransaction, TransactionStore } from "./importStatement";
 
 // A store that works with scoped keys (see scopedKey) and knows which group it writes to.
 export interface KeyedStore {
   existingKeys(scopedKeys: string[]): Promise<Set<string>>;
   deletedKeys?(scopedKeys: string[]): Promise<Set<string>>;
+  smsKeys?(scopedKeys: string[]): Promise<Set<string>>;
+  enrich?(rows: ParsedTransaction[]): Promise<{ updated: number; aiLabelled: ParsedTransaction[] }>;
+  recategorise?(items: { dedupeKey: string; classification: Classification }[], label: string): Promise<number>;
   insert(rows: ImportedTransaction[], groupId: string): Promise<void>;
 }
 
@@ -33,6 +38,27 @@ export function scopeStore(inner: KeyedStore, groupId: string): TransactionStore
       const map = toScoped(keys);
       return fromScoped(await deletedKeys([...map.keys()]), map);
     };
+  }
+  if (inner.smsKeys) {
+    const smsKeys = inner.smsKeys.bind(inner);
+    store.smsKeys = async (keys) => {
+      const map = toScoped(keys);
+      return fromScoped(await smsKeys([...map.keys()]), map);
+    };
+  }
+  if (inner.enrich) {
+    const enrich = inner.enrich.bind(inner);
+    store.enrich = async (rows) => {
+      const scoped = rows.map((r) => ({ ...r, dedupeKey: scopedKey(groupId, r.dedupeKey) }));
+      const original = new Map(scoped.map((r, i) => [r.dedupeKey, rows[i]]));
+      const done = await enrich(scoped);
+      return { updated: done.updated, aiLabelled: done.aiLabelled.map((r) => original.get(r.dedupeKey) ?? r) };
+    };
+  }
+  if (inner.recategorise) {
+    const recategorise = inner.recategorise.bind(inner);
+    store.recategorise = (items, label) =>
+      recategorise(items.map((i) => ({ ...i, dedupeKey: scopedKey(groupId, i.dedupeKey) })), label);
   }
   return store;
 }

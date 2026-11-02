@@ -2,7 +2,7 @@ import { Platform } from "react-native";
 import * as SQLite from "expo-sqlite";
 import { DEFAULT_CATEGORIES, DEFAULT_PAYMENT_METHODS, FALLBACK } from "../domain/masterData";
 
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 16;
 
 const SCHEMA = `
 -- A group is a separate ledger (see domain/groups.ts). 'main' holds everything entered before groups existed.
@@ -125,18 +125,20 @@ CREATE TABLE IF NOT EXISTS assets (
 );
 CREATE INDEX IF NOT EXISTS assets_gift_idx ON assets (gift_id);
 
--- Train journeys (schema version 13, reshaped in 14; see domain/trainAlarms.ts). Information only, like gifts and assets: each row is a
--- journey date the owner wants alarms for. advance = alarms for the advance booking (60 days before, 8:00 AM); tatkal = the class whose
--- Tatkal opening (the day before the journey) to wake for. The alarms themselves live in iOS (AlarmKit and local notifications) and are
--- rebuilt from these rows by alarms/sync.ts. wake_lead_min is how many minutes before the opening the wake-up alarm rings.
--- (Version 13 had a 'rule' column for a 2-month option that was removed; a database made then keeps it, unused, with its default.)
+-- Train journeys (schema version 13, reshaped in 14 and 15, cleaned up in 16; see domain/trainAlarms.ts). Information only, like gifts and assets: each row
+-- is a journey date the owner wants alarms for. The booking is advance = 1 (60 days before, 8:00 AM) or tatkal = ac / non_ac (the day
+-- before the journey, 10:00 / 11:00 AM); a journey has one of them. alarm_times is the owner's alarm times on the booking day, "HH:MM"
+-- joined by commas ('' = the defaults for the booking). The alarms themselves live in iOS (AlarmKit and local notifications) and are
+-- rebuilt from these rows by alarms/sync.ts.
+-- (Version 13 had a 'rule' column for a 2-month option and version 14 a wake_lead_min column for a wake-up lead; version 16 drops both
+-- from a database that still has them.)
 CREATE TABLE IF NOT EXISTS train_journeys (
   id            TEXT PRIMARY KEY NOT NULL,
   label         TEXT NOT NULL,
   journey_date  TEXT NOT NULL,
   advance       INTEGER NOT NULL DEFAULT 1,
   tatkal        TEXT NOT NULL DEFAULT 'none' CHECK (tatkal IN ('none', 'ac', 'non_ac')),
-  wake_lead_min INTEGER NOT NULL DEFAULT 30,
+  alarm_times   TEXT NOT NULL DEFAULT '',
   note          TEXT,
   status        TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'DELETED')),
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
@@ -238,6 +240,20 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
       await txn.execAsync(
         "ALTER TABLE train_journeys ADD COLUMN tatkal TEXT NOT NULL DEFAULT 'none' CHECK (tatkal IN ('none', 'ac', 'non_ac'))",
       );
+    }
+    // Version 15 added the owner's own alarm times to each journey.
+    if (!journeyColumns.some((c) => c.name === "alarm_times")) {
+      await txn.execAsync("ALTER TABLE train_journeys ADD COLUMN alarm_times TEXT NOT NULL DEFAULT ''");
+    }
+    // Version 16 drops the train journey columns nothing reads any more: 'rule' (a 2-month option, version 13) and wake_lead_min (a
+    // wake-up lead, version 14). A failed drop is ignored: an unused column is harmless, and the database must still open.
+    for (const unused of ["rule", "wake_lead_min"]) {
+      if (!journeyColumns.some((c) => c.name === unused)) continue;
+      try {
+        await txn.execAsync(`ALTER TABLE train_journeys DROP COLUMN ${unused}`);
+      } catch {
+        // left in place
+      }
     }
     // Version 6 added a description per subcategory.
     const catColumns = await txn.getAllAsync<{ name: string }>("SELECT name FROM pragma_table_info('categories')");

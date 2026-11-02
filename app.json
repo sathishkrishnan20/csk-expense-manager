@@ -82,7 +82,8 @@
         {
           "enableRemoteNotifications": false
         }
-      ]
+      ],
+      "expo-app-intents"
     ],
     "runtimeVersion": {
       "policy": "fingerprint"
@@ -114,6 +115,13 @@
         "projectId": "290d40a9-c607-49d1-b8fb-a99444c7cb98"
       }
     },
-    "android": {}
+    "android": {},
+    "experiments": {
+      "inlineModules": {
+        "watchedDirectories": [
+          "app-intents"
+        ]
+      }
+    }
   }
 }

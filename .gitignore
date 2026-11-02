@@ -30,7 +30,8 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
+# local env files (.env.example is the tracked template; CI sets its values as environment variables)
+.env
 .env*.local
 
 # typescript

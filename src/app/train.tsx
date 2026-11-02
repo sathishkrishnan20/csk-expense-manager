@@ -41,7 +41,7 @@ export default function TrainScreen() {
   const header = (
     <View style={styles.intro}>
       <T style={styles.note}>
-        Save the date of a journey and the app works out when booking opens (advance: 8:00 AM, 60 days before; Tatkal: the day before) and rings an alarm to wake you for it.
+        Save the date of a journey and the app works out when booking opens (advance: 8:00 AM, 60 days before; Tatkal: the day before) and rings your alarms to wake you for it.
       </T>
       <T style={styles.note}>
         {alarmKitInstalled

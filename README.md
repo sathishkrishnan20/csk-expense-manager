@@ -108,8 +108,9 @@ npm run update                    # publishes to the "production" channel, named
 Open the app (twice if needed): it looks for an update at every launch and uses a downloaded one the next time it opens, or use
 Config > App updates > Check for updates, then Restart now. If something changes native code (a new native package, a plugin or
 `app.json` native setting), the update is ignored by the old install (the runtime version is a fingerprint of the native code),
-and you build and install a new `.ipa`. If cloud backup says it is not set up after an update, the `.env` value did not reach
-the bundle: add it to the EAS environment (`npx eas-cli@latest env:create`) as `EXPO_PUBLIC_BACKUP_URL`.
+and you build and install a new `.ipa`. `.env` is not tracked in git: copy `.env.example` to `.env` and fill it in on your machine, and in CI set
+`EXPO_PUBLIC_BACKUP_URL` as an environment variable before building. If cloud backup says it is not set up after an update, the value was
+missing where the bundle was built (or add it to the EAS environment with `npx eas-cli@latest env:create`).
 
 ### In a browser (untested)
 

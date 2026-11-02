@@ -732,5 +732,12 @@ Spending trends by month, a "transfer to self" rule, move existing transactions 
   native builds or screenshots); the owner tests the app on their own iPhone.
 - `npm run typecheck` and `npm test` (Node unit tests) may be run but are not required.
 - At the end of a change, state what was changed and that it was not run in the app.
+- **Platforms: iOS, Android and web, each named.** The app runs on iOS today and has a web build; **Android is planned** (`app.json` already lists an
+  `android` block). Every `Platform.OS` or `Platform.select` branch must handle `ios`, `android` and `web` explicitly, and must not use `!== "web"` (or
+  `=== "ios"` with everything else falling through) as a stand-in for "a phone". Where a feature is not built for a platform yet, say so on screen rather
+  than falling through to another platform's behaviour. Bank SMS is the example: iOS uses a Shortcut and the app's "Add bank SMS" action; **Android will
+  read the messages on the phone itself (an SMS permission and a receiver, not Shortcuts), so it needs its own implementation** behind the same
+  parser and import pipeline (`parseBankSms`, `importParsed`); web has no messages. Known spots that still treat Android like iOS: `HelpSection.tsx`
+  picks `"web"` or `"ios"` help text only, and `alarms/alarmKit.ts` is iOS-only by design (AlarmKit).
 
 (The same rules are in `AGENTS.md`, which coding agents read first.)

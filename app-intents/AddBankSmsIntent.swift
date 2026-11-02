@@ -11,6 +11,8 @@ struct AddBankSmsIntent: AppIntent {
     "Adds the payment in a bank message to CSK Manager. Use it in an automation that runs when a bank message arrives."
   )
 
+  // Shortcuts does not fill this in by itself (tried `inputConnectionBehavior: .connectToPreviousIntentResult` on the owner's phone: no
+  // change), so the steps in Config > Bank SMS tell the owner to tap the field, Select Variable, then Shortcut Input.
   @Parameter(title: "Message")
   var text: String
 

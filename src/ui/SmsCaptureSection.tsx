@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Linking, Platform, StyleSheet, View } from "react-native";
 import { listGroupsWithBalances } from "../db/groups";
 import { formatRupees } from "../domain/format";
 import { MAIN_GROUP_ID } from "../domain/groups";
@@ -20,13 +20,10 @@ import { colors } from "./theme";
 const when = (iso: string) => new Date(iso).toLocaleString();
 
 const STEPS = [
-  "Open the Shortcuts app, tap Automation at the bottom, then + (New Automation), then Message.",
-  "Next to Message Contains, type words that only your bank's payment messages have, such as  ICICI Bank Acct XX236  (your bank and the end of your account number). Leave Sender empty and tap Next. Leave out the word debited, or the money you receive will not be picked up.",
-  "On the next screen tap Create New Shortcut.",
-  "Use the search box at the bottom: type  Add bank SMS  and tap it (it is listed under CSK Manager).",
-  "Tap the word Message in that action and choose Shortcut Input (the message that arrived).",
-  "Save it with the tick or Done. Back on the automation choose Run Immediately, and turn Notify When Run off if you see it.",
-  "Make a small UPI payment, then open this app. The payment is added within a few seconds. Check now below shows what the app found.",
+  "Tap Open Shortcuts below, then Automation at the bottom, then + (New Automation), then Message.",
+  "Next to Message Contains, paste the first words of one of your bank's payment messages, such as  ICICI Bank Acct XX236  (copy them from the message). Leave Sender empty, tap Next, then Create New Shortcut. Leave out the word debited, or money you receive will not be picked up.",
+  "Search for  Add bank SMS  at the bottom and tap it (listed under CSK Manager). Tap the Message field in that action, tap Select Variable above the keyboard, then tap Shortcut Input (the message that arrived). The Message field now shows Shortcut Input; tap the tick.",
+  "Back on the automation choose Run Immediately, and turn Notify When Run off if you see it.",
 ];
 
 export function SmsCaptureSection() {
@@ -79,6 +76,11 @@ export function SmsCaptureSection() {
       return `${parts.join(", ")}.`;
     });
 
+  // iOS opens the Shortcuts app from this link; it cannot go straight to a new automation. Only rendered on iOS (see below).
+  const openShortcuts = () => {
+    Linking.openURL("shortcuts://").catch(() => setMessage({ text: "Could not open the Shortcuts app.", isError: true }));
+  };
+
   const chooseGroup = (name: string) => {
     const id = groups.find((g) => g.name === name)?.id ?? MAIN_GROUP_ID;
     setGroupId(id);
@@ -96,6 +98,14 @@ export function SmsCaptureSection() {
 
   const preview = sample.trim() === "" ? null : parseBankSms(sample, new Date());
 
+  // Everything below is the iOS way (a Shortcut hands the message to the app). Android is planned and will read the messages on the phone
+  // itself, not through Shortcuts; the browser has no messages. Each platform is named here so none is treated as another by default.
+  if (Platform.OS === "android") {
+    return <T style={styles.note}>Automatic bank SMS is not available on Android yet. It will read your bank messages on the phone itself, without Shortcuts.</T>;
+  }
+  if (Platform.OS === "web") {
+    return <T style={styles.note}>Automatic bank SMS works only in the iPhone app.</T>;
+  }
   if (!loaded) return null;
   return (
     <View style={styles.box}>
@@ -109,18 +119,24 @@ export function SmsCaptureSection() {
 
       {!phoneInboxAvailable() ? (
         <T style={styles.error}>
-          This build does not have the Add bank SMS action (an older install, Expo Go or the browser). Install the newest build to use it.
+          This build does not have the Add bank SMS action (an older install or Expo Go). Install the newest build to use it.
         </T>
       ) : null}
 
       <SelectField label="Add these entries to" value={groups.find((g) => g.id === groupId)?.name ?? "Main"} options={groups.map((g) => g.name)} onChange={chooseGroup} disabled={busy} />
 
       <T weight="medium">Make the Shortcut (once)</T>
+      <Button label="Open Shortcuts" onPress={openShortcuts} disabled={busy} />
       {STEPS.map((step, i) => (
         <T key={i} style={styles.step}>
           {i + 1}. {step}
         </T>
       ))}
+      <T style={styles.note}>
+        Then make a small UPI payment and open this app: the payment is added within a few seconds, and Check now shows what the app found. To pass
+        only UPI messages, add an If action above Add bank SMS (Shortcut Input contains UPI) and put Add bank SMS inside it; the app already skips
+        messages that are not UPI payments, so this is not needed.
+      </T>
       <T style={styles.note}>The names of buttons can differ a little between iOS versions. If a step does not match what you see, tell me what you see.</T>
 
       <Button label={busy ? "Working…" : "Check now"} onPress={check} disabled={busy} />

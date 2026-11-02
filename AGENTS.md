@@ -6,6 +6,10 @@ This is an Expo/React Native mobile application. Prioritize mobile-first pattern
 - The quick static checks are allowed but not required: `npm run typecheck`, and `npm test` (unit tests that run under Node, not in the app). Tests live in `tests/`, mirroring `src/`; do not put test files under `src/` (Expo Router would treat files in `src/app` as routes).
 - When you finish, say plainly what you changed and that the change was not run in the app, so the owner knows what to test.
 
+## Platforms: iOS, Android and web
+
+The app runs on iOS today, has a web build, and **Android is planned**. Every `Platform.OS` / `Platform.select` branch must handle `ios`, `android` and `web` explicitly; do not use `!== "web"` as a stand-in for "a phone", and do not let Android fall through to iOS behaviour. Where a feature is not built for a platform yet, say so on screen. Bank SMS on Android will read messages on the phone itself, not through Shortcuts. See `docs/ARCHITECTURE.md` §9.
+
 ## Expo has changed — do not trust your training data
 
 Expo ships breaking changes every SDK release. APIs you remember are likely renamed, moved, or removed. Before writing any code that touches an Expo, EAS, or React Native API:

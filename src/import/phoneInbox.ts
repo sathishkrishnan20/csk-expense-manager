@@ -11,7 +11,8 @@ export interface QueuedSms {
   at: string; // ISO time the action ran
 }
 
-// Everything queued, oldest first. Empty where App Intents do not exist (Expo Go, the browser).
+// Everything queued, oldest first. Empty where App Intents do not exist: Expo Go, the browser and Android (where the messages will be read
+// on the phone itself, not through Shortcuts; not built yet).
 export async function readPhoneInbox(): Promise<QueuedSms[]> {
   if (!AppIntents.isAvailable()) return [];
   const pending = await AppIntents.getPendingInvocationsAsync();
@@ -38,5 +39,5 @@ export function listenForPhoneMessages(onMessage: () => void): () => void {
   return () => subscription.remove();
 }
 
-// Whether this build has the action at all (an old build, Expo Go and the browser do not).
+// Whether this build has the action at all (an old build, Expo Go, Android and the browser do not).
 export const phoneInboxAvailable = (): boolean => AppIntents.isAvailable();

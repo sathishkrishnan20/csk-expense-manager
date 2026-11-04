@@ -10,6 +10,16 @@ This is an Expo/React Native mobile application. Prioritize mobile-first pattern
 
 The app runs on iOS today, has a web build, and **Android is planned**. Every `Platform.OS` / `Platform.select` branch must handle `ios`, `android` and `web` explicitly; do not use `!== "web"` as a stand-in for "a phone", and do not let Android fall through to iOS behaviour. Where a feature is not built for a platform yet, say so on screen. Bank SMS on Android will read messages on the phone itself, not through Shortcuts. See `docs/ARCHITECTURE.md` §9.
 
+## Database (SQLite): always name a CHECK constraint
+
+SQLite 3.53 (bundled by `expo-sqlite`) can change a CHECK in place with `ALTER TABLE ... DROP CONSTRAINT <name>` then `ADD CONSTRAINT <name> CHECK (...)`, but **only if the constraint has a name**. An unnamed `CHECK (...)` can never be dropped that way, so widening it forces a full table rebuild (this happened to `transactions.source` in schema version 17). Rules:
+
+- Never write an unnamed CHECK in a `CREATE TABLE` or `ADD COLUMN`. Write `col TEXT NOT NULL CONSTRAINT <col>_check CHECK (col IN (...))` (for example `source_check`) and keep the name unique within the table.
+- To change the allowed values of a named CHECK, use the two `ALTER TABLE` statements in a migration step guarded by "is the current CREATE statement still the old one" (see `needsTransactionsRebuild` and `REBUILD_TRANSACTIONS` in `src/db/schemaSql.ts`); do not rebuild the table.
+- **Whenever a table has to be rebuilt, for any reason (a new column type, a dropped column, a widened CHECK), write the new definition with EVERY CHECK on that table named** (`CONSTRAINT <col>_check CHECK (...)`), not only the one being changed, and make the rebuild detection (like `needsTransactionsRebuild` in `src/db/schemaSql.ts`) treat a table with any unnamed CHECK as old. That way the next change to its allowed values is an ALTER, not another rebuild. A rebuild copies every row unchanged, runs once, and has a test in `tests/db/` against Node's SQLite.
+- Existing databases still hold the older unnamed CHECKs on gifts, assets, train journeys and groups (the transactions table was rebuilt with all three of its checks named in version 17); leave those tables alone until one of them has to be rebuilt anyway, and name all of its checks then.
+- Prefer a lookup in code over a CHECK when the values may grow.
+
 ## Expo has changed — do not trust your training data
 
 Expo ships breaking changes every SDK release. APIs you remember are likely renamed, moved, or removed. Before writing any code that touches an Expo, EAS, or React Native API:

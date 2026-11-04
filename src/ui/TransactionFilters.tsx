@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import type { CategoryDef } from "../domain/masterData";
+import { SOURCE_LABEL } from "../domain/transactionSource";
 import {
   NO_FILTERS,
   activeFilterCount,
@@ -11,6 +12,7 @@ import {
   withCategory,
   type DirectionFilter,
   type Filterable,
+  type SourceFilter,
   type TransactionFilters,
   type UncategorisedMode,
 } from "../domain/transactionFilters";
@@ -33,6 +35,14 @@ const UNCATEGORISED: { value: UncategorisedMode; label: string }[] = [
   { value: "all", label: "All" },
   { value: "categorised", label: "Categorised" },
   { value: "uncategorised", label: "Uncategorised" },
+];
+
+// How the entry first came in: by hand, from a bank statement, or by the automatic bank SMS route.
+const SOURCES: { value: SourceFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "manual", label: SOURCE_LABEL.manual },
+  { value: "import", label: SOURCE_LABEL.import },
+  { value: "sms", label: SOURCE_LABEL.sms },
 ];
 
 interface Props {
@@ -127,6 +137,11 @@ export function TransactionFiltersPanel({ filters, onChange, categories, rows, s
             disabled={!filters.category}
             onChange={(v) => onChange({ ...filters, subcategory: v === ALL_SUBCATEGORIES ? null : v })}
           />
+
+          <View style={styles.group}>
+            <T style={styles.groupLabel}>Source</T>
+            <Segmented options={SOURCES} value={filters.source} onChange={(source) => onChange({ ...filters, source })} />
+          </View>
 
           <View style={styles.group}>
             <T style={styles.groupLabel}>Uncategorised</T>

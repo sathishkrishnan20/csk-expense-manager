@@ -66,6 +66,16 @@ test("a hand entry is sent with its description and without an empty bank narrat
   assert.doesNotMatch(buildUserPrompt([row()], "debit"), /description/);
 });
 
+test("a note or description is decided on before the payee, so a payee that is a given name cannot send the entry to Others", () => {
+  const prompt = buildSystemPrompt(DEFAULT_CATEGORIES, "debit");
+  assert.match(prompt, /when it is present, decide from it first/);
+  assert.match(prompt, /must never override the description/);
+  assert.match(prompt, /Only when there is neither a description nor a note, a payee that looks like a private person/);
+  assert.match(buildSystemPrompt(DEFAULT_CATEGORIES, "credit"), /Only when there is no description and no note, use the payee/);
+  // the person rule must never apply on its own, without that condition
+  assert.doesNotMatch(prompt, /with no useful note, does not fit/);
+});
+
 test("model answers are validated against the current categories", async () => {
   const rows = Array.from({ length: 7 }, () => row());
   const call: LlmCall = async () => ({
@@ -113,7 +123,7 @@ test("a malformed answer is rejected", async () => {
   );
 });
 
-test("a subcategory's description goes into the prompt next to its name, and others stay plain", () => {
+test("a subcategory's description is listed apart from its name, so the model cannot answer with name and description together", () => {
   const categories: CategoryDef[] = [
     {
       category: "Food",
@@ -121,10 +131,36 @@ test("a subcategory's description goes into the prompt next to its name, and oth
       descriptions: { Chaats: "Dikky poori,\n Panipoori and roadside food" },
     },
   ];
+  const debitPrompt = buildSystemPrompt(categories, "debit");
+  assert.match(debitPrompt, /- Food: Chaats, Snacks\n/);
+  assert.doesNotMatch(debitPrompt, /Chaats \(/);
+  const credit = buildSystemPrompt([{ category: "Income", subcategories: ["Salary", "Gift"], descriptions: { Gift: "Birthday money" } }], "credit");
+  assert.match(credit, /- Income: Salary, Gift\n/);
+  assert.match(credit, /- Income > Gift: Birthday money\n/);
+  assert.doesNotMatch(credit, /Gift \(/);
   const debit = buildSystemPrompt(categories, "debit");
-  assert.match(debit, /- Food: Chaats \(Dikky poori, Panipoori and roadside food\), Snacks\n/);
-  assert.match(debit, /text in brackets/);
-  assert.doesNotMatch(buildSystemPrompt([{ category: "Food", subcategories: ["Snacks"] }], "debit"), /Snacks \(/);
+  assert.match(debit, /- Food > Chaats: Dikky poori, Panipoori and roadside food\n/);
+  assert.match(debit, /never its description/);
+  const plain = buildSystemPrompt([{ category: "Food", subcategories: ["Snacks"] }], "debit");
+  assert.doesNotMatch(plain, /Descriptions the account holder wrote/);
+});
+
+test("an answer that echoes the description after the subcategory name still lands in that subcategory (seen with gemini-3.5-flash-lite)", async () => {
+  const categories: CategoryDef[] = [
+    { category: "Food & Groceries", subcategories: ["Snacks", "Chaats", "Chaats Corner"], descriptions: { Chaats: "Dikky poori, Panipuri" } },
+  ];
+  const call = async () => ({
+    results: [
+      { id: 0, category: "Food & Groceries", subcategory: "Chaats (Dikky poori, Panipuri)", suggestedCategory: "", suggestedSubcategory: "" },
+      { id: 1, category: "Food & Groceries", subcategory: "Chaats Corner (x)", suggestedCategory: "", suggestedSubcategory: "" },
+      { id: 2, category: "Food & Groceries", subcategory: "Chaat (Panipuri)", suggestedCategory: "", suggestedSubcategory: "" },
+    ],
+  });
+  const out = await classifyBatch([row(), row(), row()], "debit", categories, call);
+  assert.deepEqual(out.get(0), { category: "Food & Groceries", subcategory: "Chaats" });
+  assert.deepEqual(out.get(1), { category: "Food & Groceries", subcategory: "Chaats Corner" });
+  // a name that is not in the list is still not accepted
+  assert.deepEqual(out.get(2), { category: "Others", subcategory: "Uncategorised" });
 });
 
 test("the schema asks for suggestions, and the fallback category is allowed for credits too", async () => {

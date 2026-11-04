@@ -4,6 +4,7 @@ import { formatLongDate, formatRupees } from "../domain/format";
 import type { TransactionRecord } from "../db/transactions";
 import { UNRESOLVED } from "../domain/classificationOutcome";
 import { PENDING_AI } from "../domain/taxonomy";
+import { SOURCE_LABEL } from "../domain/transactionSource";
 import { T } from "./Text";
 import { colors } from "./theme";
 
@@ -84,7 +85,10 @@ export function TransactionRow({
           <T weight="light" style={[styles.left, { fontSize: 14 }]} numberOfLines={1}>
             {item.description ?? ""}
           </T>
-          {item.paymentMethod ? <T weight="light">{item.paymentMethod}</T> : null}
+          <View style={styles.tags}>
+            {item.paymentMethod ? <T weight="light">{item.paymentMethod}</T> : null}
+            <T style={styles.source}>{SOURCE_LABEL[item.source]}</T>
+          </View>
         </View>
         </View>
       </Pressable>
@@ -103,5 +107,7 @@ export function TransactionRow({
     line: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12, minHeight: 24 },
     left: { flex: 1 },
     groupLine: { color: colors.primary, fontSize: 13 },
+    tags: { flexDirection: "row", alignItems: "center", gap: 8 },
+    source: { fontSize: 11, color: colors.textSecondary, borderWidth: 1, borderColor: colors.outline, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 1 },
     divider: { height: 1.5, backgroundColor: colors.rowDivider },
   });

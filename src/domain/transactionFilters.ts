@@ -1,7 +1,11 @@
 import { UNRESOLVED } from "./classificationOutcome";
 import { FALLBACK, sortOthersLast, type CategoryDef } from "./masterData";
+import type { TransactionSource } from "./transactionSource";
 
 export type DirectionFilter = "all" | "debit" | "credit";
+
+// How the entry first came in (domain/transactionSource.ts): all of them, or one.
+export type SourceFilter = "all" | TransactionSource;
 
 // "categorised" hides the Others : Uncategorised rows, "uncategorised" shows only those, and "unresolved"
 // shows only the ones the AI gave up on after several attempts (the "Couldn't categorise" list).
@@ -14,6 +18,7 @@ export interface TransactionFilters {
   category: string | null;
   subcategory: string | null; // only meaningful together with a category
   uncategorised: UncategorisedMode;
+  source: SourceFilter;
 }
 
 export const NO_FILTERS: TransactionFilters = {
@@ -23,6 +28,7 @@ export const NO_FILTERS: TransactionFilters = {
   category: null,
   subcategory: null,
   uncategorised: "all",
+  source: "all",
 };
 
 export interface Filterable {
@@ -31,6 +37,7 @@ export interface Filterable {
   category: string;
   subcategory: string;
   classifiedBy?: string;
+  source?: TransactionSource;
 }
 
 // "Uncategorised" is the fallback the AI uses for a debit or a credit that fits none of the owner's
@@ -54,6 +61,7 @@ export function applyFilters<T extends Filterable>(rows: T[], f: TransactionFilt
     if (f.uncategorised === "categorised" && isUncategorised(t)) return false;
     if (f.uncategorised === "uncategorised" && !isUncategorised(t)) return false;
     if (f.uncategorised === "unresolved" && !isUnresolved(t)) return false;
+    if (f.source !== "all" && t.source !== f.source) return false;
     return true;
   });
 }
@@ -66,6 +74,7 @@ export function activeFilterCount(f: TransactionFilters): number {
     f.category !== null,
     f.category !== null && f.subcategory !== null,
     f.uncategorised !== "all",
+    f.source !== "all",
   ].filter(Boolean).length;
 }
 

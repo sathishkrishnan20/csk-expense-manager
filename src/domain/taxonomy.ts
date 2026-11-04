@@ -45,6 +45,12 @@ export function normalizeClassification(
   const exact = cat.subcategories.find((s) => s.toLowerCase() === wanted);
   if (exact) return { category: cat.category, subcategory: exact };
 
+  // A model sometimes echoes a subcategory with extra text after its name, "Chaats (Dikky poori, ...)". The name in front is the answer.
+  const echoed = cat.subcategories
+    .filter((s) => wanted.startsWith(`${s.toLowerCase()} (`))
+    .sort((a, b) => b.length - a.length)[0];
+  if (echoed) return { category: cat.category, subcategory: echoed };
+
   const others = cat.subcategories.find(isOthersLike);
   return others ? { category: cat.category, subcategory: others } : fallback;
 }

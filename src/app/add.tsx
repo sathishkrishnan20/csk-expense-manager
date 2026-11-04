@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { loadCategories, loadPaymentMethods } from "../db/config";
 import { listGroupsWithBalances } from "../db/groups";
 import { addEntries, addTransaction, deleteTransaction, getTransaction, updateTransaction } from "../db/transactions";
+import { ADDED_PHRASE, parseCreatedAt } from "../domain/transactionSource";
 import { parseAmountInput, toISODate } from "../domain/format";
 import { heldOpening, incomeClassFor, openingIncomeFor, suggestGroup, validateNewGroups, type GroupPlan } from "../domain/entryGroup";
 import { MAIN_GROUP_ID, flattenTree, isMainGroup, type GroupWithBalance } from "../domain/groups";
@@ -34,6 +35,7 @@ export default function AddTransaction() {
   const snackbar = useSnackbar();
 
   const editing = typeof id === "string" && id !== "";
+  const [addedLine, setAddedLine] = useState<string | null>(null); // how an existing entry first came in
   const [groupId, setGroupId] = useState(group || MAIN_GROUP_ID);
   const [groups, setGroups] = useState<GroupWithBalance[]>([]);
   const groupName = groups.find((g) => g.id === groupId)?.name ?? "";
@@ -85,6 +87,8 @@ export default function AddTransaction() {
         }
         owner = record.groupId;
         setGroupId(owner);
+        const added = parseCreatedAt(record.createdAt);
+        setAddedLine(`${ADDED_PHRASE[record.source]}${added ? ` on ${added.toLocaleString()}` : ""}`);
         setDirection(record.direction);
         setDate(record.txnDate);
         setAmount(String(record.amountPaise / 100));
@@ -246,6 +250,7 @@ export default function AddTransaction() {
       />
 
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.form}>
+        {editing && addedLine ? <T style={{ color: colors.textSecondary, fontSize: 13 }}>{addedLine}</T> : null}
         <View style={styles.radios}>
           <RadioOption label="Expense" selected={direction === "debit"} onPress={() => changeDirection("debit")} />
           <RadioOption label="Credit" selected={direction === "credit"} onPress={() => changeDirection("credit")} />

@@ -15,6 +15,7 @@ import { bookingToColumns } from "../domain/trainAlarms";
 import type { AssetStatus, AssetType, AssetUnit } from "../domain/assets";
 import type { GiftDirection, GiftType, GiftUnit } from "../domain/gifts";
 import { MAIN_GROUP_ID } from "../domain/groups";
+import type { TransactionSource } from "../domain/transactionSource";
 import { cleanDescription } from "../domain/masterData";
 import { getDb, inTransaction } from "./database";
 import { listJourneys } from "./trainJourneys";
@@ -22,7 +23,7 @@ import { listJourneys } from "./trainJourneys";
 interface TransactionRow {
   id: string;
   dedupe_key: string | null;
-  source: "import" | "manual";
+  source: TransactionSource;
   status: "ACTIVE" | "DELETED";
   txn_date: string;
   direction: "debit" | "credit";

@@ -523,3 +523,23 @@ test("train journeys: times are tidied (valid, once each, in order, at most 8) a
   const many = { ...backup(), journeys: [{ ...journey(), alarmTimes: ["01:00", "02:00", "03:00", "04:00", "05:00", "06:00", "07:00", "08:00", "09:00", "10:00"] }] };
   assert.equal(parseBackup(JSON.stringify(many)).backup.journeys[0].alarmTimes.length, 8);
 });
+
+test("the source of an entry survives a backup, and a Source in a file is read as written", () => {
+  const original = backup({
+    transactions: [
+      tx({ id: "s-1", dedupeKey: "upi:667321247083:D", source: "sms" }),
+      tx({ id: "i-1", dedupeKey: "upi:111111111111:D", source: "import" }),
+      tx({ id: "m-1", dedupeKey: null, source: "manual", upiRef: null }),
+    ],
+  });
+  const text = serializeBackup(original);
+  assert.match(text, /,Sms,/);
+  const { backup: read, skipped } = parseBackup(text);
+  assert.equal(skipped, 0);
+  assert.deepEqual(read.transactions.map((t) => [t.id, t.source]), [["s-1", "sms"], ["i-1", "import"], ["m-1", "manual"]]);
+
+  // A file edited by hand: an unknown word is read as manual, never as a source the app does not have.
+  const edited = text.replace(",Sms,", ",Whatever,");
+  assert.equal(parseBackup(edited).backup.transactions[0].source, "manual");
+  assert.equal(BACKUP_VERSION, 6);
+});

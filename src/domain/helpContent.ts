@@ -220,7 +220,7 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
         {
           bullets: [
             "Home: the group you chose as Home (Main unless you chose another): its balance, incomes and expenses (including the groups under it), the Groups section (pinned groups, Main and your other groups; tap one to open it), and its recent transactions.",
-            "Transactions: the entries of the Home group, newest first (the Group filter at the top changes that: tick one or several groups, or All groups, and each row then shows its group; See All on Home always starts on the Home group again). Tap Filters to narrow by date range, credit or debit, category, subcategory, or categorised and uncategorised. Tap a row to edit or delete it.",
+            "Transactions: the entries of the Home group, newest first (the Group filter at the top changes that: tick one or several groups, or All groups, and each row then shows its group; See All on Home always starts on the Home group again). Tap Filters to narrow by date range, credit or debit, category, subcategory, categorised and uncategorised, or Source. Every row shows how the entry first came in: Manual (you added it), Statement (a bank statement import) or Bank SMS (added automatically from a bank message); it is set once and never changes. Tap a row to edit or delete it; the entry also says when and how it was added.",
             "Charts: pick a date range and group your expenses by category, subcategory, payment method or payer. The Group filter at the top chooses which groups are charted: it starts on the Home group, and you can tick several groups or choose All groups.",
           ],
         },

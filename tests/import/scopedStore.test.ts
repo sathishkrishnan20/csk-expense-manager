@@ -99,3 +99,23 @@ test("sms keys and enrichment go through the group's scoped keys", async () => {
   await scopeStore(inner, "main").enrich!([row]);
   assert.deepEqual(seen.enriched, ["upi:111122223333:D"]);
 });
+
+test("rows are inserted with the source the store was made for: a statement by default, or the automatic bank SMS route", async () => {
+  const seen: string[] = [];
+  const inner: KeyedStore = {
+    async existingKeys() {
+      return new Set();
+    },
+    async insert(rows, _groupId, source) {
+      seen.push(`${source}:${rows.length}`);
+    },
+  };
+  const row = {
+    txnDate: "2026-11-03", valueDate: null, direction: "debit" as const, amountPaise: 11500, balancePaise: null, narration: "", payee: "X", vpa: null,
+    note: null, payeeBank: null, upiRef: "667321247083", dedupeKey: "upi:667321247083:D", category: "Food", subcategory: "Groceries",
+    paymentMethod: "UPI", description: null, classifiedBy: "test", suggestion: undefined,
+  };
+  await scopeStore(inner, "main").insert([row]);
+  await scopeStore(inner, "main", "sms").insert([row]);
+  assert.deepEqual(seen, ["import:1", "sms:1"]);
+});

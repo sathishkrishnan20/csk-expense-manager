@@ -35,7 +35,7 @@ Screens (src/app, Expo Router) read SQLite.
 | App | Expo SDK 58, React Native 0.88, TypeScript. iOS is the target; a web build is supported in code but untested (see "Web" in section 3) |
 | Navigation | Expo Router 58. **One flat root `Stack`** (`src/app/_layout.tsx`): every page, including Home, Transactions, Charts, Config and a group's pages, is a screen of it and slides in like any other (no tab navigator, no bottom bar). Pages are reached from the menu drawer, and the floating + button is `AddMenu` (`WithAddButton` puts it on each page). Add/Edit and Import are screens of the same stack |
 | Look | Theme values copied from the web app (`src/ui/theme.ts`): primary `#7F3DFF`, gradient `#9061ed` to `#5d3ba2`, income `#00A86B`, expense `#FD3C4A`, Roboto, Georgia for the Home numbers, MUI-style outlined fields and bottom bar |
-| Storage | `expo-sqlite`, file `expenses.db`, schema version 16 |
+| Storage | `expo-sqlite`, file `expenses.db`, schema version 17 |
 | Money | Integer paise; `amount_paise` is always positive and `direction` says which way |
 | API key | iOS Keychain via `expo-secure-store`; AES-GCM-encrypted in browser `localStorage` on web, with the key derived from a passkey (WebAuthn PRF) (`src/platform/secureStorage*.ts`) |
 | LLM | One active provider chosen in Config > AI: Gemini (default, `gemini-3.5-flash-lite`), Claude (`claude-haiku-5-5`), ChatGPT / OpenAI (`gpt-6-luna`, Chat Completions with strict `json_schema`) or Ollama (`llama3.2`, `POST {address}/api/chat` with the schema in `format`, no key). The model name is editable per provider; defaults live in `src/llm/providers.ts` (`MODELS`) |
@@ -515,6 +515,24 @@ project, delete the generated `ios/` folder once. Verified on the owner's phone:
 is accepted for the Message parameter, and a payment was added. **Not verified:** a credit message (the wording is a guess), other banks, a phone that is
 locked when the message arrives (the Expo docs do not say), and a build from a clean `ios/`.
 
+**Transaction source** (schema version 17; `src/domain/transactionSource.ts`). Every transaction records how it **first** came in: `manual` (added by hand),
+`import` (a bank statement import) or `sms` (the automatic bank SMS route, `createSqliteStore(group, "sms")`). Rows show it as a small label (Manual,
+Statement, Bank SMS) in `TransactionRow`, the entry screen says "Added automatically from a bank SMS on <time>" (from `created_at`), and Transactions >
+Filters has a Source filter (`applyFilters`). **The source is written once, in the INSERT, and is never updated**: no UPDATE in the code sets it; an
+edit, a category change, a statement completing an SMS entry (`enrich`) or a re-classify leave it alone, so an entry the SMS route made stays "Bank SMS".
+A **restore** (`INSERT OR IGNORE`) cannot change an existing row either; only a row that is new to this phone takes the Source column of the file
+("Import", "Manual" or "Sms"; anything else is read as manual), and `BACKUP_VERSION` is 6 so an older app refuses such a file cleanly. **Existing
+entries were not touched** (an SMS entry that a statement had already completed is not told apart from a statement entry, so it stays "import"). The
+`source` CHECK had to change from `('import','manual')`. SQLite 3.53 (what expo-sqlite bundles) can drop and add a **named** CHECK in place (`ALTER TABLE ... DROP
+CONSTRAINT` / `ADD CONSTRAINT`), but the CHECK in every database made before version 17 is **unnamed** and cannot be dropped that way, so the version 17
+migration **rebuilds the `transactions` table** once (`REBUILD_TRANSACTIONS` in `src/db/schemaSql.ts`, run only when `needsTransactionsRebuild` finds the stored CREATE statement lacking
+the three names): the same table definition is used for new databases and for the rebuild, rows are copied column for column in rowid order, and the indexes are
+recreated. **The definition names all three checks on this table (`source_check`, `status_check`, `direction_check`), so the next change to any of them is two ALTER statements, not another rebuild** (older SQLite, below 3.53,
+cannot do that). `tests/db/schemaSql.test.ts` runs that SQL
+against Node's own SQLite. **Not run on a device**: the first launch after the update performs the rebuild, so take a backup first. To judge the
+automatic route, filter Source = Statement for dates after it was set up: those are payments it did not capture. Related: the statement import's
+`smsKeys` looks for rows with source `import` or `sms` that still lack a balance and narration.
+
 **Over-the-air updates (EAS Update, no Apple account).** The owner installs through AltStore with a free Apple ID, and reinstalling for every
 JavaScript-only change was flaky, so the app has `expo-updates`. EAS Update only hosts the JS bundle (a free Expo account); EAS *Build* for
 iOS needs the paid Apple program, so builds stay local (`npm run ipa`). `app.json`: `runtimeVersion.policy = "fingerprint"` (an update only
@@ -732,6 +750,10 @@ Spending trends by month, a "transfer to self" rule, move existing transactions 
   native builds or screenshots); the owner tests the app on their own iPhone.
 - `npm run typecheck` and `npm test` (Node unit tests) may be run but are not required.
 - At the end of a change, state what was changed and that it was not run in the app.
+- **Name every CHECK constraint.** An unnamed `CHECK (...)` cannot be dropped in place (SQLite 3.53 only drops and adds *named* ones), so widening it forces a
+  table rebuild, as for `transactions.source` in schema version 17. Write `CONSTRAINT <name> CHECK (...)` in every new column or table; see `AGENTS.md`.
+  Whenever a table has to be rebuilt for any reason, name **every** CHECK on it in the new definition (not only the changed one), so its next change is an ALTER.
+  The gifts, assets, train journeys and groups tables still have unnamed checks and are left alone until one of them is rebuilt anyway.
 - **Platforms: iOS, Android and web, each named.** The app runs on iOS today and has a web build; **Android is planned** (`app.json` already lists an
   `android` block). Every `Platform.OS` or `Platform.select` branch must handle `ios`, `android` and `web` explicitly, and must not use `!== "web"` (or
   `=== "ios"` with everything else falling through) as a stand-in for "a phone". Where a feature is not built for a platform yet, say so on screen rather

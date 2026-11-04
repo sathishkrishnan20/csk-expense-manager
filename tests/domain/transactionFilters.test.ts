@@ -113,3 +113,17 @@ test("the \"couldn't categorise\" list holds only what the AI gave up on", () =>
   assert.equal(ids(applyFilters(rows, filters({ uncategorised: "uncategorised" }))), "cg");
   assert.equal(activeFilterCount(filters({ uncategorised: "unresolved" })), 1);
 });
+
+test("the Source filter keeps one way an entry came in, and counts as a filter", () => {
+  const rows = [
+    { ...t("m", "2026-11-01", "debit", "Food", "Snacks"), source: "manual" as const },
+    { ...t("i", "2026-11-01", "debit", "Food", "Snacks"), source: "import" as const },
+    { ...t("s", "2026-11-03", "debit", "Food", "Groceries"), source: "sms" as const },
+  ];
+  assert.equal(applyFilters(rows, NO_FILTERS).length, 3);
+  assert.deepEqual(applyFilters(rows, { ...NO_FILTERS, source: "sms" }).map((r) => r.id), ["s"]);
+  assert.deepEqual(applyFilters(rows, { ...NO_FILTERS, source: "import" }).map((r) => r.id), ["i"]);
+  assert.deepEqual(applyFilters(rows, { ...NO_FILTERS, source: "manual" }).map((r) => r.id), ["m"]);
+  assert.equal(activeFilterCount(NO_FILTERS), 0);
+  assert.equal(activeFilterCount({ ...NO_FILTERS, source: "sms" }), 1);
+});

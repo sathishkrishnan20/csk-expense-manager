@@ -1,6 +1,7 @@
 import { scopedKey } from "../domain/groups";
 import type { ParsedTransaction } from "../domain/statementParser";
 import type { Classification } from "../domain/taxonomy";
+import type { TransactionSource } from "../domain/transactionSource";
 import type { ImportedTransaction, TransactionStore } from "./importStatement";
 
 // A store that works with scoped keys (see scopedKey) and knows which group it writes to.
@@ -10,12 +11,13 @@ export interface KeyedStore {
   smsKeys?(scopedKeys: string[]): Promise<Set<string>>;
   enrich?(rows: ParsedTransaction[]): Promise<{ updated: number; aiLabelled: ParsedTransaction[] }>;
   recategorise?(items: { dedupeKey: string; classification: Classification }[], label: string): Promise<number>;
-  insert(rows: ImportedTransaction[], groupId: string): Promise<void>;
+  insert(rows: ImportedTransaction[], groupId: string, source: TransactionSource): Promise<void>;
 }
 
 // Gives the importer a store for one group. The importer keeps working with the bank's own keys; this
-// translates them to scoped keys on the way in and back on the way out.
-export function scopeStore(inner: KeyedStore, groupId: string): TransactionStore {
+// translates them to scoped keys on the way in and back on the way out. `source` is how the rows it inserts came in (a statement
+// import by default, "sms" for the automatic bank SMS route); it is written only when a row is first inserted.
+export function scopeStore(inner: KeyedStore, groupId: string, source: TransactionSource = "import"): TransactionStore {
   const toScoped = (keys: string[]) => new Map(keys.map((k) => [scopedKey(groupId, k), k]));
   const fromScoped = (found: Set<string>, map: Map<string, string>) =>
     new Set([...found].map((s) => map.get(s)).filter((k): k is string => k !== undefined));
@@ -29,6 +31,7 @@ export function scopeStore(inner: KeyedStore, groupId: string): TransactionStore
       await inner.insert(
         rows.map((r) => ({ ...r, dedupeKey: scopedKey(groupId, r.dedupeKey) })),
         groupId,
+        source,
       );
     },
   };

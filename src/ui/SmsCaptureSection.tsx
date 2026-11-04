@@ -4,10 +4,12 @@ import { listGroupsWithBalances } from "../db/groups";
 import { formatRupees } from "../domain/format";
 import { MAIN_GROUP_ID } from "../domain/groups";
 import { describeSmsProblem } from "../domain/smsProblem";
+import { describeRunStatus, type SmsRunRow } from "../domain/smsRunLog";
 import { mentionsUpi, parseBankSms } from "../domain/smsParser";
 import { phoneInboxAvailable } from "../import/phoneInbox";
 import { dismissUnreadSms, pullSms, type SmsPullResult } from "../import/smsCapture";
 import { reportSmsProblem } from "../import/smsProblemStore";
+import { loadRunRows, runLogAvailable } from "../import/smsRunLog";
 import { loadSmsGroupId, loadSmsLast, saveSmsGroupId, type SmsLast } from "../settings/smsCapture";
 import { T } from "./Text";
 import { Button, OutlinedInput, SelectField, TextButton } from "./forms";
@@ -35,13 +37,15 @@ export function SmsCaptureSection() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; isError: boolean } | null>(null);
   const [sample, setSample] = useState("");
+  const [runs, setRuns] = useState<SmsRunRow[]>([]);
 
   const refresh = useCallback(async () => {
-    const [saved, all, l] = await Promise.all([loadSmsGroupId(), listGroupsWithBalances(), loadSmsLast()]);
+    const [saved, all, l, rows] = await Promise.all([loadSmsGroupId(), listGroupsWithBalances(), loadSmsLast(), loadRunRows().catch(() => [])]);
     const open = all.filter((g) => g.status === "ACTIVE");
     setGroups(open.map((g) => ({ id: g.id, name: g.name })));
     setGroupId(saved && open.some((g) => g.id === saved) ? saved : MAIN_GROUP_ID);
     setLast(l);
+    setRuns(rows);
     setLoaded(true);
   }, []);
   useEffect(() => {
@@ -66,6 +70,7 @@ export function SmsCaptureSection() {
       const r = await pullSms();
       setResult(r);
       setLast(await loadSmsLast());
+      setRuns(await loadRunRows().catch(() => []));
       const parts = [`${r.fetched} message${r.fetched === 1 ? "" : "s"} waiting`, `${r.added} added`];
       if (r.ignored > 0) parts.push(`${r.ignored} skipped (not UPI payments)`);
       if (r.alreadyHad > 0) parts.push(`${r.alreadyHad} already in the app`);
@@ -145,6 +150,27 @@ export function SmsCaptureSection() {
           Last checked {when(last.at)}: {last.added} added.{last.error ? ` Problem: ${last.error}` : ""}
         </T>
       ) : null}
+
+      <T weight="medium">Recent runs</T>
+      <T style={styles.note}>
+        Every time iOS runs the Add bank SMS action it is listed here with what became of the message (the text itself is not kept). If three
+        messages arrived and fewer than three rows are listed, iOS did not run the Shortcut for the others. A row with no result means the
+        app did not save it. Tap Check now to refresh.
+      </T>
+      {!runLogAvailable() ? (
+        <T style={styles.note}>This build does not record runs yet. Install the newest build to see them.</T>
+      ) : runs.length === 0 ? (
+        <T style={styles.note}>The action has not run yet.</T>
+      ) : (
+        runs.map((r) => (
+          <View key={r.id} style={{ gap: 2 }}>
+            <T style={styles.small}>
+              {when(r.at)} · {r.length} characters
+            </T>
+            <T style={r.status === "no_trace" || r.status === "empty" || r.status === "waiting" ? styles.error : styles.note}>{describeRunStatus(r.status)}</T>
+          </View>
+        ))
+      )}
 
       <T weight="medium">Try a message</T>
       <T style={styles.note}>Paste a bank message to see how the app reads it. Nothing is saved.</T>

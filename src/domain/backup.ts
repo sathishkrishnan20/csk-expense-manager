@@ -24,16 +24,18 @@ import { MAIN_GROUP_ID, type GroupStatus } from "./groups";
 import { cleanDescription } from "./masterData";
 import { parseAmountPaise, parseDate } from "./statementParser";
 import { PENDING_AI, fallbackFor } from "./taxonomy";
+import { isTransactionSource, parseSourceText, type TransactionSource } from "./transactionSource";
 
 export const BACKUP_FORMAT = "csk-manager-backup";
 // The name the first version (JSON files) wrote when the app was called Expense Manager; such files still restore.
 const LEGACY_BACKUP_FORMAT = "expense-manager-backup";
-export const BACKUP_VERSION = 5;
+// 6: the Source column can also be "Sms" (an entry made by the automatic bank SMS route); an older app refuses a newer file cleanly.
+export const BACKUP_VERSION = 6;
 
 export interface BackupTransaction {
   id: string;
   dedupeKey: string | null;
-  source: "import" | "manual";
+  source: TransactionSource; // written when the row is first inserted and never changed (see domain/transactionSource.ts)
   status: "ACTIVE" | "DELETED";
   txnDate: string;
   direction: "debit" | "credit";
@@ -141,7 +143,7 @@ function readTransaction(raw: unknown): BackupTransaction | null {
   const t = raw;
 
   if (!nonEmpty(t.id) || !nonEmpty(t.category) || !nonEmpty(t.subcategory) || !nonEmpty(t.classifiedBy)) return null;
-  if (t.source !== "import" && t.source !== "manual") return null;
+  if (!isTransactionSource(t.source)) return null;
   if (t.status !== "ACTIVE" && t.status !== "DELETED") return null;
   if (t.direction !== "debit" && t.direction !== "credit") return null;
   if (typeof t.txnDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(t.txnDate)) return null;
@@ -868,7 +870,7 @@ function readCsvTransaction(get: (column: string) => string, seen: Map<string, n
     groupId: get("Group Id") || MAIN_GROUP_ID,
     createdGroupId: orNull(get("Created Group Id")),
     dedupeKey,
-    source: /^import$/i.test(get("Source")) ? "import" : "manual",
+    source: parseSourceText(get("Source")),
     status: /^deleted$/i.test(get("Status")) ? "DELETED" : "ACTIVE",
     txnDate,
     direction,

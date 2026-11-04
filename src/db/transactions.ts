@@ -5,6 +5,7 @@ import { scopeStore, type KeyedStore } from "../import/scopedStore";
 import type { ReclassifyCandidate } from "../import/reclassify";
 import type { Classification, Direction } from "../domain/taxonomy";
 import { FALLBACK, type Suggestion } from "../domain/masterData";
+import type { TransactionSource } from "../domain/transactionSource";
 import { RECATEGORISE_ATTEMPTS_USED, UNRESOLVED, aiAttemptOutcome } from "../domain/classificationOutcome";
 import { PENDING_AI, fallbackFor } from "../domain/taxonomy";
 import { addSuggestions, addUnsuggested } from "../import/suggestionStore";
@@ -24,10 +25,11 @@ export interface TransactionRecord {
   payee: string | null;
   paymentMethod: string | null;
   description: string | null;
-  source: "import" | "manual";
+  source: TransactionSource; // how it first came in; never changed (domain/transactionSource.ts)
   classifiedBy: string;
   groupId: string;
   createdGroupId: string | null; // the group this entry was used to create
+  createdAt: string; // when it was first inserted (SQLite UTC time)
 }
 
 export interface TransactionInput {
@@ -65,14 +67,15 @@ interface Row {
   payee: string | null;
   payment_method: string | null;
   description: string | null;
-  source: "import" | "manual";
+  source: TransactionSource;
   classified_by: string;
   group_id: string;
   created_group_id: string | null;
+  created_at: string;
 }
 
 const COLUMNS =
-  "id, txn_date, direction, amount_paise, balance_paise, category, subcategory, payee, payment_method, description, source, classified_by, group_id, created_group_id";
+  "id, txn_date, direction, amount_paise, balance_paise, category, subcategory, payee, payment_method, description, source, classified_by, group_id, created_group_id, created_at";
 
 function toRecord(r: Row): TransactionRecord {
   return {
@@ -90,6 +93,7 @@ function toRecord(r: Row): TransactionRecord {
     classifiedBy: r.classified_by,
     groupId: r.group_id,
     createdGroupId: r.created_group_id,
+    createdAt: r.created_at,
   };
 }
 
@@ -346,7 +350,7 @@ const keyedSqliteStore: KeyedStore = {
       const chunk = keys.slice(i, i + KEY_CHUNK);
       const rows = await db.getAllAsync<{ dedupe_key: string }>(
         `SELECT dedupe_key FROM transactions
-         WHERE status = 'ACTIVE' AND source = 'import' AND balance_paise IS NULL AND COALESCE(narration, '') = ''
+         WHERE status = 'ACTIVE' AND source IN ('import', 'sms') AND balance_paise IS NULL AND COALESCE(narration, '') = ''
            AND upi_ref IS NOT NULL AND dedupe_key IN (${chunk.map(() => "?").join(",")})`,
         chunk,
       );
@@ -402,7 +406,7 @@ const keyedSqliteStore: KeyedStore = {
     return changed;
   },
 
-  async insert(rows: ImportedTransaction[], groupId: string) {
+  async insert(rows: ImportedTransaction[], groupId: string, source: TransactionSource) {
     const db = await getDb();
     const saved: { id: string; suggestion: Suggestion | undefined }[] = [];
     await inTransaction(db, async (txn) => {
@@ -413,11 +417,12 @@ const keyedSqliteStore: KeyedStore = {
           `INSERT OR IGNORE INTO transactions
              (id, dedupe_key, group_id, source, txn_date, direction, amount_paise, balance_paise, category, subcategory,
               payee, payment_method, description, narration, vpa, note, payee_bank, upi_ref, classified_by, ai_attempts)
-           VALUES (?, ?, ?, 'import', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             r.dedupeKey,
             r.dedupeKey,
             groupId,
+            source,
             r.txnDate,
             r.direction,
             r.amountPaise,
@@ -445,7 +450,8 @@ const keyedSqliteStore: KeyedStore = {
 };
 
 // The importer's store for one group: every row of the file goes into that group.
-export const createSqliteStore = (groupId: string): TransactionStore => scopeStore(keyedSqliteStore, groupId);
+// `source` is how the rows inserted through this store came in: a statement import by default, "sms" for the automatic bank SMS route.
+export const createSqliteStore = (groupId: string, source: TransactionSource = "import"): TransactionStore => scopeStore(keyedSqliteStore, groupId, source);
 
 // The AI answered with the fallback (a debit or a credit); counts as one failed attempt.
 const couldNotPlace = (c: Classification): boolean => c.category === FALLBACK.category && c.subcategory === FALLBACK.subcategory;

@@ -5,7 +5,8 @@ import { withBackoff } from "../domain/backoff";
 import { describeSmsProblem } from "../domain/smsProblem";
 import { mentionsUpi, parseBankSms, smsToParsed } from "../domain/smsParser";
 import type { ParsedTransaction } from "../domain/statementParser";
-import { saveSmsLast } from "../settings/smsCapture";
+import type { SmsOutcome } from "../domain/smsRunLog";
+import { recordSmsOutcomes, saveSmsLast } from "../settings/smsCapture";
 import { bumpDataVersion } from "./dataVersion";
 import { importParsed } from "./importStatement";
 import { readPhoneInbox, removePhoneMessage, type QueuedSms } from "./phoneInbox";
@@ -53,20 +54,31 @@ async function collect(): Promise<SmsPullResult> {
   queued.sort((a, b) => a.at.localeCompare(b.at));
   result.fetched = queued.length;
 
+  // What became of each message, by the queue's id, for the "Recent runs" list (domain/smsRunLog.ts). It is written before a message leaves
+  // the queue, so a message is never gone without a result.
+  const outcomes: Record<string, SmsOutcome> = {};
   const readable: { message: QueuedSms; row: ParsedTransaction }[] = [];
+  const skipped: QueuedSms[] = [];
   for (const m of queued) {
     const sms = parseBankSms(m.text, new Date(m.at));
     if (sms) readable.push({ message: m, row: smsToParsed(sms) });
-    else if (mentionsUpi(m.text)) result.unread.push(m);
-    else {
+    else if (mentionsUpi(m.text)) {
+      result.unread.push(m);
+      outcomes[m.id] = "unreadable";
+    } else {
       result.ignored++;
-      await removePhoneMessage(m.id).catch(() => {}); // still there next time if this fails, and skipped again
+      outcomes[m.id] = m.text.trim() === "" ? "empty" : "skipped"; // an empty one means the Shortcut's Message field is not wired up
+      skipped.push(m);
     }
+  }
+  if (Object.keys(outcomes).length > 0) {
+    await recordSmsOutcomes(outcomes).catch(() => {});
+    for (const m of skipped) await removePhoneMessage(m.id).catch(() => {}); // still there next time if this fails, and skipped again
   }
 
   if (readable.length > 0) {
     const unique = new Map(readable.map(({ row }) => [row.dedupeKey, row]));
-    const store = createSqliteStore(await resolveSmsGroupId());
+    const store = createSqliteStore(await resolveSmsGroupId(), "sms");
     let problem: string | null = null;
     let classifier: Awaited<ReturnType<typeof createClassifier>> | null = null;
     try {
@@ -79,6 +91,9 @@ async function collect(): Promise<SmsPullResult> {
     // payment counts: the owner removed it on purpose), so a try that fails half way is not repeated for what it already saved.
     const pending = new Map(unique);
     const saved = new Set<string>();
+    // Which payments were in the app before this check, to tell "Saved" from "Already in the app" in the results. Only for that list, so
+    // a failure here changes nothing else.
+    const hadBefore = await store.existingKeys([...unique.keys()]).catch(() => new Set<string>());
     try {
       await withBackoff(
         async () => {
@@ -113,6 +128,11 @@ async function collect(): Promise<SmsPullResult> {
       result.uncategorised = result.added;
       result.error ??= `The AI could not categorise them (${problem}). They are saved in Others : Uncategorised; Config > Re-classify will categorise them.`;
     }
+
+    for (const { message: m, row } of readable) {
+      outcomes[m.id] = !saved.has(row.dedupeKey) ? "waiting" : hadBefore.has(row.dedupeKey) ? "already_had" : "saved";
+    }
+    await recordSmsOutcomes(outcomes).catch(() => {});
 
     // Only a message whose payment is now in the app leaves the queue.
     for (const { message: m, row } of readable) {

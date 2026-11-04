@@ -1,8 +1,9 @@
 import { Platform } from "react-native";
 import * as SQLite from "expo-sqlite";
 import { DEFAULT_CATEGORIES, DEFAULT_PAYMENT_METHODS, FALLBACK } from "../domain/masterData";
+import { REBUILD_TRANSACTIONS, needsTransactionsRebuild, transactionsTableSql } from "./schemaSql";
 
-export const SCHEMA_VERSION = 16;
+export const SCHEMA_VERSION = 17;
 
 const SCHEMA = `
 -- A group is a separate ledger (see domain/groups.ts). 'main' holds everything entered before groups existed.
@@ -39,35 +40,7 @@ CREATE TABLE IF NOT EXISTS payment_methods (
 
 -- amount_paise is always positive; direction says which way the money moved.
 -- Deleting only sets status = 'DELETED' so a deleted bank row is not re-imported.
-CREATE TABLE IF NOT EXISTS transactions (
-  id             TEXT PRIMARY KEY NOT NULL,
-  dedupe_key     TEXT UNIQUE,
-  source         TEXT NOT NULL CHECK (source IN ('import', 'manual')),
-  status         TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'DELETED')),
-  txn_date       TEXT NOT NULL,
-  direction      TEXT NOT NULL CHECK (direction IN ('debit', 'credit')),
-  amount_paise   INTEGER NOT NULL,
-  balance_paise  INTEGER,
-  category       TEXT NOT NULL,
-  subcategory    TEXT NOT NULL,
-  payee          TEXT,
-  payment_method TEXT,
-  description    TEXT,
-  narration      TEXT,
-  vpa            TEXT,
-  note           TEXT,
-  payee_bank     TEXT,
-  upi_ref        TEXT,
-  classified_by  TEXT NOT NULL,
-  -- how many times the AI answered "could not place it" (see domain/classificationOutcome.ts)
-  ai_attempts    INTEGER NOT NULL DEFAULT 0,
-  -- which group the row belongs to; no foreign key, the db layer keeps it valid
-  group_id       TEXT NOT NULL DEFAULT 'main',
-  -- the group this entry was used to create ("Create a group for this entry"), if any
-  created_group_id TEXT,
-  created_at     TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
-);
+${transactionsTableSql("transactions", true).trim()}
 CREATE INDEX IF NOT EXISTS transactions_date_idx ON transactions (txn_date DESC, created_at DESC);
 
 -- Gifts (schema version 11; see domain/gifts.ts). Information only: not transactions, no category, no AI, no effect on any balance.
@@ -255,6 +228,11 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
         // left in place
       }
     }
+    // Version 17 allows the source 'sms' (the automatic bank SMS route) and names the table's three checks. The checks a table made
+    // before it has are unnamed, which SQLite cannot drop in place, so that table is rebuilt once with every row copied unchanged
+    // (db/schemaSql.ts); no entry's source, date or amount is touched. Later changes to those values can be an ALTER.
+    const created = await txn.getFirstAsync<{ sql: string | null }>("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'transactions'");
+    if (needsTransactionsRebuild(created?.sql)) await txn.execAsync(REBUILD_TRANSACTIONS);
     // Version 6 added a description per subcategory.
     const catColumns = await txn.getAllAsync<{ name: string }>("SELECT name FROM pragma_table_info('categories')");
     if (!catColumns.some((c) => c.name === "description")) {

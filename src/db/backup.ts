@@ -85,6 +85,9 @@ interface AssetBackupRow {
   id: string;
   type: AssetType;
   name: string;
+  for_name: string | null;
+  item: string | null;
+  exchange_id: string | null;
   quantity: number | null;
   unit: AssetUnit | null;
   purity_k: number | null;
@@ -135,7 +138,7 @@ function toBackupTransaction(r: TransactionRow): BackupTransaction {
 // from coming back on the next statement import.
 export async function exportBackup(): Promise<Backup> {
   const db = await getDb();
-  const [categories, methods, transactions, groups, giftOccasions, gifts, assets] = await Promise.all([
+  const [categories, methods, transactions, groups, giftOccasions, gifts, assets, assetOptions, exchanges] = await Promise.all([
     db.getAllAsync<{ category: string; subcategory: string; description: string | null }>(
       "SELECT category, subcategory, description FROM categories ORDER BY sort, id",
     ),
@@ -147,9 +150,13 @@ export async function exportBackup(): Promise<Backup> {
       "SELECT id, occasion_id, name, direction, type, value, unit, rate_paise, note, status, created_at, updated_at FROM gift_list ORDER BY created_at, rowid",
     ),
     db.getAllAsync<AssetBackupRow>(
-      `SELECT id, type, name, quantity, unit, purity_k, invested_paise, acquired_date, description, gift_id, lender, ticket_no,
-              pledged_date, due_date, loan_paise, pledge_note, status, created_at, updated_at
+      `SELECT id, type, name, for_name, item, exchange_id, quantity, unit, purity_k, invested_paise, acquired_date, description, gift_id, lender,
+              ticket_no, pledged_date, due_date, loan_paise, pledge_note, status, created_at, updated_at
        FROM assets ORDER BY created_at, rowid`,
+    ),
+    db.getAllAsync<{ kind: "for" | "item"; name: string }>("SELECT kind, name FROM asset_options ORDER BY kind, sort, name"),
+    db.getAllAsync<{ id: string; exchange_date: string; shop: string | null; extra_paise: number | null; note: string | null; status: "ACTIVE" | "DELETED"; created_at: string; updated_at: string }>(
+      "SELECT id, exchange_date, shop, extra_paise, note, status, created_at, updated_at FROM asset_exchanges ORDER BY created_at, rowid",
     ),
   ]);
   // Only journeys still ahead: one that is over has no alarm left to set.
@@ -163,6 +170,8 @@ export async function exportBackup(): Promise<Backup> {
       booking: j.booking,
       alarmTimes: j.alarmTimes,
       note: j.note,
+      booked: j.booked,
+      pnr: j.pnr,
       createdAt: j.createdAt,
     }));
   return {
@@ -220,6 +229,9 @@ export async function exportBackup(): Promise<Backup> {
         id: a.id,
         type: a.type,
         name: a.name,
+        forName: a.for_name,
+        item: a.item,
+        exchangeId: a.exchange_id,
         status: a.status,
         quantity: a.quantity,
         unit: a.unit,
@@ -238,6 +250,17 @@ export async function exportBackup(): Promise<Backup> {
         updatedAt: a.updated_at,
       }),
     ),
+    assetOptions: { for: assetOptions.filter((o) => o.kind === "for").map((o) => o.name), item: assetOptions.filter((o) => o.kind === "item").map((o) => o.name) },
+    assetExchanges: exchanges.map((x) => ({
+      id: x.id,
+      exchangeDate: x.exchange_date,
+      shop: x.shop,
+      extraPaise: x.extra_paise,
+      note: x.note,
+      status: x.status,
+      createdAt: x.created_at,
+      updatedAt: x.updated_at,
+    })),
     journeys: upcoming,
     transactions: transactions.map(toBackupTransaction),
   };
@@ -251,6 +274,7 @@ export interface RestoreSummary {
   groupsAdded: number;
   giftsAdded: number;
   assetsAdded: number;
+  assetExchangesAdded: number;
   journeysAdded: number;
   skipped: number;
 }
@@ -267,6 +291,7 @@ export async function restoreBackup(backup: Backup, skipped: number): Promise<Re
     groupsAdded: 0,
     giftsAdded: 0,
     assetsAdded: 0,
+    assetExchangesAdded: 0,
     journeysAdded: 0,
     skipped,
   };
@@ -331,17 +356,38 @@ export async function restoreBackup(backup: Backup, skipped: number): Promise<Re
       summary.giftsAdded += r.changes;
     }
 
+    // The lists behind the For and Item dropdowns, and the exchanges with a shop: each is added unless it is already here.
+    for (const kind of ["for", "item"] as const) {
+      for (const name of backup.assetOptions[kind]) {
+        await txn.runAsync(
+          "INSERT OR IGNORE INTO asset_options (kind, name, sort) VALUES (?, ?, (SELECT COALESCE(MAX(sort), 0) + 1 FROM asset_options WHERE kind = ?))",
+          [kind, name, kind],
+        );
+      }
+    }
+    for (const x of backup.assetExchanges) {
+      const r = await txn.runAsync(
+        `INSERT OR IGNORE INTO asset_exchanges (id, exchange_date, shop, extra_paise, note, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))`,
+        [x.id, x.exchangeDate, x.shop, x.extraPaise, x.note, x.status, x.createdAt, x.updatedAt],
+      );
+      summary.assetExchangesAdded += r.changes;
+    }
+
     // Assets stand alone (gift_id is only a note of where one came from), so each is added unless its id is already here.
     for (const a of backup.assets) {
       const r = await txn.runAsync(
         `INSERT OR IGNORE INTO assets
-           (id, type, name, status, quantity, unit, purity_k, invested_paise, acquired_date, description, gift_id, lender,
+           (id, type, name, for_name, item, exchange_id, status, quantity, unit, purity_k, invested_paise, acquired_date, description, gift_id, lender,
             ticket_no, pledged_date, due_date, loan_paise, pledge_note, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))`,
         [
           a.id,
           a.type,
           a.name,
+          a.forName,
+          a.item,
+          a.exchangeId,
           a.status,
           a.quantity,
           a.unit,
@@ -370,9 +416,9 @@ export async function restoreBackup(backup: Backup, skipped: number): Promise<Re
       if (j.journeyDate < today) continue;
       const columns = bookingToColumns(j.booking);
       const r = await txn.runAsync(
-        `INSERT OR IGNORE INTO train_journeys (id, label, journey_date, advance, tatkal, alarm_times, note, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')))`,
-        [j.id, j.label, j.journeyDate, columns.advance ? 1 : 0, columns.tatkal, j.alarmTimes.join(","), j.note, j.createdAt],
+        `INSERT OR IGNORE INTO train_journeys (id, label, journey_date, advance, tatkal, alarm_times, note, booked, pnr, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')))`,
+        [j.id, j.label, j.journeyDate, columns.advance ? 1 : 0, columns.tatkal, j.alarmTimes.join(","), j.note, j.booked ? 1 : 0, j.pnr, j.createdAt],
       );
       summary.journeysAdded += r.changes;
     }

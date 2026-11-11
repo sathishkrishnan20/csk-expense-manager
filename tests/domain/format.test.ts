@@ -1,9 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  formatClockTime,
   formatFieldDate,
   formatLongDate,
+  formatRelativeTime,
+  formatRupeeAmount,
   formatRupees,
+  formatShortDate,
   fromISODate,
   monthRange,
   parseAmountInput,
@@ -27,6 +31,35 @@ test("dates", () => {
   assert.equal(toISODate(fromISODate("2026-12-31")), "2026-12-31");
   assert.deepEqual(monthRange(new Date(2026, 9, 25)), { start: "2026-10-01", end: "2026-10-31" });
   assert.deepEqual(monthRange(new Date(2028, 1, 10)), { start: "2028-02-01", end: "2028-02-29" });
+});
+
+test("rupee amounts (rates) in whole rupees with chosen decimals", () => {
+  assert.equal(formatRupeeAmount(126020), "₹1,26,020");
+  assert.equal(formatRupeeAmount(177300), "₹1,77,300");
+  assert.equal(formatRupeeAmount(999), "₹999");
+  assert.equal(formatRupeeAmount(13757.6, { max: 1 }), "₹13,757.6");
+  assert.equal(formatRupeeAmount(12602, { max: 1 }), "₹12,602");
+  assert.equal(formatRupeeAmount(177.3, { min: 2 }), "₹177.30");
+  assert.equal(formatRupeeAmount(110060.8, { max: 1 }), "₹1,10,060.8");
+  assert.equal(formatRupeeAmount(2780.4), "₹2,780");
+  assert.equal(formatRupeeAmount(-54.2, { max: 1 }), "-₹54.2");
+  assert.equal(formatRupeeAmount(-0.04, { max: 1 }), "₹0");
+});
+
+test("short dates, clock times and how long ago", () => {
+  assert.equal(formatShortDate("2026-11-03"), "03 Nov");
+  assert.equal(formatClockTime(new Date(2026, 10, 3, 15, 42)), "3:42 PM");
+  assert.equal(formatClockTime(new Date(2026, 10, 3, 0, 5)), "12:05 AM");
+  assert.equal(formatClockTime(new Date(2026, 10, 3, 12, 0)), "12:00 PM");
+
+  const now = Date.UTC(2026, 10, 4, 12, 0);
+  const ago = (ms: number) => formatRelativeTime(now - ms, now);
+  assert.equal(ago(20_000), "just now");
+  assert.equal(ago(12 * 60_000), "12 min ago");
+  assert.equal(ago(3 * 3_600_000 + 5 * 60_000), "3 hr ago");
+  assert.equal(ago(24 * 3_600_000), "1 day ago");
+  assert.equal(ago(50 * 3_600_000), "2 days ago");
+  assert.equal(ago(-5 * 60_000), "just now");
 });
 
 test("amount input", () => {

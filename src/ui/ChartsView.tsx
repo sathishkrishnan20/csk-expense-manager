@@ -10,6 +10,7 @@ import {
   type Totals,
 } from "../db/transactions";
 import { listGroupsWithBalances } from "../db/groups";
+import { buildExpenseTable, formatPercent } from "../domain/expenseTable";
 import { formatRupees, monthRange } from "../domain/format";
 import type { GroupWithBalance } from "../domain/groups";
 import { scopeKey, type GroupScope } from "../domain/groupScope";
@@ -86,6 +87,9 @@ export function ChartsView({ groupId, header }: { groupId: string; header: React
         { value: totals.expensePaise / 100, color: colors.expense, text: slice(totals.expensePaise) },
       ]
     : [];
+
+  const table = buildExpenseTable(groups);
+  const groupingLabel = GROUPINGS.find((g) => g.value === grouping)?.label ?? "";
 
   const barData = groups.map((g) => ({
     value: g.totalPaise / 100,
@@ -171,6 +175,39 @@ export function ChartsView({ groupId, header }: { groupId: string; header: React
                     disableScroll={false}
                   />
                 </View>
+                <View style={styles.table}>
+                  <View style={[styles.tableRow, styles.tableHead]}>
+                    <T weight="medium" style={[styles.cellLabel, styles.headText]}>
+                      {groupingLabel}
+                    </T>
+                    <T weight="medium" style={[styles.cellAmount, styles.headText]}>
+                      Amount
+                    </T>
+                    <T weight="medium" style={[styles.cellPercent, styles.headText]}>
+                      Percentage
+                    </T>
+                  </View>
+                  {table.rows.map((row, i) => (
+                    <View key={`${i}:${row.label}`} style={styles.tableRow}>
+                      <T numberOfLines={2} style={styles.cellLabel}>
+                        {row.label}
+                      </T>
+                      <T style={styles.cellAmount}>{formatRupees(row.totalPaise)}</T>
+                      <T style={styles.cellPercent}>{formatPercent(row.percent)}</T>
+                    </View>
+                  ))}
+                  <View style={[styles.tableRow, styles.tableTotal]}>
+                    <T weight="medium" style={styles.cellLabel}>
+                      Total
+                    </T>
+                    <T weight="medium" style={styles.cellAmount}>
+                      {formatRupees(table.totalPaise)}
+                    </T>
+                    <T weight="medium" style={styles.cellPercent}>
+                      {formatPercent(100)}
+                    </T>
+                  </View>
+                </View>
               </View>
             ) : null}
           </>
@@ -201,4 +238,12 @@ const styles = StyleSheet.create({
   swatch: { width: 12, height: 12, borderRadius: 2 },
   expensesHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingRight: 12 },
   axisText: { color: colors.textSecondary, fontSize: 10 },
+  table: { marginHorizontal: 12, marginBottom: 12 },
+  tableRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.outline },
+  tableHead: { borderBottomWidth: 1 },
+  tableTotal: { borderBottomWidth: 0, borderTopWidth: 1, borderTopColor: colors.outline },
+  headText: { color: colors.textSecondary, fontSize: 12 },
+  cellLabel: { flex: 1, fontSize: 14 },
+  cellAmount: { minWidth: 96, textAlign: "right", fontSize: 14 },
+  cellPercent: { minWidth: 76, textAlign: "right", fontSize: 14 },
 });

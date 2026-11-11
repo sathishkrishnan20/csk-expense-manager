@@ -4,6 +4,10 @@
 // One row is one thing the owner can point at (a chain, a plot, a fund). `quantity` is an integer in thousandths of `unit`
 // (milligrams for gold, so 2.25 g is 2250; 482.351 fund units is 482351), so there is no rounding drift.
 //
+// A piece is named by two dropdowns, not typed: **For** (whom it is for: a child, the wife, the family) and **Item** (what it is: a ring, an
+// earring, a bangle). Both lists are the owner's own and grow whenever a new name is typed (stored in asset_options). The old free-text `name` is
+// kept in the database and written as "For - Item" so older files and screens still read it; it is never typed any more.
+//
 // Gold can be pledged ("adagu") to a lender. A gold row is pledged when it has a lender, and the whole row is pledged: a piece
 // is either with the owner or with the lender, so each physical piece is its own row. There is no loan history; taking the gold
 // back clears the pledge fields.
@@ -54,7 +58,11 @@ export const defaultUnit = (type: AssetType): AssetUnit | null => unitsFor(type)
 
 export interface AssetFields {
   type: AssetType;
-  name: string;
+  forName: string | null; // whom it is for; optional
+  item: string | null; // what it is (ring, earring...); the form needs it
+  name: string; // always "For - Item", made here from the two; never typed
+  // Set on a piece that was given to a shop in an exchange (status SOLD) and on a piece bought in one (status ACTIVE). See assetExchanges.ts.
+  exchangeId: string | null;
   status: "ACTIVE" | "SOLD";
   quantity: number | null; // thousandths of `unit`
   unit: AssetUnit | null;
@@ -78,6 +86,36 @@ const clean = (v: string | null | undefined): string | null => {
   return t === "" ? null : t;
 };
 
+// "Thishi - Bangles". Either part may be missing; both missing gives "".
+export const assetName = (forName: string | null | undefined, item: string | null | undefined): string =>
+  [clean(forName), clean(item)].filter((p): p is string => p !== null).join(" - ");
+
+const DASH = /\s+[-\u2013\u2014]\s+/;
+
+// Splits the name an asset had before For and Item existed, for the one-time change of the database and for old backup files. "Thishi - Bangles"
+// is For Thishi, Item Bangles. A name with no dash is checked against the For names found in the other rows ("Thishi Ear Ring" starts with
+// Thishi, a name that is already a For); one that matches none is all Item, to be corrected by hand. `known` are the For names seen in the
+// rows that did have a dash, which is why the whole list is split together.
+export function deriveForAndItem(names: readonly string[]): { forName: string | null; item: string | null }[] {
+  const dashed = names.map((n) => {
+    const parts = n.trim().split(DASH);
+    return parts.length > 1 && parts[0].trim() !== "" ? { forName: parts[0].trim(), item: parts.slice(1).join(" - ").trim() } : null;
+  });
+  const known = new Map<string, string>();
+  for (const d of dashed) if (d && !known.has(d.forName.toLowerCase())) known.set(d.forName.toLowerCase(), d.forName);
+  const byLength = [...known.values()].sort((x, y) => y.length - x.length);
+
+  return names.map((raw, i) => {
+    const d = dashed[i];
+    if (d) return { forName: d.forName, item: clean(d.item) };
+    const name = raw.trim();
+    const lower = name.toLowerCase();
+    const match = byLength.find((f) => lower.startsWith(`${f.toLowerCase()} `));
+    if (match) return { forName: match, item: clean(name.slice(match.length)) };
+    return { forName: null, item: clean(name) };
+  });
+}
+
 // Makes a row consistent: the unit follows the type, purity and a pledge exist only on gold, and a row with no lender has no
 // pledge details left over. Used by the form and again by the database layer.
 export function normaliseAsset(a: AssetFields): AssetFields {
@@ -86,9 +124,15 @@ export function normaliseAsset(a: AssetFields): AssetFields {
   const quantity = unit === null ? null : a.quantity;
   const gold = a.type === "gold";
   const lender = gold ? clean(a.lender) : null;
+  const forName = clean(a.forName);
+  const item = clean(a.item);
   return {
     type: a.type,
-    name: a.name.trim(),
+    forName,
+    item,
+    // a piece saved with no For or Item (an old file) keeps the name it came with
+    name: assetName(forName, item) || a.name.trim(),
+    exchangeId: clean(a.exchangeId),
     status: a.status,
     quantity,
     unit,
@@ -163,7 +207,9 @@ export function pledgeDetails(a: Pick<AssetFields, "ticketNo" | "pledgedDate" | 
 
 export interface AssetFormInput {
   type: AssetType;
-  name: string;
+  forName: string;
+  item: string;
+  exchangeId: string | null;
   status: "ACTIVE" | "SOLD";
   quantityText: string;
   unit: AssetUnit | null;
@@ -182,9 +228,9 @@ export interface AssetFormInput {
 
 export type AssetFormResult = { ok: true; fields: AssetFields } | { ok: false; error: string };
 
-// Reads what was typed. Only the name is needed, and the lender when the gold is pledged.
+// Reads what was chosen and typed. Only the Item is needed (what it is), and the lender when the gold is pledged.
 export function readAssetForm(f: AssetFormInput): AssetFormResult {
-  if (f.name.trim() === "") return { ok: false, error: "Enter the name" };
+  if (f.item.trim() === "") return { ok: false, error: "Choose what it is (Item)" };
 
   const units = unitsFor(f.type);
   let quantity: number | null = null;
@@ -214,7 +260,10 @@ export function readAssetForm(f: AssetFormInput): AssetFormResult {
     ok: true,
     fields: normaliseAsset({
       type: f.type,
-      name: f.name,
+      forName: f.forName,
+      item: f.item,
+      name: "",
+      exchangeId: f.exchangeId,
       status: f.status,
       quantity,
       unit: f.unit,
@@ -246,15 +295,16 @@ interface GiftForAsset {
 export const canAddToAssets = (g: GiftForAsset): boolean =>
   g.direction === "received" && g.type === "gold" && g.unit === "g" && g.value !== null && g.value > 0;
 
-// What the asset form starts with for a gold gift: the gift's note names the piece ("Chain"), the giver and function are the description.
+// What the asset form starts with for a gold gift: the gift's note names the piece ("Chain"), which becomes the Item (For is chosen by the
+// owner), and the giver and function are the description.
 export function draftFromGift(g: { name: string; note: string | null; value: number | null; occasionTitle: string; occasionDate: string }): {
-  name: string;
+  item: string;
   quantity: number | null;
   description: string;
   acquiredDate: string;
 } {
   return {
-    name: clean(g.note) ?? "Gold",
+    item: clean(g.note) ?? "Gold",
     quantity: g.value,
     description: `Gift from ${g.name} · ${g.occasionTitle}`,
     acquiredDate: g.occasionDate,
@@ -264,12 +314,16 @@ export function draftFromGift(g: { name: string; note: string | null; value: num
 // ---------------------------------------------------------------------------------------------
 // List filters and search
 
-export type AssetShow = "holding" | "pledged" | "sold" | "all";
+// A piece given to a shop in an exchange: sold (it is no longer owned) and linked to the exchange. A plain sale has no exchange.
+export const isGivenInExchange = (a: Pick<AssetFields, "status" | "exchangeId">): boolean => a.status === "SOLD" && a.exchangeId !== null;
+
+export type AssetShow = "holding" | "pledged" | "sold" | "exchanged" | "all";
 
 export const ASSET_SHOWS: { value: AssetShow; label: string }[] = [
   { value: "holding", label: "Holding" },
   { value: "pledged", label: "Pledged" },
   { value: "sold", label: "Sold" },
+  { value: "exchanged", label: "Given in exchange" },
   { value: "all", label: "All" },
 ];
 
@@ -277,24 +331,33 @@ export interface AssetFilters {
   type: AssetType | null; // null: every type
   show: AssetShow;
   search: string;
+  forName: string | null; // null: everyone
+  item: string | null; // null: every item
 }
 
-export const NO_ASSET_FILTERS: AssetFilters = { type: null, show: "holding", search: "" };
+export const NO_ASSET_FILTERS: AssetFilters = { type: null, show: "holding", search: "", forName: null, item: null };
 
-export const hasAssetFilters = (f: AssetFilters): boolean => f.type !== null || f.show !== "holding" || f.search.trim() !== "";
+export const hasAssetFilters = (f: AssetFilters): boolean =>
+  f.type !== null || f.show !== "holding" || f.search.trim() !== "" || f.forName !== null || f.item !== null;
 
-interface Searchable extends Pick<AssetFields, "type" | "name" | "status" | "description" | "lender" | "ticketNo" | "pledgeNote"> {}
+interface Searchable
+  extends Pick<AssetFields, "type" | "forName" | "item" | "name" | "status" | "exchangeId" | "description" | "lender" | "ticketNo" | "pledgeNote"> {}
 
-// Name, description, lender, ticket and note all count, and so does the kind ("gold", "mutual fund").
+const sameText = (a: string | null, b: string | null): boolean => (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
+
+// For and Item, name, description, lender, ticket and note all count, and so does the kind ("gold", "mutual fund").
 export function filterAssets<A extends Searchable>(assets: readonly A[], f: AssetFilters): A[] {
   const words = f.search.trim().toLowerCase().split(/\s+/).filter(Boolean);
   return assets.filter((a) => {
     if (f.type !== null && a.type !== f.type) return false;
+    if (f.forName !== null && !sameText(a.forName, f.forName)) return false;
+    if (f.item !== null && !sameText(a.item, f.item)) return false;
     if (f.show === "holding" && a.status !== "ACTIVE") return false;
     if (f.show === "pledged" && (a.status !== "ACTIVE" || !isPledged(a))) return false;
-    if (f.show === "sold" && a.status !== "SOLD") return false;
+    if (f.show === "sold" && (a.status !== "SOLD" || a.exchangeId !== null)) return false;
+    if (f.show === "exchanged" && !isGivenInExchange(a)) return false;
     if (words.length === 0) return true;
-    const haystack = `${a.name} ${typeLabel(a.type)} ${a.description ?? ""} ${a.lender ?? ""} ${a.ticketNo ?? ""} ${a.pledgeNote ?? ""}`.toLowerCase();
+    const haystack = `${a.forName ?? ""} ${a.item ?? ""} ${a.name} ${typeLabel(a.type)} ${a.description ?? ""} ${a.lender ?? ""} ${a.ticketNo ?? ""} ${a.pledgeNote ?? ""}`.toLowerCase();
     return words.every((w) => haystack.includes(w));
   });
 }

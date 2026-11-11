@@ -3,9 +3,10 @@ import { FlatList, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { listAssets, type AssetRecord } from "../db/assets";
+import { listAssetOptions } from "../db/assetOptions";
 import { ASSET_SHOWS, ASSET_TYPES, NO_ASSET_FILTERS, filterAssets, hasAssetFilters, type AssetFilters } from "../domain/assets";
 import { toISODate } from "../domain/format";
-import { AppHeader } from "../ui/Header";
+import { AppHeader, HeaderTextButton } from "../ui/Header";
 import { AssetRow } from "../ui/AssetRow";
 import { RowDivider } from "../ui/TransactionRow";
 import { T } from "../ui/Text";
@@ -13,21 +14,30 @@ import { Button, ChoiceField, OutlinedInput, TextButton } from "../ui/forms";
 import { colors, shadow } from "../ui/theme";
 
 const ALL_TYPES = "all";
+const ALL = "__all__"; // the "everyone" and "all items" choices of the For and Item filters
 const TYPE_CHOICES = [{ value: ALL_TYPES, label: "All types" }, ...ASSET_TYPES.map((t) => ({ value: t.value as string, label: t.label }))];
 
-// Gold, land, mutual funds and the rest, as a flat list like Transactions: search, a Type dropdown and a Show dropdown (what you hold,
-// what is pledged, what you sold). Information only; nothing here is part of any balance, and there is no total at the top.
+// Gold, land, mutual funds and the rest, as a flat list like Transactions: search, Type, For (whom) and Item (ring, earring...) dropdowns and a
+// Show dropdown (what you hold, what is pledged, what you sold, what you gave a shop in an exchange). Exchange gives old gold to a shop and
+// records what was bought in its place; Exchanges is the history. Information only; nothing here is part of any balance.
 export default function AssetsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [assets, setAssets] = useState<AssetRecord[] | null>(null);
   const [filters, setFilters] = useState<AssetFilters>(NO_ASSET_FILTERS);
+  const [fors, setFors] = useState<string[]>([]);
+  const [items, setItems] = useState<string[]>([]);
 
   useFocusEffect(
     useCallback(() => {
       let alive = true;
       listAssets().then((a) => {
         if (alive) setAssets(a);
+      });
+      Promise.all([listAssetOptions("for"), listAssetOptions("item")]).then(([f, i]) => {
+        if (!alive) return;
+        setFors(f);
+        setItems(i);
       });
       return () => {
         alive = false;
@@ -40,16 +50,20 @@ export default function AssetsScreen() {
   const today = toISODate(new Date());
 
   const add = () => router.push({ pathname: "/asset", params: filters.type ? { type: filters.type } : {} });
+  const forChoices = [{ value: ALL, label: "Everyone" }, ...fors.map((f) => ({ value: f, label: f }))];
+  const itemChoices = [{ value: ALL, label: "All items" }, ...items.map((i) => ({ value: i, label: i }))];
 
   const header = (
     <View style={styles.filters}>
-      <OutlinedInput label="Search name, lender or description" value={filters.search} onChangeText={(search) => setFilters({ ...filters, search })} />
+      <OutlinedInput label="Search for, item, lender or description" value={filters.search} onChangeText={(search) => setFilters({ ...filters, search })} />
       <ChoiceField
         label="Type"
         options={TYPE_CHOICES}
         value={filters.type ?? ALL_TYPES}
         onChange={(v) => setFilters({ ...filters, type: v === ALL_TYPES ? null : (ASSET_TYPES.find((t) => t.value === v)?.value ?? null) })}
       />
+      <ChoiceField label="For" options={forChoices} value={filters.forName ?? ALL} onChange={(v) => setFilters({ ...filters, forName: v === ALL ? null : v })} />
+      <ChoiceField label="Item" options={itemChoices} value={filters.item ?? ALL} onChange={(v) => setFilters({ ...filters, item: v === ALL ? null : v })} />
       <ChoiceField label="Show" options={ASSET_SHOWS} value={filters.show} onChange={(show) => setFilters({ ...filters, show })} />
       {filtered ? <TextButton label="Clear filters" onPress={() => setFilters(NO_ASSET_FILTERS)} /> : null}
     </View>
@@ -57,7 +71,7 @@ export default function AssetsScreen() {
 
   return (
     <View style={styles.page}>
-      <AppHeader title="Assets" onBack={() => router.back()} />
+      <AppHeader title="Assets" onBack={() => router.back()} right={<HeaderTextButton label="Exchanges" onPress={() => router.push("/asset-exchanges")} />} />
       <FlatList
         data={shown}
         keyExtractor={(a) => a.id}
@@ -81,6 +95,7 @@ export default function AssetsScreen() {
 
       <View style={[styles.actions, { paddingBottom: insets.bottom + 8 }]}>
         <Button label="Add asset" onPress={add} style={{ flex: 1 }} />
+        <Button label="Exchange" color={colors.importAction} onPress={() => router.push("/asset-exchange")} style={{ flex: 1 }} />
       </View>
     </View>
   );

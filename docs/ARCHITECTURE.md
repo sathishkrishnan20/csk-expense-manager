@@ -35,11 +35,11 @@ Screens (src/app, Expo Router) read SQLite.
 | App | Expo SDK 58, React Native 0.88, TypeScript. iOS is the target; a web build is supported in code but untested (see "Web" in section 3) |
 | Navigation | Expo Router 58. **One flat root `Stack`** (`src/app/_layout.tsx`): every page, including Home, Transactions, Charts, Config and a group's pages, is a screen of it and slides in like any other (no tab navigator, no bottom bar). Pages are reached from the menu drawer, and the floating + button is `AddMenu` (`WithAddButton` puts it on each page). Add/Edit and Import are screens of the same stack |
 | Look | Theme values copied from the web app (`src/ui/theme.ts`): primary `#7F3DFF`, gradient `#9061ed` to `#5d3ba2`, income `#00A86B`, expense `#FD3C4A`, Roboto, Georgia for the Home numbers, MUI-style outlined fields and bottom bar |
-| Storage | `expo-sqlite`, file `expenses.db`, schema version 17 |
+| Storage | `expo-sqlite`, file `expenses.db`, schema version 18 |
 | Money | Integer paise; `amount_paise` is always positive and `direction` says which way |
 | API key | iOS Keychain via `expo-secure-store`; AES-GCM-encrypted in browser `localStorage` on web, with the key derived from a passkey (WebAuthn PRF) (`src/platform/secureStorage*.ts`) |
 | LLM | One active provider chosen in Config > AI: Gemini (default, `gemini-3.5-flash-lite`), Claude (`claude-haiku-5-5`), ChatGPT / OpenAI (`gpt-6-luna`, Chat Completions with strict `json_schema`) or Ollama (`llama3.2`, `POST {address}/api/chat` with the schema in `format`, no key). The model name is editable per provider; defaults live in `src/llm/providers.ts` (`MODELS`) |
-| Charts | `react-native-gifted-charts` |
+| Charts | `react-native-gifted-charts`. Under the expenses bar chart (`src/ui/ChartsView.tsx`) a table lists the same rows the chart has, for whichever grouping is chosen (Category, Sub Category, Payment Method or Payer): the name, the amount, and its percentage of all the expenses shown, with a Total row (`src/domain/expenseTable.ts`) |
 
 Layout: `src/domain` (categories, parser, formatting; pure), `src/llm`, `src/import`,
 `src/db`, `src/settings`, `src/ui` (shared components), `src/app` (routes).
@@ -173,6 +173,48 @@ entry stays in Others : Uncategorised; nothing is added to the category list unt
 (Version 7 stored them as `suggested_category`, `suggested_subcategory` and `suggestion_rejected` columns;
 version 8 dropped those, so an unanswered suggestion cannot be reviewed on another day and a rejected one
 can be suggested again by a later Re-classify, until the entry has used its 3 attempts.)
+**Ask AI (chat about your data).** A page in the menu and a **round sparkle button floating just above the + button on Home and on a group's Overview** (`AskAiButton`, `src/ui/AddMenu.tsx`, switched on with `<WithAddButton askAi>`; it opens `/chat`, or `/groups/<id>/chat` from a group page, and a wide browser window has it in the Sidebar instead) (`/chat`, and `/groups/<id>/chat` inside a group; `src/ui/ChatView.tsx`, with the same Group filter as Charts and a period: this month,
+last month, last 3 months, this year, all time). It is **an agent over a registry of capabilities**, not one big prompt: the AI is told what it may look up, asks for it, the app runs the lookup on the
+phone, and the AI answers from what came back. **No provider's tool-calling API is used.** Every round the AI answers one JSON object (`AGENT_SCHEMA`, `src/llm/chatAgent.ts`): either
+`action: "call_tools"` with `calls` (each a tool `name` and `argsJson`, the arguments as JSON text, because a strict schema cannot describe each tool's own arguments) or `action: "answer"` with
+the reply and an optional proposal. That is the same one-shot JSON call every provider already has (`LlmCall`), so all four work with one code path; native tool calling can replace the transport
+later without touching a capability. **A capability** (`src/domain/chatTools.ts`) is one feature's part of Ask AI: `id`, `title`, a one-line `description`, and `tools` (name, description, argument
+specs, `run`). The list is `CAPABILITIES` in `src/chat/capabilities/index.ts`: **Expenses** (`expense_totals`, `expense_entries`), **Assets** (`assets_list`, `assets_totals`),
+**Gifts** (`gifts_list`, `gifts_totals`), **Train journeys** (`train_journeys`) and **Groups** (`groups_list`). **To put a new feature in Ask AI, add one file there and one line in the list** (the
+rule is in `AGENTS.md`). Capability files import no database: they read through `ChatData` (`src/chat/types.ts`), implemented by `src/chat/data.ts` (`src/db/chatQueries.ts` for expenses, and the
+existing `listAssets`, `listGifts`, `listJourneys`, `listGroupsWithBalances`), so `tests/chat/capabilities.test.ts` runs every tool with fake data.
+
+**One question, step by step** (`src/chat/ask.ts`, `runAgent`). The system prompt (`buildAgentSystemPrompt`) holds the role and rules, the page's groups and period, the expense category names (and
+the subcategory descriptions in a separate block, as for the categoriser), and the description of each **offered** tool. The first request therefore carries **no data**, only the question and the
+last 12 turns. The AI asks for up to 3 tools per round, up to 4 rounds, then one last round in which it must answer. Each call is looked up by name, its arguments are checked by `validateArgs`
+against the tool's own spec (unknown arguments are ignored, a wrong one comes back as a message), and `run` returns data that is turned into text and cut at 6,000 characters (20,000 per question).
+Anything that goes wrong (unknown tool, bad arguments, a failing tool, too much data) is **given back to the AI as text** to correct, never thrown. Only a model that does not keep to the format
+(`ProtocolError`: not an object, no answer, still asking for tools after its last round) ends the exchange; then, if Expenses is on, the question is asked **the earlier way**, one request with a
+summary of the expenses (`getSpendingSummary`) and, with sharing on, the newest entries (`listChatEntries`, 600, or 100 for Ollama), `askExpenseChat` in `src/llm/chat.ts`. Provider errors (no
+internet, a quota) are not format errors and are shown as they are. The reply says which kinds of data were looked at ("Looked at: Expenses, Gifts"). Ollama gets `LlmDeps.numCtx` (16384) because its
+own window is about 4,000 tokens.
+
+**The expense tools never get SQL from the AI.** `src/domain/chatQuery.ts` builds the statements from fixed pieces with every value as a parameter: type (spent, received, both), dates (default: the
+page's period), category, subcategory, payee (contains), words (any of them in the description, the UPI note or the payee, with LIKE wildcards escaped), and a `groupBy` from a whitelist of
+expressions (category, subcategory, month, payee, payment method, or what was written). The statements are tested against a real SQLite (`tests/domain/chatQuery.test.ts`), including
+injection-style input. Totals are computed by the database, so the AI is told never to add up numbers itself. The tools return the description and UPI note of an entry as text but **never the bank
+narration, UPI id, balance or any internal id**.
+
+**Privacy.** **There are no switches.** An earlier version had a "Share every transaction" switch and one switch per capability (stored in `src/settings/chat.ts`, a `sensitivity` on each tool); both were removed on the
+owner's decision: the owner is the one asking, so the AI may look in any part of the app's data that the question needs, and the page says plainly where the data goes. `offeredTools` returns every tool of every
+capability. What keeps the exchange narrow is the design, not a setting: the first request holds no data, the AI gets only what a tool returns for the question, each tool is capped (a few dozen rows, 50 entries), and tools
+never return the bank narration, UPI id, balance or any internal id. `privacyNote` (`src/domain/expenseChat.ts`) tells the owner on the page which AI gets what; for full privacy the owner uses Ollama, and what a cloud
+AI company does with data is governed by its own account settings, which the app cannot change. What leaves the device with a question: the question and recent turns, the category names and descriptions, the tool
+descriptions, and **only what the lookups return** (or, in the fallback when a model cannot keep to the format, a summary of the expenses and the newest 600 entries, 100 for Ollama).
+
+**Proposals.** The AI never changes anything. When no subcategory in the list describes a purchase well (a photo album is not a "Gift") it proposes a better one
+(`proposedCategory`, `proposedSubcategory`, `proposedDescription`; all required in the schema, empty strings when none). `acceptProposal` reuses `acceptSuggestion`, so a proposal that is empty, too long,
+Income, Others, or already listed is dropped; a usable one shows as a card with Add to my list and Not now, and only the first calls `addApprovedSubcategory` (`src/db/config.ts`), which inserts the
+category and subcategory with the description (idempotent) and moves no entry. The conversation is kept in memory only; New chat clears it.
+
+**History.** The chat began as one prompt carrying a summary of the expenses; descriptions were missing, then entries were added up to a cap of 600. It was replaced by tools because a prompt
+cannot hold everything, the AI is poor at adding many numbers, and the owner wants Ask AI to cover assets, gifts, train journeys and later features. Vector search was considered and not built: it
+returns a sample of similar entries, not a complete set, so sums would be wrong, and it needs an embedding model on a phone or a cloud call with your text.
 The **AI suggestions** screen (`src/app/suggestions.tsx`) is opened automatically at the end of Config >
 Re-classify when entries stayed uncategorised and have suggestions (the run's counts go as route params for
 the "X categorised out of Y" banner), from a "Review N AI suggestions" button on the import result and in
@@ -393,7 +435,7 @@ occasion edit/rename/delete menu, a per-person view, a gold rate setting. Holdin
 slides over the page from the left; the way to open it is the menu button at the top left of the Home tab's purple block
 (`HomeView`, through `useOpenDrawer`; a plain white icon near the left edge like a group's back button; the wallet circle is shown only where there is no drawer). It is **not** shown in a group's page, which keeps its back
 arrow and options button, and swiping from the edge is off on purpose (`swipeEnabled={false}`). Items, in order, from `MENU_PAGES`:
-Home, Transactions, Groups, Charts, Assets, Gifts, Train alarms, Config, How it works; a wide browser window shows the same list in the permanent
+Home, Transactions, Groups, Charts, Assets, Gifts, Gold & Silver Rates, Train alarms, Config, How it works; a wide browser window shows the same list in the permanent
 `Sidebar`, so a page is added in one place. **Look:** a purple gradient header with the logo and name, then a white list of flat full-width rows (`MenuButton`: icon and label, and for the current page a light purple background with a purple bar at its left edge); the browser's `Sidebar` adds an "Add" section below a divider. It was first white pill buttons on the gradient, which looked like cards and was replaced. **No bottom bar and no tab navigators.** An earlier version had `js-tabs` layouts for Home/Transactions/Charts/Config (`(tabs)/_layout.tsx`) and for a group's pages (`groups/[id]/_layout.tsx`); with the bar gone they only caused a different, un-animated switch from the stack screens (Assets, Gifts, Groups), so both layouts were deleted and the pages moved up into the root stack (`src/app/index.tsx`, `transactions.tsx`, `charts.tsx`, `config.tsx`; `groups/[id]/index.tsx`, `transactions.tsx`, `charts.tsx`). Addresses did not change (a folder in parentheses never was part of them). Each of those pages is wrapped in `WithAddButton` (`src/ui/AddMenu.tsx`): a full-page, touch-through layer holding `AddMenu align="right"`, so the + button floats at the bottom right over the page, slides with it, and opens Credit, Debit, Import and Add list (it reads the group from the address, `groupIdFromPath`, so on a group page it adds to that group). The layer must fill the page so the button is inside its parent's bounds (iOS ignores touches outside them). **Only Home has the menu button** (its purple block); every other page, including Transactions, Charts, Config, Assets and Gifts, has a back arrow (`useGoBack`: the page before, or Home; Transactions, Charts and Config use `useTabBack`, which gives no arrow in a wide browser window where the Sidebar is), so switching pages means going back to Home and opening the menu again. The exception is a group, whose pages are reached only through the drawer: the Overview's bar and `GroupHeader` show the menu button beside the options button, and the drawer there lists the group's pages. **Inside a group the drawer lists that group's pages** (`groupMenuPages`: Overview, Transactions, Charts, Groups, Main; the same list as the browser's `Sidebar`; the group is read from the address with `groupIdFromPath`), everywhere else it lists `MENU_PAGES`. The pages' lists end with `useAddClearance()` of space (button height, gaps and bottom inset) so the last row is not under the button; it is 0 in a wide browser window. **How it is built:** `AppDrawer` wraps the root
 `Stack` in `_layout.tsx` and renders `Drawer` from `react-native-drawer-layout` (4.2.12), the same panel Expo Router's `expo-router/drawer`
 navigator is made of. The navigator itself was not used: it shows only the screens declared in its layout, so using it would have meant
@@ -403,7 +445,7 @@ dependencies (added with `npx expo install`; they are native modules, which Expo
 `GestureHandlerRootView`; if a future screen uses gestures outside the drawer it needs its own.
 
 **Assets** (schema version 12; `src/domain/assets.ts`, `src/db/assets.ts`). What the owner holds: gold, land, mutual funds and other,
-kept **for information only** in one table `assets` (nothing in `transactions`, no group, no AI, no balance or total, and no valuation:
+kept **for information only** in one table `assets` (nothing in `transactions`, no group, no balance or total, never seen by the categoriser, and no valuation; Ask AI can read it through the Assets capability:
 there is `invested_paise` but deliberately no current value, because there is no API for gold, MF or NPS holdings and the owner reads
 those off the bank or provider). Columns: `type` gold|land|mutual_fund|other, `name`, `quantity` (**thousandths** of `unit`: milligrams for
 gold, so 2.25 g = 2250, and 482.351 fund units = 482351) with `unit` g|units|cent|acre|sqft|ground (gold is always g, a fund always
@@ -422,10 +464,63 @@ block after the gifts (`Assets Id|Type|Name|Quantity|Unit|Purity|Invested|Acquir
 older files restore with no assets and the cloud backup carries them. Dev cleanup also empties the table. Not built: valuation, interest,
 a gold total line, photos, partial pledges.
 
+**Assets: For, Item and exchanges with a shop** (schema version 18; `src/domain/assets.ts`, `src/domain/assetExchanges.ts`, `src/db/assetSql.ts`, `src/db/assetOptions.ts`, `src/db/assetExchanges.ts`). The owner named pieces by typing
+"Thishi - Bangles" (a child's name and the kind of jewellery), so the typed name was replaced by two dropdowns: **For** (whom it is for; optional) and **Item** (what it is; required; the form calls it
+"Item", not "Type", because Type already means gold, land or fund). Both lists are the owner's own, in `asset_options (kind, name, sort)` (`kind` is a named CHECK), and a name typed through "+ Add new" is added on
+save (`canonicalOption`, which also keeps the list's spelling when only the capitals differ). `assets` gains `for_name`, `item` and `exchange_id`; **the `name` column stays** and is always written as "For - Item"
+(`assetName`, in `normaliseAsset`), so older files, the backup and anything that reads a name keep working; it is never typed. No CHECK of `assets` changed, so it was not rebuilt (the status check stays unnamed; the
+rule for a rebuild is in AGENTS.md). **Migration** (`migrateAssetsV18`, tested against a real SQLite in `tests/db/assetSql.test.ts` with the owner's own names): only when `item` is missing, the columns are added
+and every name is split once by `deriveForAndItem`: "For - Item" (dash, hyphen or en dash) splits at the first dash; a name without one is checked against the For names seen on the dashed rows (longest first), so
+"Thishi Ear Ring" becomes For Thishi, Item Ear Ring; anything else is all Item ("Thishika", "Anklet") for the owner to correct. The old name is untouched and the lists are filled from the result; running it again
+changes nothing. The same split reads a backup made before this (`fillLegacyNames`). **Filters**: `AssetFilters` has `forName` and `item` (exact, ignoring capitals) beside Type, Show and search; Show gains **Given in exchange**.
+
+**Exchanges with a shop.** Old gold given to a shop and new gold bought in its place. `asset_exchanges (id, exchange_date, shop, extra_paise, note, status ACTIVE|DELETED)` and `assets.exchange_id`. **A piece given has status
+`SOLD` and the exchange's id** (so the CHECK on `assets.status` did not have to change); a plain sale is `SOLD` without one (`isGivenInExchange`); **a piece bought is an ordinary held asset with the same id**, added through
+`asset.tsx?exchange=<id>` (gold, bought on the exchange's date; "Save & next" adds several). `giveInExchange` (`src/db/assetSql.ts`) checks every piece first, **gold that is held and not pledged** (`canGiveInExchange`), and
+refuses with the piece's name, so nothing is half done; then it records the exchange and marks the pieces, in one transaction. `undoExchangeSql` holds the given pieces again, keeps the bought ones as ordinary assets,
+and marks the record DELETED. Screens: `asset-exchange.tsx` (choose the pieces, filtered by For; shop, date, extra, note; Save, or Save & add bought) and `asset-exchanges.tsx` (the history, newest first: what was given
+and bought with grams on each side, `exchangeWeights`, whether more or less gold came back, the extra paid, Add bought piece, Undo); a piece given cannot have its status edited on the form. Nothing here is a
+transaction or touches a balance, and no gold rate or value is used: only grams. **Backup version 7** adds `Assets For | Assets Item | Assets Exchange Id` at the end of the Assets block (so an older reader still lines
+up), the lists (`Asset For List`, `Asset Item List`) and the exchanges block (`Exchanges Id|Date|Shop|Extra|Note|Status|Created|Updated`), all read by header name; a version 6 file restores with its names split and
+the lists made from the pieces, and exchanges and lists merge on restore like everything else. **Ask AI**: the Assets capability filters by `for`, `item` and `show: exchanged`, totals by person or item
+(`groupBy`), and has `asset_exchanges` (what was given and bought, the grams, more or less, extra paid).
+
+**Gold & Silver Rates** (menu page `/rates`; `src/app/rates.tsx`, `src/ui/MetalRates.tsx`, `src/domain/metalRates.ts`, `src/rates/ibjaApi.ts`,
+`src/settings/metalRatesCache.ts`). Today's IBJA benchmark rates for daily viewing; **not connected** to Assets, Gifts or the pledge tracker, not on Home.
+- **Source:** an open-source IBJA scraper API (no key). `IBJA_BASE_URL` in `src/rates/ibjaApi.ts` is the only place its address is written; point it at
+  your own deployment to switch (same `/latest`, `/silver/latest` and `/history` shapes). Nothing is fetched at launch or in the background: only when
+  the page is focused and its cache is over an hour old (`CACHE_MAX_AGE_MS`), and on pull-to-refresh (a Refresh button on web, which has no pull). The
+  three requests run together, each cut off after 10 seconds (`fetchRateParts`, which never throws).
+- **Gold** comes from `/latest` (per 10 g, AM and PM; the page shows 999 and 916, the 995 figures are still read and cached but not shown); **silver** from `/silver/latest` (per kg). When either is missing, 404 (the API's
+  answer before the day's rates are out) or fails, the newest day of `/history` stands in; the page marks a rate whose date is not today as "Previous day's
+  rate". `/history` holds only the last four published days (no weekends) and ignores `limit`/`days`; it also feeds the table of the last few days with
+  the change from the day before (computed here from the rates, not from the API's `/changes`, whose answer was empty and of unknown shape).
+- **Layout:** the IBJA gold (24K 999, 22K 916) and silver cards share one row (narrow cards, amounts shrink to fit; `RateCard`/`CardRow` in `src/ui/MetalRates.tsx`);
+  a metal with no rate shows "—". One date line when gold and silver share a day, otherwise one each.
+- **Per gram** is the quoted figure ÷ 10 (gold) or ÷ 1000 (silver); gold per 8 g is × 0.8. PM is the "current" rate once out, otherwise AM, and the card says which. The cards show only that one rate; AM and PM side by side are only in the "Last few days" table (AM/PM toggle).
+- **Cache:** the last complete answer and its fetch time, as JSON in `plainStorage` (`metal_rates_cache`, ~1.5 KB). It is replaced only by a complete picture
+  (`/history` came back, or both `/latest` answers did), so a half answer never wipes a metal. With no network the cache stays and the page says
+  "Couldn't refresh — showing rates from <time>".
+- **Nagercoil section** (at the top of the page, then the Tamil Nadu estimate line, then an "IBJA benchmark" heading and the IBJA cards): the real local 22K and 24K price per gram and a table of the last ~10 days with the change from the
+  day before, from the owner's own backend (`GET /api/gold-history` on the forked IBJA-API deployment, which scrapes Groww's Nagercoil page once a day
+  and stores it). `src/rates/goldHistoryApi.ts` (`fetchGoldHistory`), `src/domain/goldHistory.ts` (parsing, table rows), `PerGramRow` and
+  `NagercoilTable` in `src/ui/MetalRates.tsx`. That route does not exist on the public instance and answers 401 without the key, so the section
+  needs `EXPO_PUBLIC_IBJA_BASE_URL` and `EXPO_PUBLIC_IBJA_API_KEY` in `.env` (see `.env.example`; the key is sent to your own deployment only, never
+  to the public one, and is bundled into the app, so use a key made for this app). Without them it reads "not available right now". Asked each time
+  the page is opened and on pull-to-refresh (and the web Refresh button), not cached on the phone; a failed fetch keeps what was shown.
+- **Tamil Nadu 22K estimate** (the line right after the Nagercoil section): `calculateTodayPrice` in `src/domain/tnGoldEstimate.ts` =
+  `round(ounce price in ₹ / 31.1035 × 0.916 × 1.1648)`, where the ounce price is gold-api.com's `GET https://api.gold-api.com/price/XAU/INR`
+  (`src/rates/goldApi.ts`; free, no key, sends CORS headers, `GOLD_API_BASE_URL`). The 1.1648 premium is the owner's own constant, not a published
+  rate; the IBJA cards above are the benchmark to compare it with (on 4 Nov 2026 it gave ₹12,803 against IBJA's 22K ₹12,602 for 3 Nov). It is fetched
+  each time the page is opened (not on pull-to-refresh, not cached); a failure keeps the last figure or shows "unavailable".
+- **Platforms:** the IBJA API sends no CORS headers, so the **web build probably cannot load it** (the page says so); iOS is the target; Android uses the same
+  `fetch` and is untested. **Not verified (nothing was run):** the page on a phone, the live API's success shapes beyond what was read from it on 4 Nov 2026,
+  and whether the web build is blocked.
+
 **Train alarms** (schema version 13, reshaped in 14 and 15, cleaned up in 16; `src/domain/trainAlarms.ts`, `src/db/trainJourneys.ts`, `src/alarms/`). The owner books
 trains on the day booking opens, so a saved journey date produces alarms that wake them for it. Information only, like Gifts and Assets:
-table `train_journeys` (`label`, `journey_date`, `advance` 0|1, `tatkal` none|ac|non_ac, `alarm_times`, `note`, `status`), nothing in
-`transactions`, no group, no AI, no server. A journey has **one booking**, a single dropdown: **Advance booking** (opens 60 days before the journey date,
+table `train_journeys` (`label`, `journey_date`, `advance` 0|1, `tatkal` none|ac|non_ac, `alarm_times`, `note`, `booked`, `pnr`, `status`), nothing in
+`transactions`, no group, no server (Ask AI can read it through the Train journeys capability). A journey has **one booking**, a single dropdown: **Advance booking** (opens 60 days before the journey date,
 8:00 AM), **Tatkal AC** (1 day before, 10:00 AM) or **Tatkal Non AC** (1 day before, 11:00 AM); `BOOKINGS` holds these and their default alarm times, which are
 the owner's to confirm. The old `advance` and `tatkal` columns are kept and mapped to that one choice (`bookingFromColumns` / `bookingToColumns`; a row
 that had both reads as advance); version 14 added them, version 15 added `alarm_times` (`HH:MM` joined by commas, empty = the booking's defaults), and version 16 drops the
@@ -464,6 +559,29 @@ accepting an alarm weeks ahead, the permission prompt, the free-account signing 
 a server-side backup alarm (Pushover
 emergency priority or a phone call from the Cloudflare Worker, designed but dropped for now), and a "booking opened" follow-up. The 60 days and the Tatkal
 hours are the owner's to confirm. The owner has since run the Test alarm on the phone: the AlarmKit alarm rang.
+
+**Marks and warning on a journey (there is no separate list screen):** when something is not set, the journey in the Train list shows a warning under it (`droppedText`: what is not set and to open it and tap Update, which sets everything again) and the journey screen shows the same warning; **the Home page has a warning too** (`src/ui/TrainAlarmBar.tsx`): it checks (read only, `loadCheckList`) when Home is shown and each time the app comes back to the front, after the start-up sync has finished (`src/alarms/startup.ts`, `runStartupSync` from the root layout, so it never warns about what the start-up is about to set; the wait is capped at ten seconds), shows how many are not set, opens the Train page when tapped, and has a Set again button. It never sets anything on its own: setting an alarm again cancels it first, which must not hit one that is ringing. The top of the Train list also has **one warning with a count and one button** ("Set the N missing again") that runs `syncTrainAlarms({ ask: true })` for every journey, then checks again; the journey screen (`src/app/train-journey.tsx`) shows the same check or cross beside each alarm time (`AlarmTimesField`'s `marks`), from `loadCheckList` (`src/alarms/check.ts`, shared by both pages) and `alarmTimeMarks`; the Train list (`TrainRow`'s `marks`) shows it beside each time too, so the owner never has to match a separate list by hand; iPhone only (`MARKS_SUPPORTED`), and a time with no saved alarm shows none.
+
+**How the check is made** (`buildCheckList`, `triggerToDate`, `parseSetAlarms`, `parseNotificationId` in `src/domain/trainAlarms.ts`, tested). **Each row is one alarm or reminder from the app's own records, with one
+mark: a check when iOS holds it, a cross when it does not.** The rows are what the saved journeys call for (`planAlarms`: each wake-up alarm and the two reminders of every journey that is not booked and not over), soonest first, so at any time the owner sees what the app
+should have set and whether it is scheduled to run. `buildCheckList` asks iOS about each row: a **reminder** is held when its notification identifier (`train-<journey>-<kind>-0`) is pending, with the time from the trigger (`triggerToDate` accepts a number in
+ms or s and calendar date parts, since iOS gives it back in more than one shape; an unreadable time does not count against it); a **wake-up alarm** is held when AlarmKit has the alarm under its UUID (`alarmUuid`, compared in lower case because Swift writes UUIDs in capitals) or,
+without AlarmKit, when its run of notifications is all pending; **a time more than 90 seconds off the plan is stale** and shows a cross until the alarms are set again. Real alarms are read through `AlarmManager.shared.alarms`, which Apple documents as the alarms **that belong to
+the current client**, so it only ever holds this app's alarms. `expo-alarm-kit` does not expose it (its `getAllAlarms` reads an App Group list this app never configures: a free Apple account cannot sign App Groups), so a small **inline Expo module of ours,
+`app-intents/TrainAlarmReader.swift`** (a `Module` named `TrainAlarmReader`, function `getScheduledAlarms`; the file name equals the class name, as inline modules require, and `app-intents/` is already a watched directory), returns each alarm's UUID, state and fixed time, and
+`readScheduledAlarms` (`src/alarms/alarmKit.ts`) calls it through `requireOptionalNativeModule`, so a build made before the module existed gets `null` instead of an error. The AlarmKit calls were type-checked against the iOS 26.2 SDK with a scratch file (`swiftc -typecheck`); the module
+itself, which needs ExpoModulesCore, was not compiled here. An alarm iOS holds that matches no journey (one that was booked, moved or deleted) is counted in `unlinked`; saving or opening the app cancels it, as every sync cancels what is not wanted. The record `train_alarms_set` (plain
+storage, written by `syncTrainAlarms`: id, journey, kind, time, title, via, of what iOS accepted) is only the fallback: **in a build without the reader, a real alarm counts as set when the record says iOS accepted it**, and the pages cannot tell the difference; the same fallback covers reminders when
+iOS's list cannot be read. iPhone only: Android and web say so (the project's platform rule). **The reader is native code, so it needs a new build (`npm run ipa`) and a reinstall; an over-the-air update publishes the screen and the fallback, and the Swift file is not part of the
+compatibility fingerprint, so the installed build keeps receiving updates.**
+
+**Booked and the PNR** (schema version 19; `JourneyFields.booked` and `pnr`, `validatePnr`, `normalisePnr`, `describeBooked` in `src/domain/trainAlarms.ts`). A flag on each journey: once the ticket is booked the owner sets
+**Booked** to Yes (a dropdown, like Pledged on an asset) and may type the **PNR**, optional, 10 digits (spaces and hyphens ignored; anything else blocks Save with "A PNR has 10 digits"). **Booked can be set to Yes only once booking has opened** (`canMarkBooked`: `bookingOpensAt <= now`, so an advance journey 72 days away stays not booked until day 60 at 8:00 AM, Tatkal from the day before at 10:00 / 11:00); before that the dropdown is disabled and `bookedLockedText` says when it opens. The form uses the effective value (`booked && canMarkBooked`), so changing the date or the booking type back to one that has not opened also clears it, and `saveJourney` applies the same rule where the row is written. **Booked can be set to Yes only once booking has opened** (`canMarkBooked`: `bookingOpensAt <= now`, so an advance journey 72 days away stays not booked until day 60 at 8:00 AM, and Tatkal can be booked from the day before at 10:00 / 11:00); before that the dropdown is disabled and `bookedLockedText` says when it opens. The form uses the effective value (`booked && canMarkBooked`), so changing the date or the booking type to one that has not opened also clears it, and `saveJourney` applies the same rule where the row is written. **A booked journey
+sets no alarms**: the alarms exist only to wake the owner for booking, so `planAlarms` skips it and the next `syncTrainAlarms` cancels what was set; setting Booked back to No brings them back. The form hides the alarm
+times for a booked journey and does not check them; the list has a **Show** dropdown (`TRAIN_SHOWS`, `filterJourneys`: All, Not booked yet = still ahead and unbooked, Booked = every booked journey, over or not); a journey that is not booked can have its **Booking changed to Tatkal AC / Non AC** at any time (the form's Booking dropdown), which re-plans the alarms for the day before, and `advanceMissed` makes the form say so when the advance booking has already opened without a ticket (tested in `tests/domain/trainAlarms.test.ts`); the PNR is kept only while booked (`normalisePnr`); `TrainRow` shows "Booked" and the PNR in place of the alarm times; Duplicate starts not booked. Columns
+`booked INTEGER NOT NULL DEFAULT 0` and `pnr TEXT` (`TRAIN_COLUMNS_V19`, tested against a real SQLite in `tests/db/trainJourneySql.test.ts`: journeys saved before it are not booked, nothing else changes). **Backup version 8** adds
+`Journeys Booked` (Yes or empty) and `Journeys PNR` at the end of the journeys block; a file without them restores every journey as not booked, and a PNR that is not 10 digits is dropped on the way in. **Ask AI**:
+`train_journeys` returns `booked`, the PNR and the status "Booked · PNR …", takes `booked: yes|no`, and leaves out the alarms of a booked journey.
 
 
 **Bank SMS** (Config > "Bank SMS (automatic)", `src/ui/SmsCaptureSection.tsx`; no schema change). iOS gives apps no access to messages or to other apps'

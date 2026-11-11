@@ -16,19 +16,22 @@ export const MENU_PAGES: MenuPage[] = [
   { label: "Transactions", icon: "dynamic-form", path: "/transactions" },
   { label: "Groups", icon: "folder", path: "/groups" },
   { label: "Charts", icon: "pie-chart", path: "/charts" },
+  { label: "Ask AI", icon: "chat", path: "/chat" },
   { label: "Assets", icon: "savings", path: "/assets" },
   { label: "Gifts", icon: "redeem", path: "/gifts" },
+  { label: "Gold & Silver Rates", icon: "paid", path: "/rates" },
   { label: "Train alarms", icon: "train", path: "/train" },
   { label: "Config", icon: "settings", path: "/config" },
   { label: "How it works", icon: "help-outline", path: "/help" },
 ];
 
-// Inside a group the menu is that group's pages, then a way out: its Overview, Transactions and Charts, the Groups list, and Main.
+// Inside a group the menu is that group's pages, then a way out: its Overview, Transactions, Charts and Ask AI, the Groups list, and Main.
 export function groupMenuPages(groupId: string): MenuPage[] {
   return [
     { label: "Overview", icon: "account-balance-wallet", path: `/groups/${groupId}` },
     { label: "Transactions", icon: "dynamic-form", path: `/groups/${groupId}/transactions` },
     { label: "Charts", icon: "pie-chart", path: `/groups/${groupId}/charts` },
+    { label: "Ask AI", icon: "chat", path: `/groups/${groupId}/chat` },
     { label: "Groups", icon: "folder", path: "/groups" },
     { label: "Main", icon: "home", path: "/" },
   ];

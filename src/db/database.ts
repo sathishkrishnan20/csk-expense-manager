@@ -1,9 +1,10 @@
 import { Platform } from "react-native";
 import * as SQLite from "expo-sqlite";
 import { DEFAULT_CATEGORIES, DEFAULT_PAYMENT_METHODS, FALLBACK } from "../domain/masterData";
-import { REBUILD_TRANSACTIONS, needsTransactionsRebuild, transactionsTableSql } from "./schemaSql";
+import { fromSqlite, migrateAssetsV18 } from "./assetSql";
+import { ASSET_EXCHANGES_SQL, ASSET_OPTIONS_SQL, REBUILD_TRANSACTIONS, TRAIN_COLUMNS_V19, needsTransactionsRebuild, transactionsTableSql } from "./schemaSql";
 
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 19;
 
 const SCHEMA = `
 -- A group is a separate ledger (see domain/groups.ts). 'main' holds everything entered before groups existed.
@@ -78,7 +79,13 @@ CREATE INDEX IF NOT EXISTS gift_list_occasion_idx ON gift_list (occasion_id);
 CREATE TABLE IF NOT EXISTS assets (
   id             TEXT PRIMARY KEY NOT NULL,
   type           TEXT NOT NULL CHECK (type IN ('gold', 'land', 'mutual_fund', 'other')),
+  -- "For - Item", made from the two columns below (version 18); never typed
   name           TEXT NOT NULL,
+  -- whom the piece is for and what it is; chosen from asset_options (version 18)
+  for_name       TEXT,
+  item           TEXT,
+  -- the exchange with a shop this piece was given in (status SOLD) or bought in (status ACTIVE); see asset_exchanges
+  exchange_id    TEXT,
   quantity       INTEGER,
   unit           TEXT CHECK (unit IS NULL OR unit IN ('g', 'units', 'cent', 'acre', 'sqft', 'ground')),
   purity_k       INTEGER,
@@ -97,6 +104,8 @@ CREATE TABLE IF NOT EXISTS assets (
   updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS assets_gift_idx ON assets (gift_id);
+${ASSET_OPTIONS_SQL}
+${ASSET_EXCHANGES_SQL}
 
 -- Train journeys (schema version 13, reshaped in 14 and 15, cleaned up in 16; see domain/trainAlarms.ts). Information only, like gifts and assets: each row
 -- is a journey date the owner wants alarms for. The booking is advance = 1 (60 days before, 8:00 AM) or tatkal = ac / non_ac (the day
@@ -113,6 +122,9 @@ CREATE TABLE IF NOT EXISTS train_journeys (
   tatkal        TEXT NOT NULL DEFAULT 'none' CHECK (tatkal IN ('none', 'ac', 'non_ac')),
   alarm_times   TEXT NOT NULL DEFAULT '',
   note          TEXT,
+  -- set once the ticket is booked (version 19): such a journey has no alarms; pnr is the optional 10-digit PNR
+  booked        INTEGER NOT NULL DEFAULT 0,
+  pnr           TEXT,
   status        TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'DELETED')),
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
@@ -218,6 +230,10 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
     if (!journeyColumns.some((c) => c.name === "alarm_times")) {
       await txn.execAsync("ALTER TABLE train_journeys ADD COLUMN alarm_times TEXT NOT NULL DEFAULT ''");
     }
+    // Version 19 added the booked flag and the optional PNR; every journey saved before it is not booked.
+    for (const [column, sql] of TRAIN_COLUMNS_V19) {
+      if (!journeyColumns.some((c) => c.name === column)) await txn.execAsync(sql);
+    }
     // Version 16 drops the train journey columns nothing reads any more: 'rule' (a 2-month option, version 13) and wake_lead_min (a
     // wake-up lead, version 14). A failed drop is ignored: an unused column is harmless, and the database must still open.
     for (const unused of ["rule", "wake_lead_min"]) {
@@ -233,6 +249,9 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
     // (db/schemaSql.ts); no entry's source, date or amount is touched. Later changes to those values can be an ALTER.
     const created = await txn.getFirstAsync<{ sql: string | null }>("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'transactions'");
     if (needsTransactionsRebuild(created?.sql)) await txn.execAsync(REBUILD_TRANSACTIONS);
+    // Version 18 gave assets a For and an Item in place of a typed name, and exchanges with a shop (db/assetSql.ts): the columns are added to an
+    // assets table that lacks them, and every piece's old name is split once into the two. The old name column is not touched.
+    await migrateAssetsV18(fromSqlite(txn));
     // Version 6 added a description per subcategory.
     const catColumns = await txn.getAllAsync<{ name: string }>("SELECT name FROM pragma_table_info('categories')");
     if (!catColumns.some((c) => c.name === "description")) {

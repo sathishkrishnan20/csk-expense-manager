@@ -122,7 +122,7 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
       title: "Gifts",
       blocks: [
         {
-          text: "A record of gold and money your relatives gave at functions (a marriage, a hair offering and so on), and what you gave back at theirs. It is for your information only: Gifts are not transactions and are never part of any balance, group, chart or category, and nothing in them is sent to the AI.",
+          text: "A record of gold and money your relatives gave at functions (a marriage, a hair offering and so on), and what you gave back at theirs. It is for your information only: Gifts are not transactions and are never part of any balance, group, chart or category. The AI that sorts your transactions never sees them; Ask AI can look at them when you ask it a question about them.",
         },
         {
           bullets: [
@@ -141,16 +141,18 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
       title: "Assets",
       blocks: [
         {
-          text: "A record of what you own: gold, land, mutual funds and anything else. It is for your information only: Assets are not transactions and are never part of any balance, group, chart or category, nothing in them is sent to the AI, and nothing is valued (you note what you paid, not what it is worth now).",
+          text: "A record of what you own: gold, land, mutual funds and anything else. It is for your information only: Assets are not transactions and are never part of any balance, group, chart or category, and nothing is valued (you note what you paid, not what it is worth now). The AI that sorts your transactions never sees them; Ask AI can look at them when you ask it a question about them.",
         },
         {
           bullets: [
-            "Open Assets from the menu: tap the menu button at the top left of Home, then Assets. Search by name, lender or description, filter by type, and choose Holding, Pledged, Sold or All.",
-            "Add asset: pick the type, then the name and, if you want, the quantity, the amount paid, the date and a description. Gold is in grams (with its purity, 22K for example), land in cent, acre, sq ft or ground, and a mutual fund in units. Add each physical piece as its own entry. Save & next keeps the type for the next one.",
+            "Open Assets from the menu: tap the menu button at the top left of Home, then Assets. Search by For, item, lender or description, filter by Type (gold, land...), For (whom it is for) and Item (ring, earring...), and choose Holding, Pledged, Sold, Given in exchange or All.",
+            "Add asset: pick the type, then For (whom it is for, such as a child or the wife; optional) and Item (what it is, such as ring, earring, bangle or chain), and, if you want, the quantity, the amount paid, the date and a description. There is no name to type: the piece is called \"For - Item\", for example Thishi - Bangles. Both are dropdowns of your own lists; choose + Add new at the end to type a name that is not there yet, and it joins the list when you save. Gold is in grams (with its purity, 22K for example), land in cent, acre, sq ft or ground, and a mutual fund in units. Add each physical piece as its own entry. Save & next keeps the type and the For for the next one.",
+            "Exchange with a shop: when you give old gold to a shop and buy new gold, tap Exchange at the bottom of Assets. Choose the pieces you gave (only gold you hold and have not pledged), then the shop, the date and anything you paid extra, and Save & add bought to enter what you bought in its place. The pieces you gave leave what you hold, but stay on record as Given in exchange. Exchanges (top right of Assets) lists every exchange, newest first: what you gave, what you bought in its place, the grams on each side, whether you got more or less gold, and the extra paid. Undo exchange holds the given pieces again and keeps the new ones.",
+            "The first time you open the app after this was added, each old name is split into For and Item: Thishi - Bangles becomes For Thishi, Item Bangles. A name with no dash is split only if it starts with a For that other pieces have; otherwise it all becomes the Item, so check those and correct them. Your old names are kept.",
             "Pledged (adagu): on a gold entry, set Pledged to Yes and enter who it is pledged to; that is the only thing required. The ticket number, the pledged and due dates, the loan amount and a purpose or note are optional. The whole piece counts as pledged and shows in amber on its card, with how many days are left to the due date. When you take it back, set Pledged to No.",
             "On a gold gift you received, Add to assets starts an asset from it with the weight and the giver filled in. A gift can be added only once; after that the gift shows In your assets, and opens it.",
             "Mutual funds, NPS and similar holdings cannot be read from any app or API, so note what you invested yourself and look up today's value at your bank or fund provider.",
-            "Assets are included in Export and in Cloud backup.",
+            "Assets, their For and Item lists and the exchanges are included in Export and in Cloud backup.",
           ],
         },
       ],
@@ -160,11 +162,14 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
       title: "Train alarms",
       blocks: [
         {
-          text: "Advance booking for a train opens at 8:00 AM, 60 days before the journey, and Tatkal booking opens the day before the journey (10:00 AM for AC classes, 11:00 AM for sleeper and non-AC). Save a journey date and the app works out those dates and sets alarms so you wake up and are ready. Journeys are for your information only: they are not transactions and are never part of any balance, group, chart or category, and nothing in them is sent to the AI or to any server.",
+          text: "Advance booking for a train opens at 8:00 AM, 60 days before the journey, and Tatkal booking opens the day before the journey (10:00 AM for AC classes, 11:00 AM for sleeper and non-AC). Save a journey date and the app works out those dates and sets alarms so you wake up and are ready. Journeys are for your information only: they are not transactions and are never part of any balance, group, chart or category. The AI that sorts your transactions never sees them, and nothing is sent to any server; Ask AI can look at them when you ask it a question about them.",
         },
         {
           bullets: [
             "Open Train alarms from the menu: tap the menu button at the top left of Home, then Train alarms. Add journey: type where you are going, leave the journey date empty until you pick it, choose Advance booking, Tatkal AC or Tatkal Non AC, and set your alarm times. Once the date is picked, the box at the bottom says in plain words when your booking opens and on which day and at what times you will be woken.",
+            "Booked: once you have booked the ticket, open the journey and set Booked to Yes. It is locked at No until booking has opened, because a ticket cannot be booked earlier: advance booking opens 60 days before the journey at 8:00 AM, and Tatkal the day before at 10:00 AM (AC) or 11:00 AM (Non AC). Until then the screen tells you when it opens. A journey 72 days away on advance booking stays Not booked until day 60. You can then type the PNR, which is optional: it is 10 digits, and spaces or hyphens between them are fine. A booked journey needs no alarms, so its alarms are cancelled when you save, and its card shows Booked and the PNR in place of the alarm times. Set Booked back to No and the alarms return. A copy made with Duplicate starts as not booked. The Show dropdown at the top of Train alarms lists All journeys, Not booked yet (still ahead and without a ticket) or Booked.",
+            "Alarms that were dropped: beside each alarm time of a journey, in the list and on the journey itself, a check means iOS has that alarm set and a cross means it does not. When something is not set, a warning under the journey says so; open it and tap Update to set its alarms again, or tap the button in the warning at the top of the list to set everything that is missing at once. The same warning shows at the top of Home, checked each time you open the app, with a Set again button. Reading real alarms needs the newest installed build; in an older build a check on a real alarm means the app set it at its last try. A time you have just typed has no mark until you save.",
+            "Missed the advance booking: if you did not book and advance booking has already opened, open the journey and change Booking to Tatkal AC or Tatkal Non AC. The screen reminds you of this; Tatkal opens the day before the journey, the alarms move to that day, and the old ones are replaced. You can only change Booking while the journey is not booked.",
             "Advance booking opens 60 days before the journey date at 8:00 AM. Tatkal opens 1 day before the journey date: 10:00 AM for AC classes, 11:00 AM for Tatkal Non AC (sleeper and the rest).",
             "The alarm times are yours to edit. A new journey starts with 7:45, 7:55, 7:58 and 8:00 AM for advance booking, 9:45, 9:55, 9:58 and 10:00 AM for Tatkal AC, and 10:45, 10:55, 10:58 and 11:00 AM for Tatkal Non AC. Tap a time to change it, the red cross removes it, Add alarm time adds another (up to 8). They all ring on the booking day. Changing the booking type brings back that booking's usual times.",
             "You also get two notifications for each journey, at 8:00 PM the evening before the booking day and at 7:00 AM on it. Anything already in the past is not set; if the booking has already opened, the screen says so.",
@@ -227,6 +232,29 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
       ],
     },
     {
+      id: "ask-ai",
+      title: "Ask AI (chat about your data)",
+      blocks: [
+        {
+          text: "Ask AI is a chat for questions about your own data, answered by the AI you chose in Config > AI. Open it from the round sparkle button above the + button on Home (and on a group's overview), or from the menu (inside a group, its menu has its own Ask AI). The Group filter at the top and the Period (this month, last month, last 3 months, this year, all time) decide which spending the AI looks at; the other kinds of data (assets, gifts, train journeys, groups) do not depend on them.",
+        },
+        {
+          bullets: [
+            "Where does a purchase go: say what you bought, for example the photo album from a photoshoot, and the AI answers with a category and subcategory from your list when one really fits.",
+            "When nothing in your list fits well, the AI does not squeeze it into the closest subcategory. It says where it belongs and proposes a better subcategory (or a new category) with a short description. A card under its answer has Add to my list and Not now. Nothing is added until you tap Add to my list, and no entry is moved; the new subcategory just appears in Config > Categories and in the pickers, and the AI uses its description from then on.",
+            "Spending and income: how much you spent on snacks in October, which snacks, what you paid a shop, how months compare, or what you could cut down. The totals are worked out by the app from your entries, exactly; the AI does not add the numbers up itself.",
+            "Assets, gifts, train journeys and groups: how much gold you have and what is pledged, what was received at the marriage and from whom, when booking opens for your next journey, how a group stands. Each new part of the app is added to Ask AI as it is built.",
+            "Under an answer, Looked at: shows which kinds of data the AI used.",
+            "The chat is not saved. New chat clears it, and it is gone when you leave the page. Only the last 12 messages go with each question.",
+            "Privacy: your data goes to the AI you chose in Config > AI, so what that company does with it is set by its own settings (for example your Google account's settings for Gemini), which this app cannot change. For full privacy choose Ollama, which runs on your own computer so nothing leaves your network. There are no switches for what the AI may look at: you are the one asking, so it can look in any part of your data that your question needs, and only what it asks for is sent.",
+          ],
+        },
+        {
+          text: "What is sent: with every question, your question and the last messages of the chat, your category names and descriptions, and a list of what the AI may look up (expenses, assets, gifts, train journeys and groups). That first request holds none of your data. The AI then asks the app for what it needs, for example the total for a subcategory and month, and only what those lookups return is sent to it (single payments come with their date, amount, category, payee, payment method, description and UPI note, never more than 50 at a time). Bank narrations, UPI ids and account ids are never sent. If a model cannot follow this way of asking, the app instead sends a summary of your expenses and the newest entries (600, or 100 with Ollama). It needs the internet for Gemini, Claude and ChatGPT, or to reach your computer for Ollama.",
+        },
+      ],
+    },
+    {
       id: "storage",
       title: "Where your data is stored",
       blocks: [
@@ -248,7 +276,7 @@ export function helpTopics(platform: HelpPlatform): HelpTopic[] {
       title: "What leaves this device",
       blocks: [
         {
-          text: "Only the AI requests. When the app categorises, it sends the amount, payee, UPI id, note and bank narration of the transactions being sorted (or the payee and description of a hand entry) to the AI you chose: Google for Gemini, Anthropic for Claude, OpenAI for ChatGPT, or your own computer for Ollama. Nothing else is sent. Your balance and the rest of your data are never included. The cloud AIs need internet; Ollama needs to reach your computer.",
+          text: "Only the AI requests. When the app categorises, it sends the amount, payee, UPI id, note and bank narration of the transactions being sorted (or the payee and description of a hand entry) to the AI you chose: Google for Gemini, Anthropic for Claude, OpenAI for ChatGPT, or your own computer for Ollama. Nothing else is sent. Your balance and the rest of your data are never included. The Ask AI chat sends more, but only when you ask a question there: your question, your category names, and whatever the AI asks the app to look up (totals and lists of your expenses, assets, gifts, train journeys and groups, and single payments with their date, amount, category, payee, payment method, description and UPI note). Bank narrations, UPI ids and account ids are never sent. The cloud AIs need internet; Ollama needs to reach your computer.",
         },
         {
           text: "Only one AI is used at a time: the one selected in Config > AI. Each keeps its own key and model, so you can switch between them, and the app never falls back to another one on its own. Every transaction records the model that labelled it.",

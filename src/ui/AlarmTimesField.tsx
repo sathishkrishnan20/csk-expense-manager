@@ -9,7 +9,8 @@ import { colors } from "./theme";
 
 // The alarm times of a journey, as a list the owner edits freely: tap a time to change it on the wheel, the red cross removes it, and
 // "Add alarm time" adds another. Times are "HH:MM" on the booking day; the list is kept in time order, each time once.
-export function AlarmTimesField({ times, onChange }: { times: string[]; onChange: (times: string[]) => void }) {
+// marks: for a saved journey, whether iOS holds the alarm at each time ("HH:MM" to true or false); a time with no entry shows no mark.
+export function AlarmTimesField({ times, onChange, marks }: { times: string[]; onChange: (times: string[]) => void; marks?: Record<string, boolean> }) {
   // index: the time being changed, or null for a new one. draft: what the wheel shows.
   const [editing, setEditing] = useState<{ index: number | null; draft: Date } | null>(null);
 
@@ -41,6 +42,14 @@ export function AlarmTimesField({ times, onChange }: { times: string[]; onChange
             <Pressable style={styles.time} onPress={() => open(i)} accessibilityLabel={`Change alarm at ${formatHm(hm)}`}>
               <MaterialIcons name="alarm" size={20} color={colors.primary} />
               <T style={styles.timeText}>{formatHm(hm)}</T>
+              {marks && hm in marks ? (
+                <MaterialIcons
+                  name={marks[hm] ? "check-circle" : "cancel"}
+                  size={22}
+                  color={marks[hm] ? colors.creditText : colors.error}
+                  accessibilityLabel={marks[hm] ? "Alarm is set" : "Alarm is not set"}
+                />
+              ) : null}
               <MaterialIcons name="edit" size={18} color={colors.textSecondary} />
             </Pressable>
           )}

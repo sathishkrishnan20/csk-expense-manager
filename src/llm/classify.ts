@@ -19,12 +19,12 @@ export type ClassifiableRow = Pick<ParsedTransaction, "amountPaise" | "payee" | 
 
 // Names only. A description must not sit next to its name in this list: the model then answers with the whole `Name (description)` as the
 // subcategory, which matches no subcategory, so a right answer was filed under Others : Uncategorised.
-function listCategories(categories: CategoryDef[]): string {
+export function listCategories(categories: CategoryDef[]): string {
   return categories.map((c) => `- ${c.category}: ${c.subcategories.join(", ")}`).join("\n");
 }
 
 // What the account holder wrote about a subcategory, one line each, apart from the names.
-function listDescriptions(categories: CategoryDef[]): string {
+export function listDescriptions(categories: CategoryDef[]): string {
   const lines = categories.flatMap((c) =>
     c.subcategories.flatMap((s) => {
       const note = cleanDescription(c.descriptions?.[s] ?? "");

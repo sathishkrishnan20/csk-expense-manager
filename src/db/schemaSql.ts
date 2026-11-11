@@ -57,3 +57,40 @@ ALTER TABLE transactions_rebuilt RENAME TO transactions;
 CREATE INDEX IF NOT EXISTS transactions_date_idx ON transactions (txn_date DESC, created_at DESC);
 CREATE INDEX IF NOT EXISTS transactions_group_idx ON transactions (group_id, txn_date DESC, created_at DESC);
 `;
+
+// Schema version 18: Assets get a For and an Item, and exchanges with a shop (see domain/assets.ts and domain/assetExchanges.ts). Every CHECK is
+// named, so a later change to the allowed values is an ALTER, not a rebuild (see AGENTS.md).
+export const ASSET_OPTIONS_SQL = `
+CREATE TABLE IF NOT EXISTS asset_options (
+  kind TEXT NOT NULL CONSTRAINT asset_options_kind_check CHECK (kind IN ('for', 'item')),
+  name TEXT NOT NULL,
+  sort INTEGER NOT NULL,
+  PRIMARY KEY (kind, name)
+);
+`;
+
+export const ASSET_EXCHANGES_SQL = `
+CREATE TABLE IF NOT EXISTS asset_exchanges (
+  id            TEXT PRIMARY KEY NOT NULL,
+  exchange_date TEXT NOT NULL,
+  shop          TEXT,
+  extra_paise   INTEGER,
+  note          TEXT,
+  status        TEXT NOT NULL DEFAULT 'ACTIVE' CONSTRAINT asset_exchanges_status_check CHECK (status IN ('ACTIVE', 'DELETED')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+`;
+
+// The columns version 18 adds to assets. The table's own unnamed CHECKs are left alone (nothing here changes what they allow).
+export const ASSET_COLUMNS_V18 = [
+  ["for_name", "ALTER TABLE assets ADD COLUMN for_name TEXT"],
+  ["item", "ALTER TABLE assets ADD COLUMN item TEXT"],
+  ["exchange_id", "ALTER TABLE assets ADD COLUMN exchange_id TEXT"],
+] as const;
+
+// The columns schema version 19 adds to train_journeys: the booked flag (every journey saved before it is not booked) and the optional PNR.
+export const TRAIN_COLUMNS_V19 = [
+  ["booked", "ALTER TABLE train_journeys ADD COLUMN booked INTEGER NOT NULL DEFAULT 0"],
+  ["pnr", "ALTER TABLE train_journeys ADD COLUMN pnr TEXT"],
+] as const;

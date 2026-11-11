@@ -10,6 +10,7 @@ import { RECATEGORISE_ATTEMPTS_USED, UNRESOLVED, aiAttemptOutcome } from "../dom
 import { PENDING_AI, fallbackFor } from "../domain/taxonomy";
 import { addSuggestions, addUnsuggested } from "../import/suggestionStore";
 import type { GroupScope } from "../domain/groupScope";
+import { itemKey, itemsBySubcategory, type ChatEntries, type SpendItem } from "../domain/expenseChat";
 import { getDb, inTransaction } from "./database";
 import { insertGroup, type GroupInput } from "./groups";
 import type { OpeningIncome } from "../domain/entryGroup";
@@ -99,7 +100,7 @@ function toRecord(r: Row): TransactionRecord {
 
 // One group's transactions, newest first. Soft-deleted rows are never listed or counted.
 // "AND group_id IN (...)" for one group, several groups, or nothing for every group (null).
-function scopeSql(scope: string | GroupScope): { sql: string; params: string[] } {
+export function scopeSql(scope: string | GroupScope): { sql: string; params: string[] } {
   if (scope === null) return { sql: "", params: [] };
   const ids = typeof scope === "string" ? [scope] : scope;
   if (ids.length === 0) return { sql: "AND 0", params: [] };
@@ -278,6 +279,115 @@ export async function getExpensesBy(scope: string | GroupScope, grouping: Expens
   const top = groups.slice(0, MAX_GROUPS - 1);
   const rest = groups.slice(MAX_GROUPS - 1).reduce((n, g) => n + g.totalPaise, 0);
   return [...top, { label: "Rest", totalPaise: rest }];
+}
+
+// What the "Ask AI" page tells the AI about the spending of a group (or several): totals, where the money went by category and
+// subcategory (with what was bought, from the descriptions and UPI notes), by month, and the largest payees. No bank narrations, UPI ids or
+// balances.
+export interface SpendingSummary {
+  incomePaise: number;
+  expensePaise: number;
+  byCategory: { category: string; subcategory: string; totalPaise: number; count: number; items: SpendItem[] }[];
+  months: { month: string; expensePaise: number }[]; // "2026-11", oldest first
+  topPayees: { payee: string; totalPaise: number }[]; // "Rest" at the end stands for all the other payees
+}
+
+const MAX_SUMMARY_CATEGORIES = 60;
+const MAX_SUMMARY_ITEM_ROWS = 800;
+
+export async function getSpendingSummary(scope: string | GroupScope, range: DateRange): Promise<SpendingSummary> {
+  const db = await getDb();
+  const where = scopeSql(scope);
+  const params = [...where.params, range.start, range.end];
+  const [totals, categories, months, payees, itemRows] = await Promise.all([
+    getTotals(scope, range),
+    db.getAllAsync<{ cat: string; sub: string; total: number; n: number }>(
+      `SELECT COALESCE(NULLIF(TRIM(category), ''), 'Not set') AS cat, COALESCE(NULLIF(TRIM(subcategory), ''), 'Not set') AS sub,
+              SUM(amount_paise) AS total, COUNT(*) AS n
+       FROM transactions
+       WHERE status = 'ACTIVE' ${where.sql} AND direction = 'debit' AND txn_date BETWEEN ? AND ?
+       GROUP BY cat, sub ORDER BY total DESC LIMIT ${MAX_SUMMARY_CATEGORIES}`,
+      params,
+    ),
+    db.getAllAsync<{ month: string; total: number }>(
+      `SELECT substr(txn_date, 1, 7) AS month, SUM(amount_paise) AS total
+       FROM transactions
+       WHERE status = 'ACTIVE' ${where.sql} AND direction = 'debit' AND txn_date BETWEEN ? AND ?
+       GROUP BY month ORDER BY month`,
+      params,
+    ),
+    getExpensesBy(scope, "payee", range),
+    db.getAllAsync<{ cat: string; sub: string; item: string; total: number; n: number }>(
+      `SELECT COALESCE(NULLIF(TRIM(category), ''), 'Not set') AS cat, COALESCE(NULLIF(TRIM(subcategory), ''), 'Not set') AS sub,
+              COALESCE(NULLIF(TRIM(description), ''), NULLIF(TRIM(note), '')) AS item, SUM(amount_paise) AS total, COUNT(*) AS n
+       FROM transactions
+       WHERE status = 'ACTIVE' ${where.sql} AND direction = 'debit' AND txn_date BETWEEN ? AND ?
+         AND COALESCE(NULLIF(TRIM(description), ''), NULLIF(TRIM(note), '')) IS NOT NULL
+       GROUP BY cat, sub, LOWER(item) ORDER BY total DESC LIMIT ${MAX_SUMMARY_ITEM_ROWS}`,
+      params,
+    ),
+  ]);
+  const items = itemsBySubcategory(itemRows.map((r) => ({ category: r.cat, subcategory: r.sub, label: r.item, totalPaise: r.total, count: r.n })));
+  return {
+    incomePaise: totals.incomePaise,
+    expensePaise: totals.expensePaise,
+    byCategory: categories.map((r) => ({
+      category: r.cat,
+      subcategory: r.sub,
+      totalPaise: r.total,
+      count: r.n,
+      items: items.get(itemKey(r.cat, r.sub)) ?? [],
+    })),
+    months: months.map((r) => ({ month: r.month, expensePaise: r.total })),
+    topPayees: payees.map((g) => ({ payee: g.label, totalPaise: g.totalPaise })),
+  };
+}
+
+// The entries of the groups and period for the Ask AI page, newest first, at most `limit` of them, and how many there are in all.
+export async function listChatEntries(scope: string | GroupScope, range: DateRange, limit: number): Promise<ChatEntries & { groupIds: string[] }> {
+  const db = await getDb();
+  const where = scopeSql(scope);
+  const params = [...where.params, range.start, range.end];
+  const rows = await db.getAllAsync<{
+    txn_date: string;
+    direction: Direction;
+    amount_paise: number;
+    balance_paise: number | null;
+    category: string;
+    subcategory: string;
+    payee: string | null;
+    payment_method: string | null;
+    description: string | null;
+    note: string | null;
+    group_id: string;
+  }>(
+    `SELECT txn_date, direction, amount_paise, balance_paise, category, subcategory, payee, payment_method, description, note, group_id
+     FROM transactions
+     WHERE status = 'ACTIVE' ${where.sql} AND txn_date BETWEEN ? AND ?
+     ORDER BY txn_date DESC, created_at DESC, rowid DESC LIMIT ?`,
+    [...params, limit],
+  );
+  const count = await db.getFirstAsync<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM transactions WHERE status = 'ACTIVE' ${where.sql} AND txn_date BETWEEN ? AND ?`,
+    params,
+  );
+  return {
+    total: count?.n ?? rows.length,
+    groupIds: rows.map((r) => r.group_id),
+    entries: rows.map((r) => ({
+      date: r.txn_date,
+      direction: r.direction,
+      amountPaise: r.amount_paise,
+      category: r.category,
+      subcategory: r.subcategory,
+      payee: r.payee,
+      paymentMethod: r.payment_method,
+      description: r.description,
+      note: r.note,
+      balancePaise: r.balance_paise,
+      groupName: null,
+    })),
+  };
 }
 
 const KEY_CHUNK = 500;

@@ -5,11 +5,11 @@ import { MENU_PAGES, groupMenuPages } from "../../src/ui/menuPages";
 test("the menu lists the pages in the agreed order, each once", () => {
   assert.deepEqual(
     MENU_PAGES.map((p) => p.label),
-    ["Home", "Transactions", "Groups", "Charts", "Assets", "Gifts", "Train alarms", "Config", "How it works"],
+    ["Home", "Transactions", "Groups", "Charts", "Ask AI", "Assets", "Gifts", "Gold & Silver Rates", "Train alarms", "Config", "How it works"],
   );
   assert.deepEqual(
     MENU_PAGES.map((p) => p.path),
-    ["/", "/transactions", "/groups", "/charts", "/assets", "/gifts", "/train", "/config", "/help"],
+    ["/", "/transactions", "/groups", "/charts", "/chat", "/assets", "/gifts", "/rates", "/train", "/config", "/help"],
   );
   assert.equal(new Set(MENU_PAGES.map((p) => p.path)).size, MENU_PAGES.length);
 });
@@ -22,6 +22,7 @@ test("inside a group the menu is that group's pages, then the way out", () => {
       ["Overview", "/groups/g-1"],
       ["Transactions", "/groups/g-1/transactions"],
       ["Charts", "/groups/g-1/charts"],
+      ["Ask AI", "/groups/g-1/chat"],
       ["Groups", "/groups"],
       ["Main", "/"],
     ],

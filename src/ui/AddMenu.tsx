@@ -13,6 +13,8 @@ type IconName = keyof typeof MaterialIcons.glyphMap;
 const FAB_SIZE = 60;
 const FAB_BOTTOM = 20;
 const ACTION_SIZE = 40;
+const ASK_SIZE = 48; // the Ask AI button, a little smaller than the + button it sits above
+const ASK_GAP = 12;
 
 interface Action {
   label: string;
@@ -27,6 +29,24 @@ export function useAddClearance(): number {
   const insets = useSafeAreaInsets();
   const desktop = useIsDesktop();
   return desktop ? 0 : FAB_SIZE + FAB_BOTTOM * 2 + insets.bottom;
+}
+
+// The round Ask AI button that floats just above the + button (on Home and a group's Overview). It opens the Ask AI chat for the group the page
+// belongs to: the group's own chat inside a group page, the home group's elsewhere. Like the + button it is part of the page, and a wide browser
+// window has Ask AI in the Sidebar instead.
+export function AskAiButton() {
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const groupId = groupIdFromPath(usePathname());
+  const desktop = useIsDesktop();
+  if (desktop) return null;
+  return (
+    <View pointerEvents="box-none" style={[styles.anchored, styles.askSide, { bottom: insets.bottom + FAB_BOTTOM + FAB_SIZE + ASK_GAP }]}>
+      <Pressable onPress={() => router.push(groupId ? `/groups/${groupId}/chat` : "/chat")} style={styles.ask} accessibilityRole="button" accessibilityLabel="Ask AI">
+        <MaterialIcons name="auto-awesome" size={24} color={colors.primary} />
+      </Pressable>
+    </View>
+  );
 }
 
 function Fab({ open, onPress }: { open: boolean; onPress: () => void }) {
@@ -121,6 +141,19 @@ const styles = StyleSheet.create({
   // Pinned to the bottom edge; children define the height.
   anchored: { position: "absolute", left: 0, right: 0, alignItems: "center" },
   right: { alignItems: "flex-end", paddingRight: 20 },
+  // centred over the + button, which is wider
+  askSide: { alignItems: "flex-end", paddingRight: 20 + (FAB_SIZE - ASK_SIZE) / 2 },
+  ask: {
+    width: ASK_SIZE,
+    height: ASK_SIZE,
+    borderRadius: ASK_SIZE / 2,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: colors.primaryTint,
+    alignItems: "center",
+    justifyContent: "center",
+    ...shadow.mid,
+  },
   fab: {
     width: FAB_SIZE,
     height: FAB_SIZE,
@@ -153,11 +186,13 @@ const styles = StyleSheet.create({
 // A page with the + button floating over it. The layer holding the button fills the page and lets touches through, so the button is
 // inside its parent's bounds (iOS ignores touches outside them) without taking any room. It is part of the page, so it slides in
 // and out with it.
-export function WithAddButton({ children }: { children: ReactNode }) {
+// `askAi` adds the Ask AI button above the + button; only Home and a group's Overview ask for it.
+export function WithAddButton({ children, askAi = false }: { children: ReactNode; askAi?: boolean }) {
   return (
     <View style={styles.page}>
       {children}
       <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+        {askAi ? <AskAiButton /> : null}
         <AddMenu align="right" />
       </View>
     </View>

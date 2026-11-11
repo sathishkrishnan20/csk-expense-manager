@@ -11,7 +11,8 @@ import {
   Roboto_900Black,
   useFonts,
 } from "@expo-google-fonts/roboto";
-import { configureAlarmNotifications, syncTrainAlarms } from "../alarms/sync";
+import { runStartupSync } from "../alarms/startup";
+import { configureAlarmNotifications } from "../alarms/sync";
 import { getDb } from "../db/database";
 import { listenForPhoneMessages } from "../import/phoneInbox";
 import { pullSms } from "../import/smsCapture";
@@ -38,7 +39,7 @@ export default function RootLayout() {
   useEffect(() => {
     if (!dbReady) return;
     configureAlarmNotifications();
-    syncTrainAlarms().catch(() => {});
+    runStartupSync();
   }, [dbReady]);
 
   // Bank messages the Shortcut has handed over are collected when the app opens and each time it comes back to the front, and at once

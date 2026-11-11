@@ -2,16 +2,23 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { MARKS_SUPPORTED, loadCheckList } from "../alarms/check";
 import { describeSync, syncTrainAlarms } from "../alarms/sync";
 import { deleteJourney, getJourney, saveJourney } from "../db/trainJourneys";
 import {
   BOOKINGS,
   DEFAULT_BOOKING,
   bookingInfo,
+  advanceMissed,
+  bookedLockedText,
+  canMarkBooked,
   describeSchedule,
   journeyStatus,
   validateLabel,
+  validatePnr,
   validateTimes,
+  alarmTimeMarks,
+  droppedText,
   type Booking,
 } from "../domain/trainAlarms";
 import { confirmAction, notify } from "../platform/dialogs";
@@ -24,8 +31,15 @@ import { colors, shadow } from "../ui/theme";
 // Add a journey, or edit/delete one when ?id= is given. ?copy= starts a new journey from an existing one: everything is filled in
 // except the journey date, which the owner picks. The journey date starts empty so it is clear what to fill in. Once it is picked, the
 // bottom of the screen says in plain words when booking opens and when the alarms will wake the owner. Saving sets the alarms on the
-// phone (alarms/sync.ts); the first save asks iOS for permission.
+// phone (alarms/sync.ts); the first save asks iOS for permission. Booked: once the ticket is booked, set it to Yes (and, if you like, type the
+// PNR): the alarms exist only to wake you for booking, so a booked journey has none, and its alarms are cancelled when you save. Booked is locked
+// at No until booking has opened (60 days before for advance, the day before for Tatkal): a ticket cannot be booked earlier.
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
+const BOOKED: { value: "no" | "yes"; label: string }[] = [
+  { value: "no", label: "No, not yet" },
+  { value: "yes", label: "Yes, booked" },
+];
 
 export default function TrainJourneyForm() {
   const { id, copy } = useLocalSearchParams<{ id?: string; copy?: string }>();
@@ -40,6 +54,8 @@ export default function TrainJourneyForm() {
   const [booking, setBooking] = useState<Booking>(DEFAULT_BOOKING);
   const [times, setTimes] = useState<string[]>(bookingInfo(DEFAULT_BOOKING).defaultTimes);
   const [note, setNote] = useState("");
+  const [booked, setBooked] = useState(false);
+  const [pnr, setPnr] = useState("");
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
   const deleting = useRef(false);
@@ -64,6 +80,9 @@ export default function TrainJourneyForm() {
       setBooking(j.booking);
       setTimes(j.alarmTimes);
       setNote(j.note ?? "");
+      // A copy is a new journey, so it is not booked yet.
+      setBooked(editing ? j.booked : false);
+      setPnr(editing ? (j.pnr ?? "") : "");
       setLoaded(true);
     })();
     return () => {
@@ -72,6 +91,25 @@ export default function TrainJourneyForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, copy]);
 
+  // A saved journey shows a mark beside each of its alarm times: a check when iOS holds that alarm, a cross when it does not. Alarms are set on
+  // iPhone only. The marks come from what was saved, so a time typed just now has none until the journey is saved.
+  const [marks, setMarks] = useState<Record<string, boolean> | undefined>(undefined);
+  const [warning, setWarning] = useState<string | null>(null);
+  useEffect(() => {
+    if (!editing || !MARKS_SUPPORTED) return;
+    let alive = true;
+    loadCheckList()
+      .then((list) => {
+        if (!alive) return;
+        setMarks(alarmTimeMarks(list, id));
+        setWarning(droppedText(list, id));
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [editing, id]);
+
   // Each kind of booking opens at a different time, so choosing another one brings in that booking's usual alarm times.
   const chooseBooking = (next: Booking) => {
     setBooking(next);
@@ -79,16 +117,21 @@ export default function TrainJourneyForm() {
   };
 
   const fields = useMemo(
-    () => (date === null ? null : { label: label.trim() || "Journey", journeyDate: date, booking, alarmTimes: times }),
+    () => (date === null ? null : { label: label.trim() || "Journey", journeyDate: date, booking, alarmTimes: times, booked: false, pnr: null }),
     [label, date, booking, times],
   );
   const now = new Date();
+  // Booked can be Yes only once booking has opened for this date and booking type; before that it is No whatever was chosen earlier.
+  const bookedAllowed = fields !== null && canMarkBooked(fields, now);
+  const isBooked = booked && bookedAllowed;
   const inPast = fields !== null && journeyStatus(fields, now).phase === "past";
   const schedule = fields !== null && !inPast ? describeSchedule(fields, now) : null;
 
   const labelProblem = label.trim() === "" ? null : validateLabel(label);
-  const timesProblem = validateTimes(times);
-  const canSave = loaded && !busy && validateLabel(label) === null && date !== null && !inPast && timesProblem === null;
+  // A booked journey has no alarms, so its alarm times are not checked.
+  const timesProblem = isBooked ? null : validateTimes(times);
+  const pnrProblem = isBooked && pnr.trim() !== "" ? validatePnr(pnr) : null;
+  const canSave = loaded && !busy && validateLabel(label) === null && date !== null && !inPast && timesProblem === null && pnrProblem === null;
 
   const submit = async () => {
     // The ref closes the gap before `busy` is drawn: a fast second tap must not save the journey twice.
@@ -96,7 +139,7 @@ export default function TrainJourneyForm() {
     submitting.current = true;
     setBusy(true);
     try {
-      await saveJourney({ label, journeyDate: date, booking, alarmTimes: times, note: note.trim() || null }, editing ? id : undefined);
+      await saveJourney({ label, journeyDate: date, booking, alarmTimes: times, booked: isBooked, pnr: isBooked ? pnr : null, note: note.trim() || null }, editing ? id : undefined);
     } catch (err) {
       submitting.current = false;
       setBusy(false);
@@ -151,7 +194,21 @@ export default function TrainJourneyForm() {
         {labelProblem ? <T style={styles.error}>{labelProblem}</T> : null}
         <DateField label="Journey date" value={date} onChange={setDate} placeholder="Select the journey date" />
         <ChoiceField label="Booking" options={BOOKINGS.map((b) => ({ value: b.value, label: b.label }))} value={booking} onChange={chooseBooking} />
-        <AlarmTimesField times={times} onChange={setTimes} />
+        {fields !== null && advanceMissed({ ...fields, booked: isBooked }, now) ? (
+          <T style={styles.note}>
+            Advance booking has already opened. If you did not book, choose Tatkal AC or Tatkal Non AC above: it opens the day before your journey, and the alarms move to that day.
+          </T>
+        ) : null}
+        <ChoiceField label="Booked" options={BOOKED} value={isBooked ? "yes" : "no"} onChange={(v) => setBooked(v === "yes")} disabled={!bookedAllowed} />
+        {fields === null ? (
+          <T style={styles.note}>Pick the journey date first. Booked can be set once booking has opened.</T>
+        ) : !bookedAllowed ? (
+          <T style={styles.note}>{bookedLockedText(fields, now)}</T>
+        ) : null}
+        {isBooked ? <OutlinedInput label="PNR (optional)" value={pnr} onChangeText={setPnr} keyboardType="number-pad" maxLength={14} /> : null}
+        {pnrProblem ? <T style={styles.error}>{pnrProblem}</T> : null}
+        {isBooked ? null : <AlarmTimesField times={times} onChange={setTimes} marks={marks} />}
+        {warning && !isBooked ? <T style={styles.error}>{warning}</T> : null}
         {timesProblem && times.length === 0 ? <T style={styles.error}>{timesProblem}</T> : null}
         <OutlinedInput label="Note (optional, for example train or class)" value={note} onChangeText={setNote} />
 
@@ -160,6 +217,10 @@ export default function TrainJourneyForm() {
             <T style={styles.summaryLine}>Pick the journey date, and this box will tell you when booking opens and when you will be woken up.</T>
           ) : inPast ? (
             <T style={styles.error}>That journey date has already passed.</T>
+          ) : isBooked ? (
+            <T weight="medium" style={styles.summaryLine}>
+              Booked. No booking alarms are needed, so any alarms for this journey are cancelled.
+            </T>
           ) : schedule ? (
             <>
               <T weight="medium" style={styles.summaryLine}>

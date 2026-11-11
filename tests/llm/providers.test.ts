@@ -221,8 +221,22 @@ test("ollama: posts to the owner's server with the schema as format, no key, and
   assert.equal(body.stream, false);
   assert.deepEqual(body.format, SCHEMA);
   assert.equal(body.options.temperature, 0);
+  assert.equal("num_ctx" in body.options, false); // Ollama's own window unless one is asked for
   assert.match(body.messages[0].content, /^SYS\n\nAnswer only with JSON/);
   assert.equal(body.messages[1].content, "USER");
+});
+
+test("ollama: a longer context window can be asked for, so a long prompt is not cut without a word", async () => {
+  let body: { options: Record<string, unknown> } | undefined;
+  const call = createLlmCall("ollama", "", {
+    numCtx: 16384,
+    fetch: async (_url, init) => {
+      body = JSON.parse(String(init!.body));
+      return json({ done_reason: "stop", message: { role: "assistant", content: JSON.stringify(RESULTS) } });
+    },
+  });
+  await call("SYS", "USER", SCHEMA);
+  assert.deepEqual(body!.options, { temperature: 0, num_ctx: 16384 });
 });
 
 test("ollama: unreachable server, missing model, cut-off and non-JSON answers are readable", async () => {

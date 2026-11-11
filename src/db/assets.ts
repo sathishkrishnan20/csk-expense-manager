@@ -1,4 +1,5 @@
 import { normaliseAsset, type AssetFields, type AssetType, type AssetUnit } from "../domain/assets";
+import { canonicalAssetOption } from "./assetOptions";
 import { getDb, inTransaction } from "./database";
 
 // Assets are information only: nothing here reads or writes transactions, groups or balances (see domain/assets.ts).
@@ -13,6 +14,9 @@ interface AssetRow {
   id: string;
   type: AssetType;
   name: string;
+  for_name: string | null;
+  item: string | null;
+  exchange_id: string | null;
   status: "ACTIVE" | "SOLD";
   quantity: number | null;
   unit: AssetUnit | null;
@@ -34,6 +38,9 @@ const toRecord = (r: AssetRow): AssetRecord => ({
   id: r.id,
   type: r.type,
   name: r.name,
+  forName: r.for_name,
+  item: r.item,
+  exchangeId: r.exchange_id,
   status: r.status,
   quantity: r.quantity,
   unit: r.unit,
@@ -52,7 +59,7 @@ const toRecord = (r: AssetRow): AssetRecord => ({
 });
 
 const SELECT_ASSETS = `
-  SELECT id, type, name, status, quantity, unit, purity_k, invested_paise, acquired_date, description, gift_id,
+  SELECT id, type, name, for_name, item, exchange_id, status, quantity, unit, purity_k, invested_paise, acquired_date, description, gift_id,
          lender, ticket_no, pledged_date, due_date, loan_paise, pledge_note, created_at
   FROM assets WHERE status != 'DELETED'`;
 
@@ -84,10 +91,18 @@ export async function getAssetByGift(giftId: string): Promise<AssetRecord | null
 // asset and adds nothing, so a double tap or a second try cannot make a duplicate.
 export async function saveAsset(input: AssetFields, id?: string, giftId?: string): Promise<string> {
   const db = await getDb();
-  const a = normaliseAsset(input);
-  const values = [
+  let savedId = id ?? "";
+  await inTransaction(db, async (txn) => {
+    // A For or Item that is not in the dropdown yet is added to it, in the list's own spelling when it is only a different capitalisation.
+    const forName = await canonicalAssetOption(txn, "for", input.forName);
+    const item = await canonicalAssetOption(txn, "item", input.item);
+    const a = normaliseAsset({ ...input, forName, item });
+    const values = [
     a.type,
     a.name,
+    a.forName,
+    a.item,
+    a.exchangeId,
     a.status,
     a.quantity,
     a.unit,
@@ -101,12 +116,10 @@ export async function saveAsset(input: AssetFields, id?: string, giftId?: string
     a.dueDate,
     a.loanPaise,
     a.pledgeNote,
-  ];
-  let savedId = id ?? "";
-  await inTransaction(db, async (txn) => {
+    ];
     if (id) {
       await txn.runAsync(
-        `UPDATE assets SET type = ?, name = ?, status = ?, quantity = ?, unit = ?, purity_k = ?, invested_paise = ?, acquired_date = ?,
+        `UPDATE assets SET type = ?, name = ?, for_name = ?, item = ?, exchange_id = ?, status = ?, quantity = ?, unit = ?, purity_k = ?, invested_paise = ?, acquired_date = ?,
                 description = ?, lender = ?, ticket_no = ?, pledged_date = ?, due_date = ?, loan_paise = ?, pledge_note = ?,
                 updated_at = datetime('now') WHERE id = ?`,
         [...values, id],
@@ -122,9 +135,9 @@ export async function saveAsset(input: AssetFields, id?: string, giftId?: string
     }
     savedId = newId();
     await txn.runAsync(
-      `INSERT INTO assets (id, gift_id, type, name, status, quantity, unit, purity_k, invested_paise, acquired_date, description,
-                           lender, ticket_no, pledged_date, due_date, loan_paise, pledge_note)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO assets (id, gift_id, type, name, for_name, item, exchange_id, status, quantity, unit, purity_k, invested_paise, acquired_date,
+                           description, lender, ticket_no, pledged_date, due_date, loan_paise, pledge_note)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [savedId, giftId ?? null, ...values],
     );
   });

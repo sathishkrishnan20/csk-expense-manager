@@ -35,6 +35,7 @@ export interface LlmDeps {
   sleep?: (ms: number) => Promise<void>;
   model?: string; // overrides MODELS[provider]
   baseUrl?: string; // Ollama server address
+  numCtx?: number; // Ollama's context window in tokens; its own default is small, so a long prompt would be cut without a word
 }
 
 export class LlmError extends Error {
@@ -219,7 +220,7 @@ function ollamaCall(deps: LlmDeps): LlmCall {
             { role: "user", content: user },
           ],
           format: schema,
-          options: { temperature: 0 },
+          options: { temperature: 0, ...(deps.numCtx ? { num_ctx: deps.numCtx } : {}) },
         },
         deps,
       );

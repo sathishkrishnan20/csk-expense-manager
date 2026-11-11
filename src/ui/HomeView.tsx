@@ -22,6 +22,7 @@ import { T } from "./Text";
 import { Button, Chip } from "./forms";
 import { GroupCard } from "./GroupCard";
 import { SmsProblemBar } from "./SmsProblemBar";
+import { TrainAlarmBar } from "./TrainAlarmBar";
 import { RowDivider, TransactionRow } from "./TransactionRow";
 import { useAddClearance } from "./AddMenu";
 import { useOpenDrawer } from "./AppDrawer";
@@ -172,6 +173,7 @@ export function HomeView({ groupId, groupBar }: { groupId: string; groupBar?: Gr
         </View>
 
         {homeScreen ? <SmsProblemBar /> : null}
+        {homeScreen ? <TrainAlarmBar /> : null}
 
         {/* Groups are only made from an entry (Add > "Create a group for this entry"), so there is no New group button here. */}
         {strip.length > 0 ? (

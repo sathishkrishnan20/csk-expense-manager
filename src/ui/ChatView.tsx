@@ -1,0 +1,271 @@
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useFocusEffect } from "expo-router";
+import { askChat } from "../chat/ask";
+import { CAPABILITIES } from "../chat/capabilities";
+import { addApprovedSubcategory } from "../db/config";
+import { listGroupsWithBalances } from "../db/groups";
+import {
+  CHAT_PERIODS,
+  DEFAULT_CHAT_PERIOD,
+  EXAMPLE_QUESTIONS,
+  MAX_QUESTION_CHARS,
+  type ChatMessage,
+  type ChatPeriod,
+  type ChatProposal,
+  privacyNote,
+} from "../domain/expenseChat";
+import type { GroupWithBalance } from "../domain/groups";
+import { scopeKey, type GroupScope } from "../domain/groupScope";
+import { PROVIDER_LABEL, type Provider } from "../llm/providers";
+import { loadProvider } from "../settings/settings";
+import { T } from "./Text";
+import { Button, Chip, InlineSelect, TextButton } from "./forms";
+import { GroupFilter } from "./GroupFilter";
+import { colors } from "./theme";
+
+// Behaviour of the keyboard-avoiding view, named for every platform: the iPhone pushes the page up with padding, Android resizes it, and
+// a browser has no on-screen keyboard to avoid.
+const KEYBOARD_BEHAVIOR = Platform.select<"padding" | "height" | undefined>({ ios: "padding", android: "height", web: undefined, default: undefined });
+
+const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+type ProposalState = "adding" | "added" | "dismissed";
+
+// Questions about your own spending, answered by the AI chosen in Config, for the groups and period chosen here. The chat is kept in memory
+// only. When the AI thinks nothing in your list fits what you bought, it can propose a new subcategory; it is added only when you tap
+// the button under its answer.
+export function ChatView({ groupId, header }: { groupId: string; header: ReactNode }) {
+  const [allGroups, setAllGroups] = useState<GroupWithBalance[]>([]);
+  const [scope, setScope] = useState<GroupScope>([groupId]);
+  useEffect(() => setScope([groupId]), [groupId]); // another page group starts on that group again
+  const [period, setPeriod] = useState<ChatPeriod>(DEFAULT_CHAT_PERIOD);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [proposals, setProposals] = useState<Record<number, ProposalState>>({});
+  const [proposalError, setProposalError] = useState<Record<number, string>>({});
+  const [provider, setProvider] = useState<Provider>("gemini");
+  const kinds = CAPABILITIES.map((c) => c.title); // everything the AI can look at
+  const scroll = useRef<{ scrollToEnd: (options?: { animated?: boolean }) => void }>(null); // only what is used of the ScrollView
+  const key = scopeKey(scope);
+
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      listGroupsWithBalances().then((gs) => alive && setAllGroups(gs));
+      // The AI chosen in Config and the privacy switch can change on another page, so they are read each time this one is shown.
+      loadProvider().then((p) => alive && setProvider(p));
+      return () => {
+        alive = false;
+      };
+    }, []),
+  );
+
+  const ask = async (history: ChatMessage[]) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const reply = await askChat(scope, period, history);
+      setMessages([...history, { role: "assistant", text: reply.answer, proposal: reply.proposal ?? undefined, toolsUsed: reply.toolsUsed?.length ? reply.toolsUsed : undefined }]);
+    } catch (err) {
+      setError(message(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const send = (text: string) => {
+    const question = text.trim().slice(0, MAX_QUESTION_CHARS);
+    if (!question || busy) return;
+    const history: ChatMessage[] = [...messages, { role: "user", text: question }];
+    setMessages(history);
+    setInput("");
+    ask(history);
+  };
+
+  const addToList = async (index: number, proposal: ChatProposal) => {
+    setProposals((all) => ({ ...all, [index]: "adding" }));
+    setProposalError((all) => ({ ...all, [index]: "" }));
+    try {
+      await addApprovedSubcategory(proposal.category, proposal.subcategory, proposal.description);
+      setProposals((all) => ({ ...all, [index]: "added" }));
+    } catch (err) {
+      setProposals((all) => {
+        const { [index]: _gone, ...rest } = all;
+        return rest;
+      });
+      setProposalError((all) => ({ ...all, [index]: message(err) }));
+    }
+  };
+
+  const clear = () => {
+    setMessages([]);
+    setProposals({});
+    setProposalError({});
+    setError(null);
+  };
+
+  const canSend = input.trim() !== "" && !busy;
+
+  return (
+    <KeyboardAvoidingView style={styles.page} behavior={KEYBOARD_BEHAVIOR}>
+      {header}
+      <GroupFilter groups={allGroups} scope={scope} onChange={setScope} />
+      <View style={styles.periodRow}>
+        <T style={styles.periodLabel}>Period</T>
+        <InlineSelect label="Period" value={period} options={CHAT_PERIODS} onChange={setPeriod} />
+        {messages.length > 0 ? (
+          <View style={{ marginLeft: "auto" }}>
+            <TextButton label="New chat" onPress={clear} />
+          </View>
+        ) : null}
+      </View>
+
+      <ScrollView
+        ref={(node) => {
+          scroll.current = node;
+        }}
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.messages}
+        keyboardShouldPersistTaps="handled"
+        onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}
+      >
+        {messages.length === 0 ? (
+          <View>
+            <T weight="medium" style={styles.hello}>
+              Ask about your spending
+            </T>
+            <T style={styles.note}>
+              For example: what a purchase should be filed under, where your money goes, or what you could cut down. Answers use the group and period
+              chosen above. {privacyNote(PROVIDER_LABEL[provider], provider === "ollama", kinds)}
+            </T>
+            <View style={styles.examples}>
+              {EXAMPLE_QUESTIONS.map((q) => (
+                <Chip key={q} label={q} onPress={() => setInput(q)} />
+              ))}
+            </View>
+          </View>
+        ) : null}
+
+        {messages.map((m, i) => (
+          <View key={i} style={[styles.row, m.role === "user" ? styles.rowUser : styles.rowAssistant]}>
+            <View style={[styles.bubble, m.role === "user" ? styles.bubbleUser : styles.bubbleAssistant]}>
+              <T selectable style={styles.bubbleText}>
+                {m.text}
+              </T>
+            </View>
+            {m.toolsUsed?.length ? <T style={styles.looked}>Looked at: {m.toolsUsed.join(", ")}</T> : null}
+            {m.proposal ? (
+              <ProposalCard
+                proposal={m.proposal}
+                state={proposals[i]}
+                error={proposalError[i]}
+                onAdd={() => addToList(i, m.proposal!)}
+                onDismiss={() => setProposals((all) => ({ ...all, [i]: "dismissed" }))}
+              />
+            ) : null}
+          </View>
+        ))}
+
+        {busy ? <T style={styles.thinking}>Thinking…</T> : null}
+        {error ? (
+          <View style={styles.errorBox}>
+            <T style={styles.errorText}>{error}</T>
+            {messages.length > 0 && messages[messages.length - 1].role === "user" ? <TextButton label="Try again" onPress={() => ask(messages)} /> : null}
+          </View>
+        ) : null}
+      </ScrollView>
+
+      <View style={styles.inputBar}>
+        <TextInput
+          style={styles.input}
+          value={input}
+          onChangeText={setInput}
+          placeholder="Ask about your expenses"
+          placeholderTextColor={colors.grayText}
+          multiline
+          maxLength={MAX_QUESTION_CHARS}
+          editable={!busy}
+        />
+        <Pressable
+          onPress={() => send(input)}
+          disabled={!canSend}
+          style={[styles.send, !canSend && styles.sendOff]}
+          accessibilityRole="button"
+          accessibilityLabel="Send"
+        >
+          <MaterialIcons name="send" size={22} color="#fff" />
+        </Pressable>
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+
+// The AI's proposal for a category and subcategory that are not in the list. Adding is the owner's choice.
+function ProposalCard({
+  proposal,
+  state,
+  error,
+  onAdd,
+  onDismiss,
+}: {
+  proposal: ChatProposal;
+  state: ProposalState | undefined;
+  error: string | undefined;
+  onAdd: () => void;
+  onDismiss: () => void;
+}) {
+  if (state === "dismissed") return null;
+  return (
+    <View style={styles.proposal}>
+      <T style={styles.proposalKind}>{proposal.status === "new-category" ? "Suggested new category" : `Suggested new subcategory under ${proposal.category}`}</T>
+      <T weight="medium" style={styles.proposalName}>
+        {proposal.category} : {proposal.subcategory}
+      </T>
+      {proposal.description ? <T style={styles.proposalDescription}>{proposal.description}</T> : null}
+      {error ? <T style={styles.errorText}>{error}</T> : null}
+      {state === "added" ? (
+        <T style={styles.added}>Added to your categories. Nothing was moved.</T>
+      ) : (
+        <View style={styles.proposalActions}>
+          <Button label={state === "adding" ? "Adding…" : "Add to my list"} onPress={onAdd} disabled={state === "adding"} />
+          <TextButton label="Not now" onPress={onDismiss} />
+        </View>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  page: { flex: 1, backgroundColor: colors.background },
+  periodRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 4 },
+  periodLabel: { color: colors.textSecondary },
+  looked: { color: colors.textSecondary, fontSize: 11, marginLeft: 4 },
+  messages: { padding: 12, gap: 10, flexGrow: 1 },
+  hello: { fontSize: 18, marginTop: 8 },
+  note: { color: colors.textSecondary, fontSize: 13, marginTop: 6, lineHeight: 19 },
+  examples: { marginTop: 14, gap: 8, alignItems: "flex-start" },
+  row: { gap: 6 },
+  rowUser: { alignItems: "flex-end" },
+  rowAssistant: { alignItems: "flex-start" },
+  bubble: { maxWidth: "92%", borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8 },
+  bubbleUser: { backgroundColor: colors.primaryTint },
+  bubbleAssistant: { backgroundColor: "#f3f3f3" },
+  bubbleText: { fontSize: 15, lineHeight: 21 },
+  thinking: { color: colors.textSecondary, fontStyle: "italic" },
+  errorBox: { gap: 4, alignItems: "flex-start" },
+  errorText: { color: colors.error, fontSize: 13 },
+  proposal: { maxWidth: "92%", borderWidth: 1, borderColor: colors.primary, borderRadius: 12, padding: 12, gap: 4, backgroundColor: "#fff" },
+  proposalKind: { color: colors.primary, fontSize: 12 },
+  proposalName: { fontSize: 15 },
+  proposalDescription: { color: colors.textSecondary, fontSize: 13 },
+  proposalActions: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 6 },
+  added: { color: colors.creditText, fontSize: 13, marginTop: 4 },
+  inputBar: { flexDirection: "row", alignItems: "flex-end", gap: 8, padding: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.outline, backgroundColor: "#fff" },
+  input: { flex: 1, minHeight: 44, maxHeight: 120, borderWidth: 1, borderColor: colors.outline, borderRadius: 22, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, fontSize: 15, color: colors.text },
+  send: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  sendOff: { opacity: 0.4 },
+});

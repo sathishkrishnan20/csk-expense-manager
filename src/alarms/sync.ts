@@ -12,7 +12,10 @@ import {
   planAlarms,
   describeSyncOutcome,
   planNotifications,
+  parseNotificationId,
+  parseSetAlarms,
   type PlannedNotification,
+  type SetAlarm,
 } from "../domain/trainAlarms";
 import { alarmKitInstalled, cancelAlarmKit, requestAlarmKit, scheduleAlarmKit } from "./alarmKit";
 
@@ -24,6 +27,16 @@ import { alarmKitInstalled, cancelAlarmKit, requestAlarmKit, scheduleAlarmKit } 
 // Alarms are set up on the phone only; nothing is sent to a server.
 
 const ALARMKIT_OK_KEY = "train_alarmkit_ok"; // "1" once iOS has let this app set alarms, so a launch never has to ask
+const SET_ITEMS_KEY = "train_alarms_set"; // a JSON list of what iOS accepted at the last sync (domain/trainAlarms.ts, SetAlarm), the fallback when iOS cannot be asked
+
+// What the last sync got iOS to accept, as the fallback for the check marks. Empty when nothing has been set.
+export async function loadSetAlarms(): Promise<SetAlarm[]> {
+  try {
+    return parseSetAlarms(await plainStorage.get(SET_ITEMS_KEY));
+  } catch {
+    return [];
+  }
+}
 
 export type AlarmBackend = "alarmkit" | "notifications" | "none";
 
@@ -105,6 +118,8 @@ export async function syncTrainAlarms(options: { ask?: boolean } = {}): Promise<
   const kit = await useAlarmKit(ask);
   let kitWorks = kit.use;
   result.alarmKitDenied = kit.denied;
+  // What iOS accepts this time. Real alarms from an earlier sync stay on the phone when AlarmKit is not used now, so their record is kept.
+  const accepted: SetAlarm[] = kit.use ? [] : (await loadSetAlarms()).filter((i) => i.via === "alarm");
 
   // Real alarms. Every journey's alarm ids are known from its id, so alarms that are no longer wanted (deleted journey, moved date,
   // already past) are cancelled and the wanted ones are replaced, with nothing to remember between runs.
@@ -119,8 +134,10 @@ export async function syncTrainAlarms(options: { ask?: boolean } = {}): Promise<
     for (const [uuid, plan] of wanted) {
       await cancelAlarmKit(uuid);
       const problem = await scheduleAlarmKit(uuid, plan.at, plan.title);
-      if (problem === null) result.alarms++;
-      else recordFailure(result, problem);
+      if (problem === null) {
+        result.alarms++;
+        accepted.push({ id: uuid, journeyId: plan.journeyId, kind: plan.kind, at: plan.at.toISOString(), title: plan.title, via: "alarm" });
+      } else recordFailure(result, problem);
     }
     // iOS refused every alarm (for example the permission was switched off later): forget the remembered yes and fall back to
     // notifications, so the owner is not left with no wake-up at all.
@@ -143,12 +160,20 @@ export async function syncTrainAlarms(options: { ask?: boolean } = {}): Promise<
     await clearOurNotifications();
     for (const n of capNotifications(planNotifications(plans, kitWorks))) {
       const problem = await scheduleNotification(n);
-      if (problem === null) result.notifications++;
-      else recordFailure(result, problem);
+      if (problem === null) {
+        result.notifications++;
+        const parsed = parseNotificationId(n.identifier);
+        if (parsed) accepted.push({ id: n.identifier, journeyId: parsed.journeyId, kind: parsed.kind, at: n.at.toISOString(), title: n.title, via: "notification" });
+      } else recordFailure(result, problem);
     }
     if (!kitWorks) result.backend = "notifications";
   } else if (!kitWorks) {
     result.backend = "none";
+  }
+  try {
+    await plainStorage.set(SET_ITEMS_KEY, JSON.stringify(accepted));
+  } catch {
+    // the list is only a convenience; the alarms are set either way
   }
   return result;
 }

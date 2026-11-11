@@ -61,6 +61,9 @@ export interface JourneyFields {
   journeyDate: string; // yyyy-mm-dd
   booking: Booking;
   alarmTimes: string[]; // "HH:MM" (24-hour) on the booking day, in time order
+  // Set once the ticket is booked. The alarms only exist to wake the owner for booking, so a booked journey has none (planAlarms).
+  booked: boolean;
+  pnr: string | null; // the 10-digit PNR, optional, and only on a booked journey
 }
 
 export interface JourneyForAlarms extends JourneyFields {
@@ -278,7 +281,7 @@ export function planJourneyAlarms(j: JourneyForAlarms, now: Date): PlannedAlarm[
 
 export function planAlarms(journeys: readonly JourneyForAlarms[], now: Date): PlannedAlarm[] {
   return journeys
-    .filter((j) => j.journeyDate >= toISODate(now))
+    .filter((j) => !j.booked && j.journeyDate >= toISODate(now))
     .flatMap((j) => planJourneyAlarms(j, now))
     .sort((a, b) => a.at.getTime() - b.at.getTime());
 }
@@ -351,4 +354,219 @@ export function planNotifications(plans: readonly PlannedAlarm[], alarmKit: bool
 // every save) schedules the later ones once earlier ones have fired.
 export function capNotifications(list: readonly PlannedNotification[], max = MAX_PENDING_NOTIFICATIONS): PlannedNotification[] {
   return list.slice(0, max);
+}
+
+// --- booked and the PNR -----------------------------------------------------------------------------------------------------------------
+
+// A PNR is 10 digits. It is optional: nothing typed is fine, and spaces or hyphens between the digits are ignored ("123-456 7890").
+export function validatePnr(text: string): string | null {
+  const digits = text.replace(/[\s-]/g, "");
+  if (digits === "") return null;
+  return /^\d{10}$/.test(digits) ? null : "A PNR has 10 digits";
+}
+
+// The PNR as it is stored: digits only, or null when none was typed. Only a booked journey keeps one.
+export function normalisePnr(text: string | null | undefined, booked: boolean): string | null {
+  if (!booked) return null;
+  const digits = (text ?? "").replace(/[\s-]/g, "");
+  return digits === "" ? null : digits;
+}
+
+// "Booked" or "Booked · PNR 4521398760", for the list and for Ask AI.
+export const describeBooked = (j: Pick<JourneyFields, "pnr">): string => (j.pnr ? `Booked · PNR ${j.pnr}` : "Booked");
+
+// --- the list filter and switching to Tatkal ----------------------------------------------------------------------------------------
+
+export type TrainShow = "all" | "not_booked" | "booked";
+
+export const TRAIN_SHOWS: { value: TrainShow; label: string }[] = [
+  { value: "all", label: "All journeys" },
+  { value: "not_booked", label: "Not booked yet" },
+  { value: "booked", label: "Booked" },
+];
+
+// The list's Show filter. "Not booked yet" is the journeys still ahead that have no ticket (one that is over without a booking is of no use
+// any more); "Booked" is every booked journey, over or not, as a record.
+export function filterJourneys<J extends Pick<JourneyFields, "journeyDate" | "booked">>(journeys: readonly J[], show: TrainShow, today: string): J[] {
+  return journeys.filter((j) => (show === "all" ? true : show === "booked" ? j.booked : !j.booked && j.journeyDate >= today));
+}
+
+// An advance booking that has already opened and has not been booked: the case for choosing Tatkal instead, which opens the day before the
+// journey. The form says so then. Booked journeys and journeys that are over are left alone.
+export function advanceMissed(j: Pick<JourneyFields, "journeyDate" | "booking" | "booked">, now: Date): boolean {
+  return !j.booked && j.booking === "advance" && journeyStatus(j, now).phase === "open";
+}
+
+// --- when a journey can be marked booked ------------------------------------------------------------------------------------------------
+
+// A ticket cannot be booked before booking opens: 60 days before the journey (8:00 AM) for advance booking, the day before (10:00 or 11:00 AM) for
+// Tatkal. So Booked can be set to Yes only from that moment on. A journey 72 days away on an advance booking stays "not booked" until day 60.
+export const canMarkBooked = (j: Pick<JourneyFields, "journeyDate" | "booking">, now: Date): boolean =>
+  bookingOpensAt(j.journeyDate, j.booking).getTime() <= now.getTime();
+
+// Why Booked is locked, in plain words, while booking has not opened: "Advance booking opens on Monday, 12 January at 8:00 AM (in 60 days)."
+export function bookedLockedText(j: Pick<JourneyFields, "journeyDate" | "booking">, now: Date): string {
+  const info = bookingInfo(j.booking);
+  const opensAt = bookingOpensAt(j.journeyDate, j.booking);
+  const when = `${formatDay(toISODate(opensAt))} at ${formatClock(opensAt)}`;
+  const days = Math.round((dayNumber(toISODate(opensAt)) - dayNumber(toISODate(now))));
+  const soon = days <= 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;
+  return `${info.tatkal ? "Tatkal" : "Advance"} booking has not opened yet: it opens on ${when} (${soon}). You can set Booked to Yes after that.`;
+}
+
+// --- what is set on the iPhone ----------------------------------------------------------------------------------------------------------
+
+// One alarm or reminder iOS accepted, as the app records it each time it sets them (alarms/sync.ts). iOS lets the app read its pending notifications
+// back, but not its AlarmKit alarms, so this record is what the "Alarms set on this iPhone" list is made from; each notification is then checked
+// against what iOS still has pending.
+export interface SetAlarm {
+  id: string; // the AlarmKit UUID, or the notification identifier
+  journeyId: string;
+  kind: string; // "a0".."a7" (a wake-up alarm), "evening" or "morning" (a reminder)
+  at: string; // ISO time it will ring or show
+  title: string;
+  via: "alarm" | "notification";
+}
+
+// "train-tj-abc-123-a0-1" -> { journeyId: "tj-abc-123", kind: "a0", copy: 1 }; null for anything else.
+export function parseNotificationId(identifier: string): { journeyId: string; kind: string; copy: number } | null {
+  if (!identifier.startsWith(NOTIFICATION_ID_PREFIX)) return null;
+  const m = /^(.+)-(evening|morning|a\d+)-(\d+)$/.exec(identifier.slice(NOTIFICATION_ID_PREFIX.length));
+  return m ? { journeyId: m[1], kind: m[2], copy: Number(m[3]) } : null;
+}
+
+// Reads what was stored; anything that is not a well-formed record is dropped.
+export function parseSetAlarms(text: string | null): SetAlarm[] {
+  if (!text) return [];
+  try {
+    const raw: unknown = JSON.parse(text);
+    if (!Array.isArray(raw)) return [];
+    return raw.filter(
+      (r): r is SetAlarm =>
+        typeof r === "object" && r !== null && typeof r.id === "string" && typeof r.journeyId === "string" && typeof r.kind === "string" &&
+        typeof r.title === "string" && typeof r.at === "string" && !Number.isNaN(Date.parse(r.at)) && (r.via === "alarm" || r.via === "notification"),
+    );
+  } catch {
+    return [];
+  }
+}
+
+// --- the list as iOS reports it -----------------------------------------------------------------------------------------------------------
+
+// A real (AlarmKit) alarm exactly as iOS holds it: only this app's alarms are ever in iOS's list for it.
+export interface PhoneAlarm {
+  id: string; // the UUID it was scheduled under
+  state: string;
+  at: Date | null;
+}
+
+// A pending reminder (a local notification) exactly as iOS holds it.
+export interface PhoneReminder {
+  identifier: string;
+  title: string;
+  at: Date | null; // null when iOS gave its time in a shape this app does not read; the app's record of it is used then
+}
+
+// A notification's trigger as iOS gives it back, as a time. A date trigger comes as a number (milliseconds, or seconds) and a calendar one as its
+// date parts; anything else (a repeating or interval trigger, which this app never sets) is null.
+export function triggerToDate(trigger: unknown): Date | null {
+  if (typeof trigger !== "object" || trigger === null) return null;
+  const t = trigger as { value?: unknown; dateComponents?: Record<string, unknown> };
+  if (typeof t.value === "number" && Number.isFinite(t.value)) return new Date(t.value > 1e11 ? t.value : t.value * 1000);
+  if (t.value instanceof Date) return t.value;
+  const c = t.dateComponents;
+  if (c && typeof c.year === "number" && typeof c.month === "number" && typeof c.day === "number" && typeof c.hour === "number") {
+    return new Date(c.year, c.month - 1, c.day, c.hour, typeof c.minute === "number" ? c.minute : 0, typeof c.second === "number" ? c.second : 0);
+  }
+  return null;
+}
+
+// One alarm or reminder the saved journeys call for, with whether it is really set. The list is made from the app's own records (the saved journeys
+// and the alarms they plan, `planAlarms`); the one mark on each row says whether iOS holds it, scheduled to ring or show at that time.
+export interface CheckRow {
+  key: string;
+  at: Date; // when it should ring or show
+  type: "Alarm" | "Reminder";
+  title: string;
+  journeyId: string;
+  journeyLabel: string;
+  set: boolean; // iOS holds it (a real alarm, or the notifications that stand in for it) at about this time
+}
+
+export interface CheckList {
+  rows: CheckRow[]; // soonest first
+  // "ios": real alarms were checked with iOS. "record": this build cannot read real alarms from iOS, so a real alarm counts as set when the app's record
+  // says iOS accepted it at the last try.
+  alarmsFrom: "ios" | "record";
+  unlinked: number; // alarms iOS holds for this app that are not in the list (for a journey that is booked, moved or deleted); Set them again cancels them
+}
+
+const SAME_TIME_MS = 90_000; // an alarm iOS holds a minute or two off its planned time is stale (the journey was changed and not set again)
+
+// Checks each planned alarm and reminder against what iOS holds. A reminder is one notification; a wake-up alarm is a real alarm, or, without
+// AlarmKit, a run of notifications a minute apart. `alarms` and `reminders` are null when iOS could not be asked; the record of what iOS accepted
+// at the last sync stands in then.
+export function buildCheckList(input: {
+  plans: readonly PlannedAlarm[];
+  journeys: readonly { id: string; label: string }[];
+  alarms: readonly PhoneAlarm[] | null;
+  reminders: readonly PhoneReminder[] | null;
+  record: readonly SetAlarm[];
+}): CheckList {
+  const { plans, journeys, alarms, reminders, record } = input;
+  const labels = new Map(journeys.map((j) => [j.id, j.label]));
+  const recorded = new Set(record.map((r) => r.id.toLowerCase()));
+  const alarmById = new Map((alarms ?? []).map((a) => [a.id.toLowerCase(), a]));
+  const pendingById = new Map((reminders ?? []).map((r) => [r.identifier, r]));
+  const near = (actual: Date | null, planned: Date) => actual === null || Math.abs(actual.getTime() - planned.getTime()) <= SAME_TIME_MS;
+
+  const notificationHeld = (id: string, planned: Date): boolean =>
+    reminders ? near(pendingById.get(id)?.at ?? null, planned) && pendingById.has(id) : recorded.has(id.toLowerCase());
+
+  const plannedUuids = new Set<string>();
+  const rows = plans.map((p): CheckRow => {
+    let set: boolean;
+    if (p.reminder) {
+      set = notificationHeld(`${NOTIFICATION_ID_PREFIX}${p.journeyId}-${p.kind}-0`, p.at);
+    } else {
+      const uuid = alarmUuid(p.journeyId, p.kind).toLowerCase();
+      plannedUuids.add(uuid);
+      const real = alarms ? alarmById.has(uuid) && near(alarmById.get(uuid)!.at, p.at) : recorded.has(uuid);
+      const run = Array.from({ length: ALARM_CHAIN }, (_, i) => `${NOTIFICATION_ID_PREFIX}${p.journeyId}-${p.kind}-${i}`).every((id, i) =>
+        notificationHeld(id, addMinutes(p.at, i)),
+      );
+      set = real || run;
+    }
+    return { key: `${p.journeyId}|${p.kind}`, at: p.at, type: p.reminder ? "Reminder" : "Alarm", title: p.title, journeyId: p.journeyId, journeyLabel: labels.get(p.journeyId) ?? "", set };
+  });
+
+  return {
+    rows: rows.sort((a, b) => a.at.getTime() - b.at.getTime()),
+    alarmsFrom: alarms ? "ios" : "record",
+    unlinked: alarms ? alarms.filter((a) => !plannedUuids.has(a.id.toLowerCase())).length : 0,
+  };
+}
+
+// The warning for one journey when iOS does not hold something it should: its alarms or its two reminders. Null when everything is set. It is shown
+// on the journey in the list and on the journey screen, where saving again sets them.
+export function droppedText(list: CheckList, journeyId: string): string | null {
+  const missing = list.rows.filter((r) => r.journeyId === journeyId && !r.set);
+  const alarms = missing.filter((r) => r.type === "Alarm").length;
+  const reminders = missing.length - alarms;
+  if (missing.length === 0) return null;
+  const parts = [
+    alarms > 0 ? `${alarms} ${alarms === 1 ? "alarm" : "alarms"}` : "",
+    reminders > 0 ? `${reminders} ${reminders === 1 ? "reminder" : "reminders"}` : "",
+  ].filter(Boolean);
+  return `${parts.join(" and ")} not set on this iPhone. Open this journey and tap Update to set ${missing.length === 1 ? "it" : "them"} again.`;
+}
+
+// The mark for each alarm time ("HH:MM") of one saved journey: true when iOS holds that alarm, false when it does not. A time with no row (one just
+// typed and not saved yet, or one that has already passed) has no entry, so it shows no mark.
+export function alarmTimeMarks(list: CheckList, journeyId: string): Record<string, boolean> {
+  const marks: Record<string, boolean> = {};
+  for (const row of list.rows) {
+    if (row.journeyId === journeyId && row.type === "Alarm") marks[toHm(row.at)] = row.set;
+  }
+  return marks;
 }

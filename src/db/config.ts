@@ -1,5 +1,6 @@
 import { validateCategoryEdit, validateNewName, type CategoryEdit } from "../domain/categoryEdit";
-import { cleanDescription, isProtectedCategory, type CategoryDef } from "../domain/masterData";
+import { MAX_SUBCATEGORY_DESCRIPTION, cleanDescription, isProtectedCategory, type CategoryDef, type Suggestion } from "../domain/masterData";
+import { snapToExisting, tidyName, validateSuggestion } from "../domain/suggestions";
 import { getDb, inTransaction } from "./database";
 
 export async function loadCategories(): Promise<CategoryDef[]> {
@@ -16,6 +17,36 @@ export async function loadCategories(): Promise<CategoryDef[]> {
     if (text) (def.descriptions ??= {})[subcategory] = text;
   }
   return [...grouped.values()];
+}
+
+// Adds a category and subcategory the owner approved (from the Ask AI page) to the list, with the description that goes to the AI. The spelling
+// of a category or subcategory already in the list is kept; one that is already there is left as it is, so a second tap changes nothing.
+// Returns the names as they are now in the list. Nothing else is touched: no entry is moved.
+export async function addApprovedSubcategory(category: string, subcategory: string, description: string): Promise<Suggestion> {
+  const problem = validateSuggestion("debit", category, subcategory);
+  if (problem) throw new Error(problem);
+  const note = cleanDescription(description).slice(0, MAX_SUBCATEGORY_DESCRIPTION).trim() || null;
+
+  const db = await getDb();
+  let result: Suggestion = { category: tidyName(category), subcategory: tidyName(subcategory) };
+  await inTransaction(db, async (txn) => {
+    const master = new Map<string, string[]>();
+    for (const r of await txn.getAllAsync<{ category: string; subcategory: string }>("SELECT category, subcategory FROM categories ORDER BY sort, id")) {
+      master.set(r.category, [...(master.get(r.category) ?? []), r.subcategory]);
+    }
+    const chosen = snapToExisting([...master].map(([c, subs]) => ({ category: c, subcategories: subs })), category, subcategory);
+    result = chosen;
+    if ((master.get(chosen.category) ?? []).includes(chosen.subcategory)) return;
+
+    const max = await txn.getFirstAsync<{ m: number }>("SELECT COALESCE(MAX(sort), 0) AS m FROM categories");
+    await txn.runAsync("INSERT INTO categories (category, subcategory, sort, description) VALUES (?, ?, ?, ?)", [
+      chosen.category,
+      tidyName(chosen.subcategory),
+      (max?.m ?? 0) + 1,
+      note,
+    ]);
+  });
+  return result;
 }
 
 // Renames also update existing transactions so history stays under one name.

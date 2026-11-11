@@ -3,6 +3,8 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "re
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { deleteAsset, getAsset, getAssetByGift, saveAsset } from "../db/assets";
+import { listAssetOptions } from "../db/assetOptions";
+import { getExchange, type ExchangeRecord } from "../db/assetExchanges";
 import { getGift } from "../db/gifts";
 import {
   ASSET_TYPES,
@@ -11,6 +13,7 @@ import {
   canAddToAssets,
   defaultUnit,
   draftFromGift,
+  isGivenInExchange,
   isPledged,
   loanInputText,
   quantityInputText,
@@ -19,12 +22,13 @@ import {
   type AssetType,
   type AssetUnit,
 } from "../domain/assets";
-import { toISODate } from "../domain/format";
+import { formatLongDate, toISODate } from "../domain/format";
 import { rupeesInputText } from "../domain/gifts";
 import { confirmAction } from "../platform/dialogs";
 import { AppHeader, HeaderTextButton } from "../ui/Header";
 import { T } from "../ui/Text";
 import { Button, ChoiceField, DateField, OutlinedInput, useSnackbar } from "../ui/forms";
+import { OptionField } from "../ui/OptionField";
 import { colors, shadow } from "../ui/theme";
 
 const STATUSES: { value: "ACTIVE" | "SOLD"; label: string }[] = [
@@ -42,20 +46,31 @@ const PURITIES = [{ value: NO_PURITY, label: "Not set" }, ...GOLD_PURITIES.map((
 
 const isType = (v: unknown): v is AssetType => ASSET_TYPES.some((t) => t.value === v);
 
-// Add an asset, or edit/delete one when ?id= is given. ?type= starts the form on that kind. ?fromGift= starts it from a gold gift
+// What the second dropdown is called: for gold it is the kind of jewellery. (Not "Type": that already means gold, land or fund.)
+const itemLabel = (type: AssetType): string => (type === "gold" ? "Item (ring, earring, chain...)" : type === "land" ? "Item (plot, house...)" : type === "mutual_fund" ? "Item (fund)" : "Item");
+
+// A piece is named by two dropdowns, For (whom) and Item (what it is), each with "+ Add new"; there is no typed name. ?exchange= adds a piece
+// bought in that exchange with a shop (the Exchange pages open the form this way). Add an asset, or edit/delete one when ?id= is given.
+// ?type= starts the form on that kind. ?fromGift= starts it from a gold gift
 // (the piece, grams and giver are filled in); if that gift already has an asset, that asset is opened instead. Gold has a Pledged
 // dropdown: Yes asks for the lender (required) and the optional ticket, dates, loan and note, and the whole piece counts as pledged.
 export default function AssetForm() {
-  const { id, type: typeParam, fromGift } = useLocalSearchParams<{ id?: string; type?: string; fromGift?: string }>();
+  const { id, type: typeParam, fromGift, exchange } = useLocalSearchParams<{ id?: string; type?: string; fromGift?: string; exchange?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const snackbar = useSnackbar();
   const editing = typeof id === "string" && id !== "";
   const giftId = typeof fromGift === "string" && fromGift !== "" ? fromGift : undefined;
+  const exchangeParam = typeof exchange === "string" && exchange !== "" ? exchange : undefined;
 
   const [loaded, setLoaded] = useState(false);
   const [type, setType] = useState<AssetType>(isType(typeParam) ? typeParam : "gold");
-  const [name, setName] = useState("");
+  const [forName, setForName] = useState("");
+  const [item, setItem] = useState("");
+  const [forOptions, setForOptions] = useState<string[]>([]);
+  const [itemOptions, setItemOptions] = useState<string[]>([]);
+  const [exchangeId, setExchangeId] = useState<string | null>(null);
+  const [exchangeInfo, setExchangeInfo] = useState<ExchangeRecord | null>(null);
   const [status, setStatus] = useState<"ACTIVE" | "SOLD">("ACTIVE");
   const [quantityText, setQuantityText] = useState("");
   const [unit, setUnit] = useState<AssetUnit | null>(defaultUnit(type));
@@ -76,6 +91,11 @@ export default function AssetForm() {
   useEffect(() => {
     let alive = true;
     (async () => {
+      // The lists are read first, so the dropdowns know every name before a value is put in them.
+      const [fors, items] = await Promise.all([listAssetOptions("for"), listAssetOptions("item")]);
+      if (!alive) return;
+      setForOptions(fors);
+      setItemOptions(items);
       if (editing) {
         const a = await getAsset(id);
         if (!alive) return;
@@ -84,7 +104,10 @@ export default function AssetForm() {
           return;
         }
         setType(a.type);
-        setName(a.name);
+        setForName(a.forName ?? "");
+        setItem(a.item ?? a.name);
+        setExchangeId(a.exchangeId);
+        if (a.exchangeId) setExchangeInfo(await getExchange(a.exchangeId));
         setStatus(a.status);
         setQuantityText(a.quantity === null ? "" : quantityInputText(a.quantity));
         setUnit(a.unit);
@@ -116,10 +139,21 @@ export default function AssetForm() {
         const draft = draftFromGift(g);
         setType("gold");
         setUnit("g");
-        setName(draft.name);
+        setItem(draft.item);
         setQuantityText(draft.quantity === null ? "" : quantityInputText(draft.quantity));
         setDescription(draft.description);
         setAcquiredDate(draft.acquiredDate);
+      } else if (exchangeParam) {
+        // A piece bought in an exchange: gold, bought on the day of the exchange.
+        const x = await getExchange(exchangeParam);
+        if (!alive) return;
+        if (x) {
+          setExchangeId(x.id);
+          setExchangeInfo(x);
+          setType("gold");
+          setUnit("g");
+          setAcquiredDate(x.exchangeDate);
+        }
       }
       setLoaded(true);
     })();
@@ -127,7 +161,7 @@ export default function AssetForm() {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, giftId]);
+  }, [id, giftId, exchangeParam]);
 
   const units = unitsFor(type);
   const gold = type === "gold";
@@ -151,7 +185,9 @@ export default function AssetForm() {
     () =>
       readAssetForm({
         type,
-        name,
+        forName,
+        item,
+        exchangeId,
         status,
         quantityText,
         unit,
@@ -167,11 +203,12 @@ export default function AssetForm() {
         loanText,
         pledgeNote,
       }),
-    [type, name, status, quantityText, unit, purity, investedText, acquiredDate, description, pledged, lender, ticketNo, pledgedDate, dueDate, loanText, pledgeNote],
+    [type, forName, item, exchangeId, status, quantityText, unit, purity, investedText, acquiredDate, description, pledged, lender, ticketNo, pledgedDate, dueDate, loanText, pledgeNote],
   );
   const canSave = loaded && !busy && result.ok;
-  // The name being empty is obvious from the disabled Save; any other problem is spelled out.
-  const problem = !result.ok && name.trim() !== "" ? result.error : null;
+  // The Item being empty is obvious from the disabled Save; any other problem is spelled out.
+  const problem = !result.ok && item.trim() !== "" ? result.error : null;
+  const given = editing && isGivenInExchange({ status, exchangeId });
 
   const submit = async (next: boolean) => {
     // The ref closes the gap before `busy` is drawn: a fast second tap must not save the asset twice.
@@ -184,8 +221,8 @@ export default function AssetForm() {
         router.back();
         return;
       }
-      // Save & next: stay on the same kind, clear the piece.
-      setName("");
+      // Save & next: stay on the same kind and the same For (the next piece is often for the same person), clear the rest.
+      setItem("");
       setStatus("ACTIVE");
       setQuantityText("");
       setPurity(NO_PURITY);
@@ -226,13 +263,15 @@ export default function AssetForm() {
       />
 
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.form}>
+        {exchangeInfo ? (
+          <T style={styles.exchangeNote}>
+            {given ? "Given to the shop in the exchange" : "Bought in the exchange"}
+            {exchangeInfo.shop ? ` with ${exchangeInfo.shop}` : ""} on {formatLongDate(exchangeInfo.exchangeDate)}.
+          </T>
+        ) : null}
         <ChoiceField label="Type" options={ASSET_TYPES} value={type} onChange={chooseType} />
-        <OutlinedInput
-          label={gold ? "Name (chain, bangle...)" : type === "land" ? "Name (place or plot)" : type === "mutual_fund" ? "Fund name" : "Name"}
-          value={name}
-          onChangeText={setName}
-          autoCapitalize="words"
-        />
+        <OptionField label="For" value={forName} options={forOptions} onChange={setForName} emptyLabel="Not set" />
+        <OptionField label={itemLabel(type)} value={item} options={itemOptions} onChange={setItem} />
 
         {units.length > 0 ? (
           <>
@@ -263,7 +302,8 @@ export default function AssetForm() {
           placeholder="Not set"
         />
         <OutlinedInput label="Description (optional)" value={description} onChangeText={setDescription} />
-        {editing ? <ChoiceField label="Status" options={STATUSES} value={status} onChange={setStatus} /> : null}
+        {editing && !given ? <ChoiceField label="Status" options={STATUSES} value={status} onChange={setStatus} /> : null}
+        {given ? <T style={styles.note}>This piece was given to the shop, so it is no longer held. To change that, undo the exchange on the Exchanges page.</T> : null}
 
         {gold ? (
           <>
@@ -311,5 +351,6 @@ const styles = StyleSheet.create({
   pledge: { gap: 12, padding: 8, borderRadius: 8, borderWidth: 1, borderColor: "#e0a030", backgroundColor: "#fff4e5" },
   error: { color: colors.error, fontSize: 14, paddingHorizontal: 4 },
   note: { color: colors.textSecondary, fontSize: 13, lineHeight: 19, paddingHorizontal: 4 },
+  exchangeNote: { color: colors.primary, fontSize: 14, paddingHorizontal: 4 },
   actions: { flexDirection: "row", gap: 4, paddingTop: 8, paddingHorizontal: 8, backgroundColor: "#fff", ...shadow.high },
 });

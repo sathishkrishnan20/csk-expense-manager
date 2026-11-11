@@ -14,6 +14,9 @@ export async function clearAllTransactionData(): Promise<{ transactions: number;
     result.gifts = (await txn.runAsync("DELETE FROM gift_list")).changes;
     await txn.runAsync("DELETE FROM gift_occasions");
     result.assets = (await txn.runAsync("DELETE FROM assets")).changes;
+    // The For and Item lists and the exchanges with a shop belong to the assets, so they go with them.
+    await txn.runAsync("DELETE FROM asset_exchanges");
+    await txn.runAsync("DELETE FROM asset_options");
     await txn.runAsync("UPDATE expense_groups SET parent_id = NULL, pinned = 0, status = 'ACTIVE' WHERE id = ?", [MAIN_GROUP_ID]);
   });
   startSuggestions(); // any waiting AI suggestions pointed at rows that are gone

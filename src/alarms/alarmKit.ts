@@ -31,6 +31,37 @@ const native: AlarmKitNative | null = Platform.OS === "ios" ? requireOptionalNat
 
 export const alarmKitInstalled = native !== null;
 
+// The alarms this app has scheduled, as iOS itself reports them (AlarmKit's own list, which only ever holds this app's alarms). It comes from
+// a small module of our own (app-intents/TrainAlarmReader.swift), because `expo-alarm-kit` does not expose it. A build made before that module
+// was added does not have it: `alarmReaderInstalled` is then false and `readScheduledAlarms` returns null.
+interface ReaderNative {
+  getScheduledAlarms(): Promise<{ id: string; state: string; epochSeconds?: number }[]>;
+}
+
+const reader: ReaderNative | null = Platform.OS === "ios" ? requireOptionalNativeModule<ReaderNative>("TrainAlarmReader") : null;
+
+export const alarmReaderInstalled = reader !== null;
+
+export interface ScheduledAlarm {
+  id: string; // the UUID the alarm was scheduled under
+  state: string; // "scheduled", "countdown", "paused", "alerting" or "unknown"
+  at: Date | null; // when it rings, for an alarm set for a fixed moment
+}
+
+// Null when this build cannot read them, or iOS refused (for example alarms were never allowed); otherwise every alarm iOS holds for this app.
+export async function readScheduledAlarms(): Promise<ScheduledAlarm[] | null> {
+  if (!reader) return null;
+  try {
+    return (await reader.getScheduledAlarms()).map((a) => ({
+      id: a.id.toLowerCase(),
+      state: a.state,
+      at: typeof a.epochSeconds === "number" ? new Date(a.epochSeconds * 1000) : null,
+    }));
+  } catch {
+    return null;
+  }
+}
+
 // Asks iOS for permission to set alarms (a prompt the first time only). False when AlarmKit is not in this build.
 export async function requestAlarmKit(): Promise<boolean> {
   if (!native) return false;

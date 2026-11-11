@@ -11,7 +11,7 @@ export default function GroupHome() {
   const router = useRouter();
   const { group, openMenu, sheet } = useGroupActions(id);
   return (
-    <WithAddButton>
+    <WithAddButton askAi>
       <HomeView groupId={id} groupBar={{ name: group?.name ?? "", onBack: () => router.navigate("/groups"), onMenu: openMenu }} />
       {sheet}
     </WithAddButton>

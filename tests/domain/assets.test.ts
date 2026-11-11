@@ -2,7 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   NO_ASSET_FILTERS,
+  assetName,
   canAddToAssets,
+  deriveForAndItem,
+  isGivenInExchange,
   describeQuantity,
   draftFromGift,
   dueText,
@@ -22,7 +25,10 @@ import {
 
 const asset = (over: Partial<AssetFields> = {}): AssetFields => ({
   type: "gold",
+  forName: null,
+  item: "Chain",
   name: "Chain",
+  exchangeId: null,
   status: "ACTIVE",
   quantity: 12500,
   unit: "g",
@@ -41,7 +47,9 @@ const asset = (over: Partial<AssetFields> = {}): AssetFields => ({
 
 const form = (over: Partial<AssetFormInput> = {}): AssetFormInput => ({
   type: "gold",
-  name: "Chain",
+  forName: "",
+  item: "Chain",
+  exchangeId: null,
   status: "ACTIVE",
   quantityText: "",
   unit: "g",
@@ -120,8 +128,11 @@ test("the pledge on a card: lender, then ticket, date and due", () => {
   assert.deepEqual(pledgeDetails(asset({ lender: "Ramesh" }), "2026-11-01"), []);
 });
 
-test("the form needs only a name, and the lender when the gold is pledged", () => {
-  assert.equal(readAssetForm(form({ name: "  " })).ok, false);
+test("the form needs only the Item, and the lender when the gold is pledged", () => {
+  assert.deepEqual(readAssetForm(form({ item: "  " })), { ok: false, error: "Choose what it is (Item)" });
+  // For is optional
+  const noFor = readAssetForm(form({ forName: "" }));
+  assert.ok(noFor.ok && noFor.fields.forName === null && noFor.fields.name === "Chain");
   const plain = readAssetForm(form());
   assert.ok(plain.ok);
   assert.deepEqual([plain.fields.quantity, plain.fields.investedPaise, plain.fields.lender], [null, null, null]);
@@ -190,16 +201,16 @@ test("only gold received in grams can be added to assets from a gift", () => {
 
 test("an asset started from a gift takes the piece, grams, giver and function", () => {
   const draft = draftFromGift({ name: "Kannaki", note: "Chain", value: 3000, occasionTitle: "Karthika Marriage", occasionDate: "2025-06-12" });
-  assert.deepEqual(draft, { name: "Chain", quantity: 3000, description: "Gift from Kannaki · Karthika Marriage", acquiredDate: "2025-06-12" });
-  assert.equal(draftFromGift({ name: "Kannaki", note: null, value: 3000, occasionTitle: "X", occasionDate: "2025-06-12" }).name, "Gold");
+  assert.deepEqual(draft, { item: "Chain", quantity: 3000, description: "Gift from Kannaki · Karthika Marriage", acquiredDate: "2025-06-12" });
+  assert.equal(draftFromGift({ name: "Kannaki", note: null, value: 3000, occasionTitle: "X", occasionDate: "2025-06-12" }).item, "Gold");
 });
 
 const list = [
-  { ...asset({ name: "Chain", description: "Nisha's gift" }), id: "1" },
-  { ...asset({ name: "Bangle", lender: "Muthoot", ticketNo: "4521", loanPaise: 5000000 }), id: "2" },
-  { ...asset({ name: "Old ring", status: "SOLD" }), id: "3" },
-  { ...asset({ type: "land", name: "Sivakasi plot", unit: "cent", purityK: null }), id: "4" },
-  { ...asset({ type: "mutual_fund", name: "Axis Bluechip", unit: "units", purityK: null }), id: "5" },
+  { ...asset({ item: "Chain", name: "Chain", description: "Nisha's gift" }), id: "1" },
+  { ...asset({ item: "Bangle", name: "Bangle", lender: "Muthoot", ticketNo: "4521", loanPaise: 5000000 }), id: "2" },
+  { ...asset({ item: "Old ring", name: "Old ring", status: "SOLD" }), id: "3" },
+  { ...asset({ type: "land", item: "Sivakasi plot", name: "Sivakasi plot", unit: "cent", purityK: null }), id: "4" },
+  { ...asset({ type: "mutual_fund", item: "Axis Bluechip", name: "Axis Bluechip", unit: "units", purityK: null }), id: "5" },
 ];
 
 test("the list shows what you hold by default, and can show pledged, sold or everything", () => {
@@ -221,4 +232,94 @@ test("search finds a name, lender, ticket, description or the kind", () => {
   assert.deepEqual(ids("plot sivakasi"), ["4"]);
   assert.equal(hasAssetFilters(NO_ASSET_FILTERS), false);
   assert.equal(hasAssetFilters({ ...NO_ASSET_FILTERS, show: "all" }), true);
+});
+
+// ---- For and Item (schema version 18)
+
+test("the name of a piece is made from For and Item, and either may be missing", () => {
+  assert.equal(assetName("Thishi", "Bangles"), "Thishi - Bangles");
+  assert.equal(assetName(null, "Chain"), "Chain");
+  assert.equal(assetName("Thika", "  "), "Thika");
+  assert.equal(assetName(null, null), "");
+  // saving makes the name from the two, and a row with neither keeps the name it came with
+  const made = normaliseAsset(asset({ forName: " Thishi ", item: "Bangles", name: "typed by hand" }));
+  assert.deepEqual([made.forName, made.item, made.name], ["Thishi", "Bangles", "Thishi - Bangles"]);
+  assert.equal(normaliseAsset(asset({ forName: null, item: null, name: "Old name" })).name, "Old name");
+});
+
+test("the names the owner already has are split into For and Item (the ones on the Assets page)", () => {
+  const names = [
+    "Thishi Ear Ring",
+    "Thishika",
+    "Thishi - Earring Jodi",
+    "Thish Ear Ring Jodi",
+    "Thishi - Ear Ring",
+    "Thishi - Bangles",
+    "Thishi - Bracelet (handcuff)",
+    "Thishi - Necklece",
+    "Anklet",
+    "Thika - Ear Ring",
+    "Thika - Bangle",
+    "Thika - Bracelet (hand Cuff)",
+  ];
+  const split = deriveForAndItem(names);
+  const pairs = split.map((s) => [s.forName, s.item]);
+  assert.deepEqual(pairs, [
+    ["Thishi", "Ear Ring"], // starts with a For that other pieces have
+    [null, "Thishika"], // not a For seen with a dash: all Item, to be corrected by hand
+    ["Thishi", "Earring Jodi"],
+    [null, "Thish Ear Ring Jodi"],
+    ["Thishi", "Ear Ring"],
+    ["Thishi", "Bangles"],
+    ["Thishi", "Bracelet (handcuff)"],
+    ["Thishi", "Necklece"],
+    [null, "Anklet"],
+    ["Thika", "Ear Ring"],
+    ["Thika", "Bangle"],
+    ["Thika", "Bracelet (hand Cuff)"],
+  ]);
+  // splitting and putting back gives the name it had, for the ones that were "For - Item"
+  assert.equal(assetName(split[5].forName, split[5].item), "Thishi - Bangles");
+});
+
+test("a name with a dash inside the item keeps the rest of it, and an en dash counts", () => {
+  assert.deepEqual(deriveForAndItem(["Thika - Chain - 22K", "Thika \u2013 Ring"]).map((s) => [s.forName, s.item]), [["Thika", "Chain - 22K"], ["Thika", "Ring"]]);
+  assert.deepEqual(deriveForAndItem([]), []);
+  assert.deepEqual(deriveForAndItem(["  "]), [{ forName: null, item: null }]);
+  // the longest For wins: "Thika Home" over "Thika"
+  assert.deepEqual(deriveForAndItem(["Thika - Chain", "Thika Home - Ring", "Thika Home Ear Ring"]).map((s) => s.forName), ["Thika", "Thika Home", "Thika Home"]);
+});
+
+test("the list can be filtered by For and by Item, ignoring capitals, and the search finds them", () => {
+  const pieces = [
+    { ...asset({ forName: "Thishi", item: "Bangles", name: "Thishi - Bangles" }), id: "a" },
+    { ...asset({ forName: "Thishi", item: "Ear Ring", name: "Thishi - Ear Ring" }), id: "b" },
+    { ...asset({ forName: "Thika", item: "Bangles", name: "Thika - Bangles" }), id: "c" },
+    { ...asset({ forName: null, item: "Anklet", name: "Anklet" }), id: "d" },
+  ];
+  const ids = (f: Partial<typeof NO_ASSET_FILTERS>) => filterAssets(pieces, { ...NO_ASSET_FILTERS, ...f }).map((a) => a.id);
+  assert.deepEqual(ids({ forName: "thishi" }), ["a", "b"]);
+  assert.deepEqual(ids({ item: "BANGLES" }), ["a", "c"]);
+  assert.deepEqual(ids({ forName: "Thishi", item: "Bangles" }), ["a"]);
+  assert.deepEqual(ids({ search: "thika" }), ["c"]);
+  assert.deepEqual(ids({ search: "ear ring" }), ["b"]);
+  assert.equal(hasAssetFilters({ ...NO_ASSET_FILTERS, forName: "Thika" }), true);
+  assert.equal(hasAssetFilters({ ...NO_ASSET_FILTERS, item: "Ring" }), true);
+});
+
+test("a piece given in an exchange is shown under its own choice, apart from a plain sale", () => {
+  const pieces = [
+    { ...asset({ item: "Bangles" }), id: "held" },
+    { ...asset({ item: "Chain", status: "SOLD", exchangeId: "ax-1" }), id: "given" },
+    { ...asset({ item: "Ring", status: "SOLD" }), id: "sold" },
+    { ...asset({ item: "New chain", exchangeId: "ax-1" }), id: "bought" }, // bought in the exchange, held
+  ];
+  const ids = (show: (typeof NO_ASSET_FILTERS)["show"]) => filterAssets(pieces, { ...NO_ASSET_FILTERS, show }).map((a) => a.id);
+  assert.deepEqual(ids("holding"), ["held", "bought"]);
+  assert.deepEqual(ids("exchanged"), ["given"]);
+  assert.deepEqual(ids("sold"), ["sold"]);
+  assert.deepEqual(ids("all"), ["held", "given", "sold", "bought"]);
+  assert.equal(isGivenInExchange(pieces[1]), true);
+  assert.equal(isGivenInExchange(pieces[2]), false);
+  assert.equal(isGivenInExchange(pieces[3]), false);
 });

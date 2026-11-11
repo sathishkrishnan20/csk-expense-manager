@@ -20,6 +20,17 @@ SQLite 3.53 (bundled by `expo-sqlite`) can change a CHECK in place with `ALTER T
 - Existing databases still hold the older unnamed CHECKs on gifts, assets, train journeys and groups (the transactions table was rebuilt with all three of its checks named in version 17); leave those tables alone until one of them has to be rebuilt anyway, and name all of its checks then.
 - Prefer a lookup in code over a CHECK when the values may grow.
 
+## Ask AI: every feature that keeps data registers a capability
+
+Ask AI (the chat, `src/ui/ChatView.tsx` and `src/chat/`) can only look at what a *capability* gives it, so a feature that is not registered is invisible to it. **When you add a feature that stores data the owner might ask about (a new table, list or page), add its capability in the same change:**
+
+- Write `src/chat/capabilities/<feature>.ts`: a `Capability` (`src/domain/chatTools.ts`) with a stable snake_case `id`, a `title`, a one-line `description`, and read-only `tools`. Each tool has a snake_case `name` (unique across the app), a `description` of what it returns and when to use it, `args` (a spec: `string` with optional `options`, `date`, `integer`, `string_list`), and a `run` that returns plain data. Add the capability to `CAPABILITIES` in `src/chat/capabilities/index.ts`; the AI's instructions, the page's note and the tests pick it up from there. There are no on/off switches: every tool is always offered, because the owner is the one asking, so write each tool to return only what it needs to (no internal ids, no bank text).
+- Read the data through `ChatData` (`src/chat/types.ts`), adding a method for it and wiring it in `src/chat/data.ts`. Keep the capability file free of database and React Native imports, so it is tested in Node with fake data (`tests/chat/capabilities.test.ts`; `registryProblems` already checks names and descriptions).
+- Tools never write. A change the AI suggests is a proposal that waits for the owner's tap (see `ChatProposal` and `acceptProposal`), as with a new subcategory.
+- Whatever the AI sends as arguments is checked by `validateArgs` against the tool's spec. **Never put a value the AI wrote into SQL as text**; build the statement from fixed pieces with parameters, as `src/domain/chatQuery.ts` does.
+- Keep results short (a few dozen rows at most) and money as text like "₹2,440.00": the AI must not add up numbers itself, so give it totals.
+- Mention the new kind of data in the help topic "Ask AI" (`src/domain/helpContent.ts`) and in `docs/ARCHITECTURE.md`.
+
 ## Expo has changed — do not trust your training data
 
 Expo ships breaking changes every SDK release. APIs you remember are likely renamed, moved, or removed. Before writing any code that touches an Expo, EAS, or React Native API:

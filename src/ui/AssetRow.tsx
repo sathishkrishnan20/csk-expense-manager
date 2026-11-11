@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, View } from "react-native";
-import { describeQuantity, investedText, isPledged, pledgeDetails, pledgeTitle } from "../domain/assets";
+import { describeQuantity, investedText, isGivenInExchange, isPledged, pledgeDetails, pledgeTitle } from "../domain/assets";
 import { rupeesText } from "../domain/gifts";
 import type { AssetRecord } from "../db/assets";
 import { T } from "./Text";
@@ -12,7 +12,7 @@ const PLEDGE = "#9a5b00";
 export function AssetRow({ item, today, onPress }: { item: AssetRecord; today: string; onPress: () => void }) {
   const quantity = describeQuantity(item);
   const sold = item.status === "SOLD";
-  const second = [sold ? "Sold" : null, item.description].filter(Boolean).join(" · ");
+  const second = [sold ? (isGivenInExchange(item) ? "Given in exchange" : "Sold") : null, item.description].filter(Boolean).join(" · ");
   const pledged = !sold && isPledged(item);
   const details = pledged ? pledgeDetails(item, today) : [];
 

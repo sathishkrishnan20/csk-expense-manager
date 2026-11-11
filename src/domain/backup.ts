@@ -6,7 +6,13 @@
 //   5 empty columns [ Groups Id | Name | Start Date | End Date | Status | Parent Id | Pinned | Held ]
 //   5 empty columns [ Occasions Id | Title | Date | Status ] 5 empty columns [ Gifts Id | Occasion Id | Occasion | Name | Direction | Type | Value | Unit | Rate | Note | Status | Created | Updated ]
 //   5 empty columns [ Assets Id | Type | Name | Quantity | Unit | Purity | Invested | Acquired | Description | Gift Id | Lender | Ticket | Pledged On | Due On | Loan | Pledge Note | Status | Created | Updated ]
-//   5 empty columns [ Journeys Id | Label | Date | Booking | Alarm Times | Note | Created ]
+//   5 empty columns [ Journeys Id | Label | Date | Booking | Alarm Times | Note | Created | Booked | PNR ]
+//   5 empty columns [ Asset For List ] 5 empty columns [ Asset Item List ]
+//   5 empty columns [ Exchanges Id | Date | Shop | Extra | Note | Status | Created | Updated ]
+// Version 8 added Booked and PNR to each journey (the last two columns of the journeys block; a file without them restores every journey as not
+// booked). Version 7 added For, Item and Exchange to each asset (the Assets block ends with Assets For | Assets Item | Assets Exchange Id), the two
+// lists behind the For and Item dropdowns, and the exchanges with a shop. A file without them (version 6 or older) restores with each asset's
+// old name split into For and Item (domain/assets.ts, deriveForAndItem), no exchanges, and the lists made from the assets.
 // Files made before gifts existed have neither block (version 3 added them); they restore with no gifts. Files made before assets
 // existed have no assets block (version 4); they restore with no assets. Files made before train journeys were included have no
 // journeys block (version 5); they restore with none. Only journeys still ahead are written (one that is over has no alarm to set).
@@ -17,8 +23,8 @@
 // Files from the first version of the app were JSON; those are still read.
 
 import Papa from "papaparse";
-import { BOOKINGS, MAX_ALARMS, bookingInfo, normalizeTimes, type Booking } from "./trainAlarms";
-import { ASSET_TYPES, ASSET_UNITS, GOLD_PURITIES, normaliseAsset, type AssetFields, type AssetStatus } from "./assets";
+import { BOOKINGS, MAX_ALARMS, bookingInfo, normalisePnr, normalizeTimes, validatePnr, type Booking } from "./trainAlarms";
+import { ASSET_TYPES, ASSET_UNITS, GOLD_PURITIES, deriveForAndItem, normaliseAsset, type AssetFields, type AssetStatus } from "./assets";
 import { gramsInputText, parseGramsInput, type GiftDirection, type GiftType, type GiftUnit } from "./gifts";
 import { MAIN_GROUP_ID, type GroupStatus } from "./groups";
 import { cleanDescription } from "./masterData";
@@ -30,7 +36,10 @@ export const BACKUP_FORMAT = "csk-manager-backup";
 // The name the first version (JSON files) wrote when the app was called Expense Manager; such files still restore.
 const LEGACY_BACKUP_FORMAT = "expense-manager-backup";
 // 6: the Source column can also be "Sms" (an entry made by the automatic bank SMS route); an older app refuses a newer file cleanly.
-export const BACKUP_VERSION = 6;
+// 7: assets have a For and an Item (and the name is made from them), pieces can belong to an exchange with a shop, and the file carries the
+// For and Item lists and the exchanges.
+// 8: journeys can be booked, with an optional PNR.
+export const BACKUP_VERSION = 8;
 
 export interface BackupTransaction {
   id: string;
@@ -101,6 +110,17 @@ export interface BackupAsset extends Omit<AssetFields, "status"> {
   updatedAt: string | null;
 }
 
+export interface BackupAssetExchange {
+  id: string;
+  exchangeDate: string; // yyyy-mm-dd
+  shop: string | null;
+  extraPaise: number | null;
+  note: string | null;
+  status: "ACTIVE" | "DELETED";
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
 export interface BackupJourney {
   id: string;
   label: string;
@@ -108,6 +128,8 @@ export interface BackupJourney {
   booking: Booking;
   alarmTimes: string[]; // "HH:MM", in time order
   note: string | null;
+  booked: boolean;
+  pnr: string | null; // only on a booked journey
   createdAt: string | null;
 }
 
@@ -127,6 +149,8 @@ export interface Backup {
   giftOccasions: BackupGiftOccasion[];
   gifts: BackupGift[];
   assets: BackupAsset[];
+  assetOptions: { for: string[]; item: string[] }; // the lists behind the For and Item dropdowns
+  assetExchanges: BackupAssetExchange[];
   journeys: BackupJourney[];
   transactions: BackupTransaction[];
 }
@@ -272,6 +296,9 @@ function readAsset(raw: unknown): BackupAsset | null {
     lender: optionalString(raw.lender),
     ticketNo: optionalString(raw.ticketNo),
     pledgeNote: optionalString(raw.pledgeNote),
+    forName: optionalString(raw.forName),
+    item: optionalString(raw.item),
+    exchangeId: optionalString(raw.exchangeId),
     createdAt: optionalString(raw.createdAt),
     updatedAt: optionalString(raw.updatedAt),
   };
@@ -282,7 +309,10 @@ function readAsset(raw: unknown): BackupAsset | null {
   // Same rules as the form: the unit follows the type, and only gold has purity or a pledge.
   const fields = normaliseAsset({
     type,
+    forName: s.forName,
+    item: s.item,
     name: raw.name,
+    exchangeId: s.exchangeId,
     status: status === "SOLD" ? "SOLD" : "ACTIVE",
     quantity: (raw.quantity as number | null | undefined) ?? null,
     unit,
@@ -300,6 +330,46 @@ function readAsset(raw: unknown): BackupAsset | null {
   return { ...fields, id: raw.id, giftId: s.giftId, status, createdAt: s.createdAt, updatedAt: s.updatedAt };
 }
 
+// An asset from a file made before For and Item (version 6 or older) has only its name. All the names of the file are split together, so a name
+// that starts with a For seen on the other pieces ("Thishi Ear Ring") is split too; the pieces that already have a For or an Item are left alone.
+function fillLegacyNames(assets: BackupAsset[]): BackupAsset[] {
+  if (!assets.some((a) => a.forName === null && a.item === null)) return assets;
+  const derived = deriveForAndItem(assets.map((a) => a.name));
+  return assets.map((a, i) => {
+    if (a.forName !== null || a.item !== null) return a;
+    const fields = normaliseAsset({ ...a, status: a.status === "SOLD" ? "SOLD" : "ACTIVE", forName: derived[i].forName, item: derived[i].item });
+    return { ...a, forName: fields.forName, item: fields.item, name: fields.name };
+  });
+}
+
+// The lists behind the For and Item dropdowns when the file has none: the names the pieces use, in the order they appear.
+function optionsFromAssets(assets: readonly BackupAsset[]): { for: string[]; item: string[] } {
+  const uniq = (names: (string | null)[]) => [...new Set(names.filter((n): n is string => n !== null))];
+  return { for: uniq(assets.map((a) => a.forName)), item: uniq(assets.map((a) => a.item)) };
+}
+
+function readAssetExchange(raw: unknown): BackupAssetExchange | null {
+  if (!isObject(raw) || !nonEmpty(raw.id)) return null;
+  const exchangeDate = isoDateOrNull(raw.exchangeDate);
+  if (!exchangeDate) return null;
+  if (raw.extraPaise != null && !isPositiveInt(raw.extraPaise)) return null;
+  const shop = optionalString(raw.shop);
+  const note = optionalString(raw.note);
+  const createdAt = optionalString(raw.createdAt);
+  const updatedAt = optionalString(raw.updatedAt);
+  if ([shop, note, createdAt, updatedAt].some((v) => v === undefined)) return null;
+  return {
+    id: raw.id,
+    exchangeDate,
+    shop: (shop as string | null)?.trim() || null,
+    extraPaise: (raw.extraPaise as number | null | undefined) ?? null,
+    note: (note as string | null)?.trim() || null,
+    status: raw.status === "DELETED" ? "DELETED" : "ACTIVE",
+    createdAt: createdAt as string | null,
+    updatedAt: updatedAt as string | null,
+  };
+}
+
 const BOOKING_VALUES = BOOKINGS.map((b) => b.value);
 
 function readJourney(raw: unknown): BackupJourney | null {
@@ -310,7 +380,11 @@ function readJourney(raw: unknown): BackupJourney | null {
   if (raw.alarmTimes != null && !(Array.isArray(raw.alarmTimes) && raw.alarmTimes.every((t) => typeof t === "string"))) return null;
   const note = optionalString(raw.note);
   const createdAt = optionalString(raw.createdAt);
-  if (note === undefined || createdAt === undefined) return null;
+  const pnr = optionalString(raw.pnr);
+  if (note === undefined || createdAt === undefined || pnr === undefined) return null;
+  if (raw.booked != null && typeof raw.booked !== "boolean") return null;
+  // A PNR that is not 10 digits is left out rather than refusing the journey; only a booked journey keeps one.
+  const booked = raw.booked === true;
   return {
     id: raw.id,
     label: raw.label.trim(),
@@ -318,6 +392,8 @@ function readJourney(raw: unknown): BackupJourney | null {
     booking,
     alarmTimes: normalizeTimes((raw.alarmTimes as string[] | null | undefined) ?? []).slice(0, MAX_ALARMS),
     note,
+    booked,
+    pnr: pnr !== null && validatePnr(pnr) === null ? normalisePnr(pnr, booked) : null,
     createdAt,
   };
 }
@@ -401,6 +477,18 @@ function parseJsonBackup(text: string): ParsedBackup {
     else skipped++;
   }
 
+  const assetExchanges: BackupAssetExchange[] = [];
+  for (const item of Array.isArray(raw.assetExchanges) ? raw.assetExchanges : []) {
+    const x = readAssetExchange(item);
+    if (x) assetExchanges.push(x);
+    else skipped++;
+  }
+  const filledAssets = fillLegacyNames(assets);
+  const rawOptions = isObject(raw.assetOptions) ? raw.assetOptions : {};
+  const names = (v: unknown): string[] => (Array.isArray(v) ? v.filter(nonEmpty).map((n) => n.trim()) : []);
+  const assetOptions = { ...optionsFromAssets(filledAssets) };
+  for (const kind of ["for", "item"] as const) assetOptions[kind] = [...new Set([...names(rawOptions[kind]), ...assetOptions[kind]])];
+
   const journeys: BackupJourney[] = [];
   for (const item of Array.isArray(raw.journeys) ? raw.journeys : []) {
     const j = readJourney(item);
@@ -418,7 +506,9 @@ function parseJsonBackup(text: string): ParsedBackup {
       groups,
       giftOccasions,
       gifts,
-      assets,
+      assets: filledAssets,
+      assetOptions,
+      assetExchanges,
       journeys,
       transactions,
     },
@@ -552,6 +642,10 @@ const ASSET_COLUMNS = [
   { header: "Assets Status", write: (a: BackupAsset) => cap(a.status) },
   { header: "Assets Created", write: (a: BackupAsset) => a.createdAt ?? "" },
   { header: "Assets Updated", write: (a: BackupAsset) => a.updatedAt ?? "" },
+  // Added in version 7, after the rest so a file read by an older app still lines up.
+  { header: "Assets For", write: (a: BackupAsset) => guard(a.forName) },
+  { header: "Assets Item", write: (a: BackupAsset) => guard(a.item) },
+  { header: "Assets Exchange Id", write: (a: BackupAsset) => guard(a.exchangeId) },
 ];
 
 // The train journeys block, after the assets. Alarm times are written "07:45 07:55 07:58 08:00" (a space between), the booking as its
@@ -564,6 +658,23 @@ const JOURNEY_COLUMNS = [
   { header: "Journeys Alarm Times", write: (j: BackupJourney) => j.alarmTimes.join(" ") },
   { header: "Journeys Note", write: (j: BackupJourney) => guard(j.note) },
   { header: "Journeys Created", write: (j: BackupJourney) => j.createdAt ?? "" },
+  // Added in version 8, after the rest so a file read by an older app still lines up.
+  { header: "Journeys Booked", write: (j: BackupJourney) => (j.booked ? "Yes" : "") },
+  { header: "Journeys PNR", write: (j: BackupJourney) => guard(j.pnr) },
+];
+
+// The exchanges with a shop, after the journeys, and the two lists behind the For and Item dropdowns.
+const ASSET_FOR_LIST = "Asset For List";
+const ASSET_ITEM_LIST = "Asset Item List";
+const EXCHANGE_COLUMNS = [
+  { header: "Exchanges Id", write: (x: BackupAssetExchange) => guard(x.id) },
+  { header: "Exchanges Date", write: (x: BackupAssetExchange) => csvDate(x.exchangeDate) },
+  { header: "Exchanges Shop", write: (x: BackupAssetExchange) => guard(x.shop) },
+  { header: "Exchanges Extra", write: (x: BackupAssetExchange) => (x.extraPaise === null ? "" : rupees(x.extraPaise)) },
+  { header: "Exchanges Note", write: (x: BackupAssetExchange) => guard(x.note) },
+  { header: "Exchanges Status", write: (x: BackupAssetExchange) => cap(x.status) },
+  { header: "Exchanges Created", write: (x: BackupAssetExchange) => x.createdAt ?? "" },
+  { header: "Exchanges Updated", write: (x: BackupAssetExchange) => x.updatedAt ?? "" },
 ];
 
 export function serializeBackup(backup: Backup): string {
@@ -586,6 +697,12 @@ export function serializeBackup(backup: Backup): string {
     ...ASSET_COLUMNS.map((c) => c.header),
     ...blanks(GAP_COLUMNS),
     ...JOURNEY_COLUMNS.map((c) => c.header),
+    ...blanks(GAP_COLUMNS),
+    ASSET_FOR_LIST,
+    ...blanks(GAP_COLUMNS),
+    ASSET_ITEM_LIST,
+    ...blanks(GAP_COLUMNS),
+    ...EXCHANGE_COLUMNS.map((c) => c.header),
   ];
 
   const titles = new Map(backup.giftOccasions.map((o) => [o.id, o.title]));
@@ -598,6 +715,9 @@ export function serializeBackup(backup: Backup): string {
     backup.gifts.length,
     backup.assets.length,
     backup.journeys.length,
+    backup.assetOptions.for.length,
+    backup.assetOptions.item.length,
+    backup.assetExchanges.length,
   );
   const rows: string[][] = [header];
   for (let i = 0; i < count; i++) {
@@ -608,6 +728,7 @@ export function serializeBackup(backup: Backup): string {
     const gift = backup.gifts[i];
     const asset = backup.assets[i];
     const journey = backup.journeys[i];
+    const exchange = backup.assetExchanges[i];
     rows.push([
       ...(t ? COLUMNS.map((col) => col.write(t)) : blanks(COLUMNS.length)),
       ...blanks(GAP_COLUMNS),
@@ -626,6 +747,12 @@ export function serializeBackup(backup: Backup): string {
       ...(asset ? ASSET_COLUMNS.map((col) => col.write(asset)) : blanks(ASSET_COLUMNS.length)),
       ...blanks(GAP_COLUMNS),
       ...(journey ? JOURNEY_COLUMNS.map((col) => col.write(journey)) : blanks(JOURNEY_COLUMNS.length)),
+      ...blanks(GAP_COLUMNS),
+      guard(backup.assetOptions.for[i] ?? null),
+      ...blanks(GAP_COLUMNS),
+      guard(backup.assetOptions.item[i] ?? null),
+      ...blanks(GAP_COLUMNS),
+      ...(exchange ? EXCHANGE_COLUMNS.map((col) => col.write(exchange)) : blanks(EXCHANGE_COLUMNS.length)),
     ]);
   }
   // The BOM makes Excel read the file as UTF-8 (names and notes in other scripts).
@@ -671,6 +798,9 @@ function parseCsvBackup(text: string): ParsedBackup {
   const giftCols = GIFT_COLUMNS.map((c) => at(c.header));
   const assetCols = ASSET_COLUMNS.map((c) => at(c.header));
   const journeyCols = JOURNEY_COLUMNS.map((c) => at(c.header));
+  const forListCol = at(ASSET_FOR_LIST);
+  const itemListCol = at(ASSET_ITEM_LIST);
+  const exchangeCols = EXCHANGE_COLUMNS.map((c) => at(c.header));
   const cell = (row: string[], i: number) => (i < 0 ? "" : unguard((row[i] ?? "").trim()));
 
   let skipped = 0;
@@ -682,6 +812,9 @@ function parseCsvBackup(text: string): ParsedBackup {
   const gifts: BackupGift[] = [];
   const assets: BackupAsset[] = [];
   const journeys: BackupJourney[] = [];
+  const assetExchanges: BackupAssetExchange[] = [];
+  const listedFor: string[] = [];
+  const listedItem: string[] = [];
   const seen = new Map<string, number>();
 
   for (const row of rows.slice(1)) {
@@ -753,7 +886,7 @@ function parseCsvBackup(text: string): ParsedBackup {
       else skipped++;
     }
 
-    const [aId, aType, aName, aQuantity, aUnit, aPurity, aInvested, aAcquired, aDescription, aGiftId, aLender, aTicket, aPledgedOn, aDueOn, aLoan, aNote, aStatus, aCreated, aUpdated] =
+    const [aId, aType, aName, aQuantity, aUnit, aPurity, aInvested, aAcquired, aDescription, aGiftId, aLender, aTicket, aPledgedOn, aDueOn, aLoan, aNote, aStatus, aCreated, aUpdated, aFor, aItem, aExchange] =
       assetCols.map((i) => cell(row, i));
     if (aId || aName) {
       const quantity = aQuantity === "" ? null : parseGramsInput(aQuantity);
@@ -783,6 +916,9 @@ function parseCsvBackup(text: string): ParsedBackup {
             dueDate: dueOn,
             loanPaise: loan,
             pledgeNote: aNote === "" ? null : aNote,
+            forName: aFor === "" ? null : aFor,
+            item: aItem === "" ? null : aItem,
+            exchangeId: aExchange === "" ? null : aExchange,
             status: /^deleted$/i.test(aStatus) ? "DELETED" : /^sold$/i.test(aStatus) ? "SOLD" : "ACTIVE",
             createdAt: TIMESTAMP.test(aCreated) ? aCreated : null,
             updatedAt: TIMESTAMP.test(aUpdated) ? aUpdated : null,
@@ -792,7 +928,33 @@ function parseCsvBackup(text: string): ParsedBackup {
       else skipped++;
     }
 
-    const [jId, jLabel, jDate, jBooking, jTimes, jNote, jCreated] = journeyCols.map((i) => cell(row, i));
+    const listedForName = cell(row, forListCol);
+    if (listedForName) listedFor.push(listedForName);
+    const listedItemName = cell(row, itemListCol);
+    if (listedItemName) listedItem.push(listedItemName);
+
+    const [xId, xDate, xShop, xExtra, xNote, xStatus, xCreated, xUpdated] = exchangeCols.map((i) => cell(row, i));
+    if (xId || xDate) {
+      const date = xDate === "" ? null : parseDate(xDate);
+      const extra = xExtra === "" ? null : parseAmountPaise(xExtra);
+      const exchange =
+        date && (xExtra === "" || extra)
+          ? readAssetExchange({
+              id: xId,
+              exchangeDate: date,
+              shop: xShop === "" ? null : xShop,
+              extraPaise: extra,
+              note: xNote === "" ? null : xNote,
+              status: /^deleted$/i.test(xStatus) ? "DELETED" : "ACTIVE",
+              createdAt: TIMESTAMP.test(xCreated) ? xCreated : null,
+              updatedAt: TIMESTAMP.test(xUpdated) ? xUpdated : null,
+            })
+          : null;
+      if (exchange) assetExchanges.push(exchange);
+      else skipped++;
+    }
+
+    const [jId, jLabel, jDate, jBooking, jTimes, jNote, jCreated, jBooked, jPnr] = journeyCols.map((i) => cell(row, i));
     if (jId || jLabel) {
       const date = jDate === "" ? null : parseDate(jDate);
       const wanted = jBooking.toLowerCase().replace(/[\s_]+/g, " ").trim();
@@ -805,6 +967,8 @@ function parseCsvBackup(text: string): ParsedBackup {
             booking: booking?.value,
             alarmTimes: jTimes.split(/[\s,;]+/).filter((t) => t !== ""),
             note: jNote === "" ? null : jNote,
+            booked: /^(yes|true|y|booked)$/i.test(jBooked),
+            pnr: jPnr === "" ? null : jPnr,
             createdAt: TIMESTAMP.test(jCreated) ? jCreated : null,
           })
         : null;
@@ -813,6 +977,8 @@ function parseCsvBackup(text: string): ParsedBackup {
     }
   }
 
+  const filledAssets = fillLegacyNames(assets);
+  const fromAssets = optionsFromAssets(filledAssets);
   return {
     backup: {
       format: BACKUP_FORMAT,
@@ -823,7 +989,9 @@ function parseCsvBackup(text: string): ParsedBackup {
       groups,
       giftOccasions,
       gifts,
-      assets,
+      assets: filledAssets,
+      assetOptions: { for: [...new Set([...listedFor, ...fromAssets.for])], item: [...new Set([...listedItem, ...fromAssets.item])] },
+      assetExchanges,
       journeys,
       transactions,
     },

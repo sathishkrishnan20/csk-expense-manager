@@ -1,4 +1,4 @@
-import { bookingFromColumns, bookingInfo, bookingToColumns, normalizeTimes, type JourneyFields } from "../domain/trainAlarms";
+import { bookingFromColumns, bookingInfo, bookingToColumns, canMarkBooked, normalisePnr, normalizeTimes, type JourneyFields } from "../domain/trainAlarms";
 import { getDb } from "./database";
 
 // Train journeys are information only: nothing here touches transactions, groups or balances (see domain/trainAlarms.ts).
@@ -18,6 +18,8 @@ interface JourneyRow {
   tatkal: string;
   alarm_times: string;
   note: string | null;
+  booked: number;
+  pnr: string | null;
   created_at: string;
 }
 
@@ -33,11 +35,13 @@ const toRecord = (r: JourneyRow): JourneyRecord => ({
   journeyDate: r.journey_date,
   booking: bookingFromColumns(r.advance !== 0, r.tatkal),
   alarmTimes: readTimes(r),
+  booked: r.booked !== 0,
+  pnr: r.booked !== 0 ? r.pnr : null,
   note: r.note,
   createdAt: r.created_at,
 });
 
-const SELECT = "SELECT id, label, journey_date, advance, tatkal, alarm_times, note, created_at FROM train_journeys WHERE status = 'ACTIVE'";
+const SELECT = "SELECT id, label, journey_date, advance, tatkal, alarm_times, note, booked, pnr, created_at FROM train_journeys WHERE status = 'ACTIVE'";
 
 const newId = (): string => `tj-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -69,6 +73,8 @@ export interface JourneyInput extends JourneyFields {
 export async function saveJourney(input: JourneyInput, id?: string): Promise<string> {
   const db = await getDb();
   const columns = bookingToColumns(input.booking);
+  // The form already keeps Booked at No until booking opens; this is the same rule where the row is written.
+  const booked = input.booked && canMarkBooked(input, new Date());
   const values = [
     input.label.trim(),
     input.journeyDate,
@@ -76,16 +82,18 @@ export async function saveJourney(input: JourneyInput, id?: string): Promise<str
     columns.tatkal,
     normalizeTimes(input.alarmTimes).join(","),
     input.note?.trim() || null,
+    booked ? 1 : 0,
+    normalisePnr(input.pnr, booked),
   ];
   if (id) {
     await db.runAsync(
-      "UPDATE train_journeys SET label = ?, journey_date = ?, advance = ?, tatkal = ?, alarm_times = ?, note = ?, updated_at = datetime('now') WHERE id = ?",
+      "UPDATE train_journeys SET label = ?, journey_date = ?, advance = ?, tatkal = ?, alarm_times = ?, note = ?, booked = ?, pnr = ?, updated_at = datetime('now') WHERE id = ?",
       [...values, id],
     );
     return id;
   }
   const created = newId();
-  await db.runAsync("INSERT INTO train_journeys (id, label, journey_date, advance, tatkal, alarm_times, note) VALUES (?, ?, ?, ?, ?, ?, ?)", [
+  await db.runAsync("INSERT INTO train_journeys (id, label, journey_date, advance, tatkal, alarm_times, note, booked, pnr) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [
     created,
     ...values,
   ]);

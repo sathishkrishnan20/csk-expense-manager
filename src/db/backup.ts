@@ -17,7 +17,9 @@ import type { GiftDirection, GiftType, GiftUnit } from "../domain/gifts";
 import { MAIN_GROUP_ID } from "../domain/groups";
 import type { TransactionSource } from "../domain/transactionSource";
 import { cleanDescription } from "../domain/masterData";
+import { fromSqlite } from "./assetSql";
 import { getDb, inTransaction } from "./database";
+import { loadOverview } from "./savingsSql";
 import { listJourneys } from "./trainJourneys";
 
 interface TransactionRow {
@@ -262,6 +264,7 @@ export async function exportBackup(): Promise<Backup> {
       updatedAt: x.updated_at,
     })),
     journeys: upcoming,
+    savings: await loadOverview(fromSqlite(db)),
     transactions: transactions.map(toBackupTransaction),
   };
 }
@@ -276,6 +279,7 @@ export interface RestoreSummary {
   assetsAdded: number;
   assetExchangesAdded: number;
   journeysAdded: number;
+  savingsAdded: number; // months, accounts and holdings of Savings
   skipped: number;
 }
 
@@ -293,6 +297,7 @@ export async function restoreBackup(backup: Backup, skipped: number): Promise<Re
     assetsAdded: 0,
     assetExchangesAdded: 0,
     journeysAdded: 0,
+    savingsAdded: 0,
     skipped,
   };
 
@@ -421,6 +426,35 @@ export async function restoreBackup(backup: Backup, skipped: number): Promise<Re
         [j.id, j.label, j.journeyDate, columns.advance ? 1 : 0, columns.tatkal, j.alarmTimes.join(","), j.note, j.booked ? 1 : 0, j.pnr, j.createdAt],
       );
       summary.journeysAdded += r.changes;
+    }
+
+    // Savings: only what is not here yet is added (the key is the kind, account and month, or the account, or the fund), so a figure this phone already has
+    // is never changed. A restored PF estimate stays an estimate until a passbook is imported.
+    for (const m of backup.savings.months) {
+      const r = await txn.runAsync(
+        `INSERT OR IGNORE INTO savings_months (kind, account, month, own_paise, employer_paise, pension_paise, source, credited_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [m.kind, m.account, m.month, m.ownPaise, m.employerPaise, m.pensionPaise, m.source, m.creditedDate],
+      );
+      summary.savingsAdded += r.changes;
+    }
+    for (const a of backup.savings.accounts) {
+      const r = await txn.runAsync(
+        `INSERT OR IGNORE INTO savings_accounts (kind, account, label, status, as_of, fy, value_paise, invested_paise, xirr, own_paise, employer_paise, pension_paise,
+                                                 auto_add, auto_from, est_own_paise, est_employer_paise, est_pension_paise)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [a.kind, a.account, a.label, a.status, a.asOf, a.fy, a.valuePaise, a.investedPaise, a.xirr, a.ownPaise, a.employerPaise, a.pensionPaise,
+          a.autoAdd ? 1 : 0, a.autoFrom, a.estOwnPaise, a.estEmployerPaise, a.estPensionPaise],
+      );
+      summary.savingsAdded += r.changes;
+    }
+    for (const h of backup.savings.holdings) {
+      const r = await txn.runAsync(
+        `INSERT OR IGNORE INTO savings_holdings (kind, account, code, name, units_e4, nav_e4, value_paise, invested_paise, as_of, nav_date, live_nav_e4, live_nav_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [h.kind, h.account, h.code, h.name, h.unitsE4, h.navE4, h.valuePaise, h.investedPaise, h.asOf, h.navDate, h.liveNavE4, h.liveNavDate],
+      );
+      summary.savingsAdded += r.changes;
     }
 
     for (const t of backup.transactions) {

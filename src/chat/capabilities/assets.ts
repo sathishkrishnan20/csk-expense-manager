@@ -16,6 +16,7 @@ import type { ArgSpecs, ToolArgs } from "../../domain/chatTools";
 import { formatRupees } from "../../domain/format";
 import { formatGrams } from "../../domain/gifts";
 import type { AssetRecord } from "../../db/assets";
+import { addAssetAction } from "./assetActions";
 
 // Gold, land, mutual funds and the rest of what the owner holds (Assets page), and the exchanges of old gold for new with a shop. Each piece
 // is named by For (whom it is for) and Item (what it is). Information only: none of it touches a balance.
@@ -78,6 +79,7 @@ export const assetsCapability: ChatCapability = {
   id: "assets",
   title: "Assets",
   description: "What you own: gold (by person and item, with weight and purity, what is pledged, and what was exchanged with a shop), land, mutual funds and other assets.",
+  actions: [addAssetAction],
   tools: [
     {
       name: "assets_list",

@@ -106,7 +106,7 @@ export function CloudBackupSection() {
   return (
     <View style={styles.box}>
       <T style={styles.note}>
-        Keeps an encrypted copy of your transactions, groups, gifts, assets, upcoming train journeys, categories and payment modes on a free backup server, so you can get
+        Keeps an encrypted copy of your transactions, groups, gifts, assets, savings, upcoming train journeys, categories and payment modes on a free backup server, so you can get
         them back on a new phone. Backups are not automatic: press the button when you want one, and it replaces the earlier copy.
         The copy is encrypted on this phone before it is sent: the server cannot read it, and it holds no name, email or phone
         number, only a hash made from your recovery code. Your API key is not included.

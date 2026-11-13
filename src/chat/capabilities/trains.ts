@@ -1,6 +1,7 @@
 import type { ChatCapability } from "../types";
 import { bookingInfo, describeBooked, describeStatus, journeyStatus, listClock } from "../../domain/trainAlarms";
 import { toISODate } from "../../domain/format";
+import { addJourneyAction } from "./trainActions";
 
 // Train journeys and their booking alarms (Train alarms page).
 
@@ -8,6 +9,7 @@ export const trainsCapability: ChatCapability = {
   id: "trains",
   title: "Train journeys",
   description: "Train journeys you planned: the date, the kind of booking, when booking opens, whether the ticket is booked (with its PNR), and the alarm times.",
+  actions: [addJourneyAction],
   tools: [
     {
       name: "train_journeys",

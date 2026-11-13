@@ -19,8 +19,6 @@ import {
   type RefreshError,
 } from "../domain/metalRates";
 import { goldHistoryRows, type GoldHistoryRow } from "../domain/goldHistory";
-import { calculateTodayPrice } from "../domain/tnGoldEstimate";
-import { fetchGoldOunceInr } from "../rates/goldApi";
 import { fetchGoldHistory } from "../rates/goldHistoryApi";
 import { fetchRateParts } from "../rates/ibjaApi";
 import { loadRatesCache, saveRatesCache } from "../settings/metalRatesCache";
@@ -94,20 +92,13 @@ export default function RatesScreen() {
 
   // The local (Nagercoil) rates, asked for each time the page is opened and on pull-to-refresh. A failed fetch keeps what was shown
   // before, and says "unavailable" if there never was anything.
-  // - The Nagercoil 22K/24K history from our own backend (rates/goldHistoryApi.ts), the real local price.
-  // - The Tamil Nadu 22K estimate from the world gold price (domain/tnGoldEstimate.ts).
+  // The Nagercoil 22K/24K history from our own backend (rates/goldHistoryApi.ts), the real local price.
   const [nagercoil, setNagercoil] = useState<GoldHistoryRow[] | null>(null);
   const [nagercoilTried, setNagercoilTried] = useState(false);
-  const [localPrice, setLocalPrice] = useState<number | null>(null);
-  const [localPriceTried, setLocalPriceTried] = useState(false);
   const loadLocal = useCallback(() => {
     fetchGoldHistory().then((rows) => {
       if (rows) setNagercoil(rows);
       setNagercoilTried(true);
-    });
-    fetchGoldOunceInr().then((ounceInr) => {
-      if (ounceInr !== null) setLocalPrice(calculateTodayPrice(ounceInr));
-      setLocalPriceTried(true);
     });
   }, []);
   useFocusEffect(loadLocal);
@@ -209,12 +200,7 @@ export default function RatesScreen() {
             )}
           </>
         ) : null}
-        {localPriceTried ? (
-          <T weight="medium" style={styles.localPrice}>
-            Estimated Tamil Nadu 22K Rate: {localPrice === null ? "unavailable" : `${formatRupeeAmount(localPrice)} / g`}
-          </T>
-        ) : null}
-        {nagercoilTried || localPriceTried ? (
+        {nagercoilTried ? (
           <T weight="medium" style={styles.section}>
             IBJA benchmark
           </T>
@@ -238,5 +224,4 @@ const styles = StyleSheet.create({
   section: { fontSize: 18, marginTop: 20, marginBottom: 6 },
   note: { color: colors.textSecondary },
   footnote: { fontSize: 12, color: colors.textSecondary, marginTop: 20, textAlign: "center" },
-  localPrice: { fontSize: 15, color: colors.primary, marginTop: 16, textAlign: "center" },
 });

@@ -55,9 +55,9 @@ export function DataBackupSection() {
   return (
     <View style={styles.box}>
       <T style={styles.note}>
-        Export saves all your transactions, groups, gifts, assets, upcoming train journeys, categories and payment modes as one CSV file you can open in Excel (on iPhone
+        Export saves all your transactions, groups, gifts, assets, savings, upcoming train journeys, categories and payment modes as one CSV file you can open in Excel (on iPhone
         use Save to Files or AirDrop; in a browser it downloads). Transactions are on the left, then your category list,
-        then your payment modes, then your groups, your gifts, your assets and your upcoming train journeys, each block separated by empty columns. Import adds whatever is missing from such a file
+        then your payment modes, then your groups, your gifts, your assets, your upcoming train journeys and your savings, each block separated by empty columns. Import adds whatever is missing from such a file
         and never changes what is already here; you can also add rows in Excel first, and leave the category empty to
         have the AI fill it in later. Your API key is not included.
       </T>

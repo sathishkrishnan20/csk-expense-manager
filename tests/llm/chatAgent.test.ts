@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ProtocolError, offeredTools, type Capability } from "../../src/domain/chatTools";
+import { ProtocolError, offeredActions, offeredTools, type Capability } from "../../src/domain/chatTools";
 import type { CategoryDef } from "../../src/domain/masterData";
 import {
   AGENT_SCHEMA,
@@ -213,7 +213,7 @@ test("the instructions list every tool, the categories apart from their descript
 
 test("the schema asks for every field, so each provider's strict mode accepts it", () => {
   const s = AGENT_SCHEMA as { required: string[]; properties: Record<string, unknown> };
-  assert.deepEqual(s.required, ["action", "calls", "answer", "proposedCategory", "proposedSubcategory", "proposedDescription"]);
+  assert.deepEqual(s.required, ["action", "calls", "actionName", "actionArgsJson", "answer", "proposedCategory", "proposedSubcategory", "proposedDescription"]);
   assert.deepEqual(Object.keys(s.properties).sort(), [...s.required].sort());
 });
 
@@ -230,4 +230,105 @@ test("the follow-up message shows earlier turns, then the tool results, then wha
   assert.match(text, /Account holder: q1\nAssistant: a1\nAccount holder: q2/);
   assert.match(text, /Tool results so far for the last question:\nCall 1: t {}\nResult: {"a":1}/);
   assert.match(text, /Decide your next step/);
+});
+
+// ---- adding: the AI proposes, the app prepares a card, and only the owner's Save writes
+
+const proposes = (actionName: string, args: object, answer = "") => ({
+  action: "propose_action",
+  calls: [],
+  actionName,
+  actionArgsJson: JSON.stringify(args),
+  answer,
+  proposedCategory: "",
+  proposedSubcategory: "",
+  proposedDescription: "",
+});
+
+function addCapabilities(written: string[]): Capability<{ tag: string }>[] {
+  return [
+    {
+      id: "expenses",
+      title: "Expenses",
+      description: "Money spent",
+      tools: [{ name: "expense_totals", description: "Exact total of money spent for a period", args: {}, async run() { return { total: "₹0.00" }; } }],
+      actions: [
+        {
+          name: "add_thing",
+          description: "Adds a thing the account holder wants recorded, after their approval",
+          args: { amount: { kind: "string", required: true, description: "rupees" }, payee: { kind: "string", required: true, description: "who" } },
+          async prepare(args) {
+            if (args.amount === "0") return { ok: false, problem: "the amount must be above zero" };
+            return {
+              ok: true,
+              prepared: {
+                title: "Add a thing",
+                lines: [{ label: "Amount", value: `₹${args.amount}` }, { label: "Paid to", value: String(args.payee) }],
+                async save() {
+                  written.push(`${args.amount} ${args.payee}`);
+                  return "Added it.";
+                },
+              },
+            };
+          },
+        },
+      ],
+    },
+  ];
+}
+
+const withActions = (ai: ReturnType<typeof script>, caps: Capability<{ tag: string }>[]) => ({ ...deps(ai, caps), actions: offeredActions(caps) });
+
+test("a proposed action comes back as a card, and nothing is saved until the owner's tap calls save", async () => {
+  const written: string[] = [];
+  const ai = script([proposes("add_thing", { amount: "250", payee: "Tea stall" }, "Filed under Snacks.")]);
+  const reply = await runAgent({ ...withActions(ai, addCapabilities(written)), history: question("Add 250 for tea at the tea stall") });
+
+  assert.equal(reply.answer, "Filed under Snacks.");
+  assert.equal(reply.action?.title, "Add a thing");
+  assert.deepEqual(reply.action?.lines, [{ label: "Amount", value: "₹250" }, { label: "Paid to", value: "Tea stall" }]);
+  assert.deepEqual(written, []); // preparing writes nothing
+  assert.equal(await reply.action!.save(), "Added it.");
+  assert.deepEqual(written, ["250 Tea stall"]);
+});
+
+test("a missing required detail is given back to the AI, which then asks the owner for it instead of guessing", async () => {
+  const written: string[] = [];
+  const ai = script([proposes("add_thing", { amount: "250" }), says("Got it, ₹250. Who did you pay?")]);
+  const reply = await runAgent({ ...withActions(ai, addCapabilities(written)), history: question("Add 250 for tea") });
+
+  assert.equal(reply.action, undefined);
+  assert.equal(reply.answer, "Got it, ₹250. Who did you pay?");
+  assert.match(ai.sent[1].user, /Failed: not ready: "payee" is required\./);
+  assert.deepEqual(written, []);
+});
+
+test("a problem the action finds is given back too, and an unknown action is named as such", async () => {
+  const ai = script([proposes("add_thing", { amount: "0", payee: "x" }), proposes("add_other", { amount: "1", payee: "x" }), says("Sorry.")]);
+  await runAgent({ ...withActions(ai, addCapabilities([])), history: question("Add nothing") });
+  assert.match(ai.sent[1].user, /Failed: not ready: the amount must be above zero/);
+  assert.match(ai.sent[2].user, /there is no action called "add_other"\. The actions are: add_thing/);
+});
+
+test("the instructions list the actions and the names to use only when there are actions", () => {
+  const caps = addCapabilities([]);
+  const withIt = buildAgentSystemPrompt(CATEGORIES, offeredTools(caps), { ...CTX, addTo: { pageGroup: "Main", groups: ["Main", "Goa trip"], paymentMethods: ["UPI", "Cash"], incomeSubcategories: ["Salary"] } }, offeredActions(caps));
+  assert.match(withIt, /add_thing {2}\(Expenses\)/);
+  assert.match(withIt, /Groups an entry can go into: Main, Goa trip\. The group open on the page is "Main"/);
+  assert.match(withIt, /Payment methods: UPI, Cash/);
+  assert.match(withIt, /You never save anything/);
+  assert.doesNotMatch(buildAgentSystemPrompt(CATEGORIES, offeredTools(caps), CTX), /Adding things for the account holder/);
+});
+
+test("the AI is told what a waiting card showed, so a change the owner asks for can be proposed whole", () => {
+  const text = buildAgentUserPrompt(
+    [
+      { role: "user", text: "Add 250 for tea" },
+      { role: "assistant", text: "Check it.", action: { title: "Add an expense", lines: [{ label: "Amount", value: "₹250.00" }, { label: "Paid to", value: "Tea stall" }], save: async () => "" } },
+      { role: "user", text: "make it 300" },
+    ],
+    [],
+    false,
+  );
+  assert.match(text, /\[Card shown, waiting for the owner to tap Save: Add an expense\. Amount: ₹250\.00; Paid to: Tea stall\]/);
 });

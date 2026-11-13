@@ -2,9 +2,9 @@ import { Platform } from "react-native";
 import * as SQLite from "expo-sqlite";
 import { DEFAULT_CATEGORIES, DEFAULT_PAYMENT_METHODS, FALLBACK } from "../domain/masterData";
 import { fromSqlite, migrateAssetsV18 } from "./assetSql";
-import { ASSET_EXCHANGES_SQL, ASSET_OPTIONS_SQL, REBUILD_TRANSACTIONS, TRAIN_COLUMNS_V19, needsTransactionsRebuild, transactionsTableSql } from "./schemaSql";
+import { ASSET_EXCHANGES_SQL, ASSET_OPTIONS_SQL, CHAT_HISTORY_SQL, REBUILD_TRANSACTIONS, SAVINGS_SQL, TRAIN_COLUMNS_V19, needsTransactionsRebuild, transactionsTableSql } from "./schemaSql";
 
-export const SCHEMA_VERSION = 19;
+export const SCHEMA_VERSION = 22;
 
 const SCHEMA = `
 -- A group is a separate ledger (see domain/groups.ts). 'main' holds everything entered before groups existed.
@@ -106,6 +106,8 @@ CREATE TABLE IF NOT EXISTS assets (
 CREATE INDEX IF NOT EXISTS assets_gift_idx ON assets (gift_id);
 ${ASSET_OPTIONS_SQL}
 ${ASSET_EXCHANGES_SQL}
+${CHAT_HISTORY_SQL}
+${SAVINGS_SQL}
 
 -- Train journeys (schema version 13, reshaped in 14 and 15, cleaned up in 16; see domain/trainAlarms.ts). Information only, like gifts and assets: each row
 -- is a journey date the owner wants alarms for. The booking is advance = 1 (60 days before, 8:00 AM) or tatkal = ac / non_ac (the day

@@ -53,6 +53,7 @@ const backup = (over: Partial<Backup> = {}): Backup => ({
   assetOptions: { for: [], item: [] },
   assetExchanges: [],
   journeys: [],
+  savings: { months: [], accounts: [], holdings: [] },
   transactions: [tx()],
   ...over,
 });
@@ -166,13 +167,17 @@ test("CSV layout: transactions, 5 empty columns, category list, 5 empty columns,
   assert.equal(header[list + 95], "Asset For List");
   assert.equal(header[list + 101], "Asset Item List");
   assert.equal(header[list + 107], "Exchanges Id");
-  assert.equal(header.length, list + 115);
+  // Version 9: 5 empty columns, then Savings Months (8), 5 empty, Savings Accounts (17), 5 empty, Savings Holdings (12).
+  assert.equal(header[list + 115 + 5], "Savings Months Kind");
+  assert.equal(header[list + 115 + 5 + 8 + 5], "Savings Accounts Kind");
+  assert.equal(header[list + 115 + 5 + 8 + 5 + 17 + 5], "Savings Holdings Kind");
+  assert.equal(header.length, list + 115 + 52);
   assert.deepEqual(header.slice(0, 5), ["Date", "Type", "Amount", "Category", "Subcategory"]);
 
   // 1 transaction but 3 payment modes: later rows have empty transaction cells.
   assert.equal(lines.length, 1 + 3); // header + one row per payment mode
   assert.match(lines[1], /^23-Oct-2026,Debit,1355\.00,Personal,Clothing,SATHISH KR,UPI,for dresse,2553\.65,Active,/);
-  assert.match(lines[3], new RegExp(`^,{${list + 8}}Card,{106}$`));
+  assert.match(lines[3], new RegExp(`^,{${list + 8}}Card,{158}$`));
 });
 
 test("CSV: text that Excel would run as a formula is protected and restored", () => {
@@ -389,7 +394,7 @@ test("gifts: occasions and gifts survive CSV and JSON, in rupees and grams, with
 test("gifts: a file from before gifts existed restores with none, and damaged gift rows are skipped", () => {
   const old = serializeBackup(backup())
     .split("\r\n")
-    .map((line) => line.split(",").slice(0, -46).join(","))
+    .map((line) => line.split(",").slice(0, -98).join(","))
     .join("\r\n");
   const read = parseBackup(old);
   assert.deepEqual(read.backup.gifts, []);
@@ -460,7 +465,7 @@ test("assets: gold, land, funds and a pledged piece survive CSV and JSON", () =>
 test("assets: a file from before assets existed restores with none, and damaged asset rows are skipped", () => {
   const old = serializeBackup(backup({ assets: [goldAsset()] }))
     .split("\r\n")
-    .map((line) => line.split(",").slice(0, -64).join(","))
+    .map((line) => line.split(",").slice(0, -116).join(","))
     .join("\r\n");
   const read = parseBackup(old);
   assert.deepEqual(read.backup.assets, []);
@@ -513,7 +518,7 @@ test("train journeys: every booking, the times and a note survive CSV and JSON",
 test("train journeys: a file from before they were included restores with none, and damaged rows are skipped", () => {
   const old = serializeBackup(backup({ journeys: [journey()] }))
     .split("\r\n")
-    .map((line) => line.split(",").slice(0, -39).join(","))
+    .map((line) => line.split(",").slice(0, -91).join(","))
     .join("\r\n");
   const read = parseBackup(old);
   assert.deepEqual(read.backup.journeys, []);
@@ -556,7 +561,7 @@ test("the source of an entry survives a backup, and a Source in a file is read a
   // A file edited by hand: an unknown word is read as manual, never as a source the app does not have.
   const edited = text.replace(",Sms,", ",Whatever,");
   assert.equal(parseBackup(edited).backup.transactions[0].source, "manual");
-  assert.equal(BACKUP_VERSION, 8);
+  assert.equal(BACKUP_VERSION, 9);
 });
 
 // ---- For, Item, the two lists and exchanges (version 7)
@@ -640,4 +645,62 @@ test("train journeys: a PNR that is not 10 digits is dropped, and only a booked 
   assert.equal(read({ booked: true, pnr: "12345" }).pnr, null);
   assert.equal(read({ booked: true, pnr: "452-139 8760" }).pnr, "4521398760");
   assert.equal(read({ booked: false, pnr: "4521398760" }).pnr, null);
+});
+
+// ---- Savings (version 9)
+
+const savingsSample = (): Backup["savings"] => ({
+  months: [
+    { kind: "mf", account: "", month: "2026-10", ownPaise: 4100000, employerPaise: 0, pensionPaise: 0, source: "statement", creditedDate: null },
+    { kind: "nps", account: "123456789012", month: "2026-09", ownPaise: 0, employerPaise: 1886000, pensionPaise: 0, source: "statement", creditedDate: "2026-10-05" },
+    { kind: "pf", account: "ABCDE12345670000012345", month: "2026-11", ownPaise: 2263200, employerPaise: 2263200, pensionPaise: 0, source: "estimate", creditedDate: null },
+  ],
+  accounts: [
+    {
+      kind: "pf", account: "ABCDE12345670000012345", label: "ABCDE1234567000", status: "ACTIVE", asOf: "2026-11-13", fy: 2026, valuePaise: null, investedPaise: null, xirr: null,
+      ownPaise: 23544200, employerPaise: 23544200, pensionPaise: 0, autoAdd: true, autoFrom: "2026-10", estOwnPaise: 2263200, estEmployerPaise: 2263200, estPensionPaise: 0,
+    },
+    {
+      kind: "nps", account: "123456789012", label: "NPS Tier I", status: "ACTIVE", asOf: "2026-11-13", fy: null, valuePaise: 41241429, investedPaise: 39117839, xirr: "5.24",
+      ownPaise: null, employerPaise: null, pensionPaise: null, autoAdd: false, autoFrom: null, estOwnPaise: 0, estEmployerPaise: 0, estPensionPaise: 0,
+    },
+  ],
+  holdings: [
+    { kind: "mf", account: "910157128972/0", code: "INF846K01131", name: "Axis ELSS- Tax Saver Fund", unitsE4: 38226150, navE4: 937131, valuePaise: 35822910, investedPaise: 31200000, asOf: "2026-10-31", navDate: "2026-10-31", liveNavE4: 950000, liveNavDate: "2026-11-12" },
+    { kind: "nps", account: "123456789012", code: "TEST SCHEME E - TIER I POP", name: "TEST SCHEME E - TIER I POP", unitsE4: 40687055, navE4: 768979, valuePaise: 31287490, investedPaise: null, asOf: "2026-11-13", navDate: "2026-11-12", liveNavE4: null, liveNavDate: null },
+  ],
+});
+
+test("savings: months, accounts and holdings survive a CSV round trip and a JSON round trip", () => {
+  const original = backup({ savings: savingsSample() });
+  const csv = parseBackup(serializeBackup(original));
+  assert.equal(csv.skipped, 0);
+  assert.deepEqual(csv.backup.savings, original.savings);
+  const json = parseBackup(JSON.stringify(original));
+  assert.equal(json.skipped, 0);
+  assert.deepEqual(json.backup.savings, original.savings);
+});
+
+test("savings: the CSV writes months as Oct-2026 and dates as 23-Oct-2026, and a file without the blocks restores with no savings", () => {
+  const text = serializeBackup(backup({ savings: savingsSample() }));
+  assert.match(text, /Oct-2026/);
+  assert.match(text, /05-Oct-2026/);
+  const plain = parseBackup(serializeBackup(backup()));
+  assert.deepEqual(plain.backup.savings, { months: [], accounts: [], holdings: [] });
+});
+
+test("savings: a damaged row is skipped and counted, the good ones are kept", () => {
+  const sample = savingsSample();
+  const damaged = { ...sample, months: [...sample.months, { ...sample.months[0], month: "not-a-month" }], holdings: [...sample.holdings, { ...sample.holdings[0], code: "" }] };
+  const { backup: read, skipped } = parseBackup(JSON.stringify({ ...backup(), savings: damaged }));
+  assert.equal(skipped, 2);
+  assert.equal(read.savings.months.length, 3);
+  assert.equal(read.savings.holdings.length, 2);
+});
+
+test("savings: the PF switch is only kept on a PF account", () => {
+  const sample = savingsSample();
+  const odd = { ...sample, accounts: [{ ...sample.accounts[1], autoAdd: true, autoFrom: "2026-10" }] };
+  const { backup: read } = parseBackup(JSON.stringify({ ...backup(), savings: odd }));
+  assert.deepEqual([read.savings.accounts[0].autoAdd, read.savings.accounts[0].autoFrom], [false, null]);
 });

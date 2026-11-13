@@ -69,6 +69,105 @@ CREATE TABLE IF NOT EXISTS asset_options (
 );
 `;
 
+// Schema version 20: the history of Ask AI chats (domain/chatHistory.ts). A chat is a thread of messages kept on this phone only, and removed 30 days
+// after its last message. Every CHECK is named (see AGENTS.md). `card` and `proposal` are JSON text; `tools_used` is the titles joined with a
+// line break. A thread's messages are rewritten together each time it changes, so (thread_id, seq) is the key.
+export const CHAT_HISTORY_SQL = `
+CREATE TABLE IF NOT EXISTS chat_threads (
+  id         TEXT PRIMARY KEY NOT NULL,
+  title      TEXT NOT NULL,
+  group_id   TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS chat_threads_updated_idx ON chat_threads (updated_at DESC);
+CREATE TABLE IF NOT EXISTS chat_messages (
+  thread_id      TEXT NOT NULL,
+  seq            INTEGER NOT NULL,
+  role           TEXT NOT NULL CONSTRAINT chat_messages_role_check CHECK (role IN ('user', 'assistant')),
+  text           TEXT NOT NULL,
+  tools_used     TEXT,
+  proposal       TEXT,
+  proposal_state TEXT CONSTRAINT chat_messages_proposal_state_check CHECK (proposal_state IS NULL OR proposal_state IN ('added', 'dismissed')),
+  card           TEXT,
+  PRIMARY KEY (thread_id, seq)
+);
+`;
+
+// Schema version 21: Savings (domain/savings.ts), for information only, like Assets. Every CHECK is named (see AGENTS.md).
+//  - savings_months: one figure per kind (mf, nps, pf), account and month, from a statement or (PF only) an estimate. `own_paise` is the owner's own
+//    money, `employer_paise` the employer's, `pension_paise` the PF pension share. A mutual fund month has account '' (a total across every fund).
+//  - savings_accounts: a PF account (by member ID) or the NPS account (by PRAN): its balances or value as of the last statement, and for PF the
+//    "add each month" switch and the usual monthly amounts.
+//  - savings_holdings: the units of each fund (by ISIN, in a folio) or NPS scheme as the last statement printed them, with the statement's NAV and the
+//    newest NAV looked up online (the live value is units x NAV). Units and NAVs are x 10,000.
+export const SAVINGS_SQL = `
+CREATE TABLE IF NOT EXISTS savings_months (
+  kind          TEXT NOT NULL CONSTRAINT savings_months_kind_check CHECK (kind IN ('mf', 'nps', 'pf')),
+  account       TEXT NOT NULL,
+  month         TEXT NOT NULL,
+  own_paise     INTEGER NOT NULL DEFAULT 0,
+  employer_paise INTEGER NOT NULL DEFAULT 0,
+  pension_paise INTEGER NOT NULL DEFAULT 0,
+  source        TEXT NOT NULL CONSTRAINT savings_months_source_check CHECK (source IN ('statement', 'estimate')),
+  credited_date TEXT,
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (kind, account, month)
+);
+CREATE TABLE IF NOT EXISTS savings_accounts (
+  kind           TEXT NOT NULL CONSTRAINT savings_accounts_kind_check CHECK (kind IN ('pf', 'nps')),
+  account        TEXT NOT NULL,
+  label          TEXT,
+  status         TEXT NOT NULL DEFAULT 'ACTIVE' CONSTRAINT savings_accounts_status_check CHECK (status IN ('ACTIVE', 'CLOSED')),
+  as_of          TEXT,
+  fy             INTEGER,
+  value_paise    INTEGER,
+  invested_paise INTEGER,
+  xirr           TEXT,
+  own_paise      INTEGER,
+  employer_paise INTEGER,
+  pension_paise  INTEGER,
+  auto_add       INTEGER NOT NULL DEFAULT 0 CONSTRAINT savings_accounts_auto_add_check CHECK (auto_add IN (0, 1)),
+  auto_from      TEXT,
+  est_own_paise  INTEGER NOT NULL DEFAULT 0,
+  est_employer_paise INTEGER NOT NULL DEFAULT 0,
+  est_pension_paise INTEGER NOT NULL DEFAULT 0,
+  created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (kind, account)
+);
+CREATE TABLE IF NOT EXISTS savings_holdings (
+  kind           TEXT NOT NULL CONSTRAINT savings_holdings_kind_check CHECK (kind IN ('mf', 'nps')),
+  account        TEXT NOT NULL,
+  code           TEXT NOT NULL,
+  name           TEXT NOT NULL,
+  units_e4       INTEGER NOT NULL,
+  nav_e4         INTEGER NOT NULL,
+  value_paise    INTEGER NOT NULL,
+  invested_paise INTEGER,
+  as_of          TEXT NOT NULL,
+  nav_date       TEXT,
+  live_nav_e4    INTEGER,
+  live_nav_date  TEXT,
+  updated_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (kind, account, code)
+);
+-- Schema version 22: a purchase (a SIP instalment) read from a fund house's confirmation email, kept until the monthly CAS arrives and covers it. It has no rule on its values, so there is nothing to name.
+-- units_e4 is units x 10,000. folio is the folio as the CAS prints it, so a row belongs to one savings_holdings row (isin + folio).
+CREATE TABLE IF NOT EXISTS savings_purchases (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  isin         TEXT NOT NULL,
+  folio        TEXT NOT NULL,
+  purchased_on TEXT NOT NULL,
+  units_e4     INTEGER NOT NULL,
+  net_paise    INTEGER NOT NULL,
+  stamp_paise  INTEGER NOT NULL DEFAULT 0,
+  nav_e4       INTEGER,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS savings_purchases_fund_idx ON savings_purchases (isin, folio, purchased_on);
+`;
+
 export const ASSET_EXCHANGES_SQL = `
 CREATE TABLE IF NOT EXISTS asset_exchanges (
   id            TEXT PRIMARY KEY NOT NULL,

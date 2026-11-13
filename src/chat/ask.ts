@@ -1,16 +1,19 @@
 import { loadCategories } from "../db/config";
 import { listGroupsWithBalances } from "../db/groups";
 import { getSpendingSummary, listChatEntries } from "../db/transactions";
-import { offeredTools, ProtocolError } from "../domain/chatTools";
+import { offeredActions, offeredTools, ProtocolError } from "../domain/chatTools";
 import { chatPeriodLabel, chatPeriodRange, detailLimit, type ChatEntries, type ChatMessage, type ChatPeriod } from "../domain/expenseChat";
 import { scopeLabel, spansSeveralGroups, type GroupScope } from "../domain/groupScope";
 import { toISODate } from "../domain/format";
+import { MAIN_GROUP_ID } from "../domain/groups";
+import { INCOME_CATEGORY } from "../domain/masterData";
+import { loadPaymentMethods } from "../db/config";
 import { askExpenseChat, type ChatReply } from "../llm/chat";
 import { runAgent } from "../llm/chatAgent";
 import { createLlmCall, providerNeedsKey } from "../llm/providers";
 import { loadSettings } from "../settings/settings";
 import { CAPABILITIES } from "./capabilities";
-import { createChatData } from "./data";
+import { createChatData, createChatWrites } from "./data";
 import type { ChatToolContext } from "./types";
 
 // The window an Ollama model is given for a chat, in tokens. Its own default is about 4,000, which a long prompt would overflow.
@@ -28,23 +31,40 @@ export async function askChat(scope: GroupScope, period: ChatPeriod, history: re
 
   const now = new Date();
   const range = chatPeriodRange(period, now);
-  const [categories, groups] = await Promise.all([loadCategories(), listGroupsWithBalances()]);
+  const [categories, groups, paymentMethods] = await Promise.all([loadCategories(), listGroupsWithBalances(), loadPaymentMethods()]);
   const nameOf = new Map(groups.map((g) => [g.id, g.name]));
   const label = scopeLabel(scope, nameOf);
   const call = createLlmCall(provider, apiKey ?? "", { model, baseUrl: ollamaUrl, numCtx: provider === "ollama" ? OLLAMA_CONTEXT : undefined });
 
+  // An entry the AI prepares goes into the group open on the page (Main when the page covers several).
+  const pageGroupId = scope && scope.length === 1 ? scope[0] : MAIN_GROUP_ID;
   const toolCtx: ChatToolContext = {
     data: createChatData(scope),
+    writes: createChatWrites(),
+    pageGroupId,
     scopeLabel: label,
     range,
     now,
     groupNames: nameOf,
     spansGroups: spansSeveralGroups(scope),
   };
-  const context = { scopeLabel: label, periodLabel: chatPeriodLabel(period), start: range.start, end: range.end, today: toISODate(now) };
+  const openGroups = groups.filter((g) => g.status === "ACTIVE");
+  const context = {
+    scopeLabel: label,
+    periodLabel: chatPeriodLabel(period),
+    start: range.start,
+    end: range.end,
+    today: toISODate(now),
+    addTo: {
+      pageGroup: nameOf.get(pageGroupId) ?? "Main",
+      groups: openGroups.map((g) => g.name),
+      paymentMethods,
+      incomeSubcategories: categories.find((c) => c.category === INCOME_CATEGORY)?.subcategories ?? [],
+    },
+  };
 
   try {
-    return await runAgent({ call, categories, tools: offeredTools(CAPABILITIES), toolCtx, ctx: context, history });
+    return await runAgent({ call, categories, tools: offeredTools(CAPABILITIES), actions: offeredActions(CAPABILITIES), toolCtx, ctx: context, history });
   } catch (err) {
     if (!(err instanceof ProtocolError)) throw err;
   }

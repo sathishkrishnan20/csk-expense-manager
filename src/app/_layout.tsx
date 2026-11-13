@@ -13,6 +13,7 @@ import {
 } from "@expo-google-fonts/roboto";
 import { runStartupSync } from "../alarms/startup";
 import { configureAlarmNotifications } from "../alarms/sync";
+import { cleanUpOldChats } from "../db/chatHistory";
 import { getDb } from "../db/database";
 import { listenForPhoneMessages } from "../import/phoneInbox";
 import { pullSms } from "../import/smsCapture";
@@ -40,6 +41,16 @@ export default function RootLayout() {
     if (!dbReady) return;
     configureAlarmNotifications();
     runStartupSync();
+  }, [dbReady]);
+
+  // Chats in the history are removed 30 days after their last message, each time the app opens and each time it comes back to the front.
+  useEffect(() => {
+    if (!dbReady) return;
+    cleanUpOldChats().catch(() => {});
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") cleanUpOldChats().catch(() => {});
+    });
+    return () => subscription.remove();
   }, [dbReady]);
 
   // Bank messages the Shortcut has handed over are collected when the app opens and each time it comes back to the front, and at once

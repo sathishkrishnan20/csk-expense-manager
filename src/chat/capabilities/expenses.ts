@@ -2,6 +2,7 @@ import type { ChatCapability, ChatToolContext } from "../types";
 import type { EntrySort, ExpenseFilter, ExpenseGroupBy, ExpenseType } from "../../domain/chatQuery";
 import type { ArgSpecs, ToolArgs } from "../../domain/chatTools";
 import { formatRupees } from "../../domain/format";
+import { addTransactionAction } from "./expenseActions";
 
 // Money spent and received, from the entries of the groups chosen on the page (Home, Transactions and Charts use the same entries).
 
@@ -53,6 +54,7 @@ export const expensesCapability: ChatCapability = {
   id: "expenses",
   title: "Expenses",
   description: "Money spent and received: totals, breakdowns and single payments, by date, category, payee and the words you wrote.",
+  actions: [addTransactionAction],
   tools: [
     {
       name: "expense_totals",

@@ -27,11 +27,31 @@ export interface ChatTool<Ctx> {
   run(args: ToolArgs, ctx: Ctx): Promise<unknown>; // returns plain data; the chat turns it into text
 }
 
+// An *action* is how a feature lets the chat add something (an expense, a train journey, a gift, an asset). The AI never writes: it proposes an
+// action by name with arguments, the app checks them, and `prepare` works out what would be saved. That is shown to the owner as a card, and the data
+// is written only when the owner taps Save (`save`). `prepare` reads and checks, it never writes; a problem it returns is words the AI reads, then
+// either fixes or asks the owner about.
+export interface PreparedAction {
+  title: string; // "Add an expense"
+  lines: { label: string; value: string }[]; // exactly what will be saved, in the owner's words, shown on the card
+  save(): Promise<string>; // writes it, once, and says what was done; called only from the owner's tap
+}
+
+export type ActionOutcome = { ok: true; prepared: PreparedAction } | { ok: false; problem: string };
+
+export interface ChatAction<Ctx> {
+  name: string; // snake_case, unique across every tool and action
+  description: string; // what it adds and when to use it
+  args: ArgSpecs; // `required` marks what the AI must know before proposing; anything else is optional
+  prepare(args: ToolArgs, ctx: Ctx): Promise<ActionOutcome>;
+}
+
 export interface Capability<Ctx> {
   id: string; // stable: the owner's on/off choice is stored under it
   title: string; // "Expenses"
   description: string; // one line for the page and for the AI: what is in here
   tools: ChatTool<Ctx>[];
+  actions?: ChatAction<Ctx>[]; // what the chat can add for this feature, always after the owner's approval
 }
 
 export interface OfferedTool<Ctx> {
@@ -45,6 +65,15 @@ export function offeredTools<Ctx>(capabilities: readonly Capability<Ctx>[]): Off
   return capabilities.flatMap((capability) => capability.tools.map((tool) => ({ capability, tool })));
 }
 
+export interface OfferedAction<Ctx> {
+  capability: Capability<Ctx>;
+  action: ChatAction<Ctx>;
+}
+
+export function offeredActions<Ctx>(capabilities: readonly Capability<Ctx>[]): OfferedAction<Ctx>[] {
+  return capabilities.flatMap((capability) => (capability.actions ?? []).map((action) => ({ capability, action })));
+}
+
 // Problems in the list of capabilities (a tool without a description, a name used twice), for the test that every feature keeps the rules.
 export function registryProblems<Ctx>(capabilities: readonly Capability<Ctx>[]): string[] {
   const problems: string[] = [];
@@ -56,6 +85,16 @@ export function registryProblems<Ctx>(capabilities: readonly Capability<Ctx>[]):
     ids.add(c.id);
     if (!c.title.trim() || !c.description.trim()) problems.push(`capability "${c.id}" needs a title and a description`);
     if (c.tools.length === 0) problems.push(`capability "${c.id}" has no tools`);
+    for (const a of c.actions ?? []) {
+      if (!/^[a-z][a-z0-9_]*$/.test(a.name)) problems.push(`action name "${a.name}" must be snake_case`);
+      if (names.has(a.name)) problems.push(`action name "${a.name}" is used twice (or is also a tool name)`);
+      names.add(a.name);
+      if (a.description.trim().length < 20) problems.push(`action "${a.name}" needs a description of what it adds and when to use it`);
+      if (!Object.values(a.args).some((spec) => spec.required)) problems.push(`action "${a.name}" must have at least one required argument`);
+      for (const [arg, spec] of Object.entries(a.args)) {
+        if (!spec.description.trim()) problems.push(`argument "${arg}" of "${a.name}" needs a description`);
+      }
+    }
     for (const t of c.tools) {
       if (!/^[a-z][a-z0-9_]*$/.test(t.name)) problems.push(`tool name "${t.name}" must be snake_case`);
       if (names.has(t.name)) problems.push(`tool name "${t.name}" is used twice`);
@@ -133,17 +172,28 @@ export function validateArgs(specs: ArgSpecs, raw: unknown): { ok: true; args: T
   return { ok: true, args };
 }
 
+function describeArgs(specs: ArgSpecs): string[] {
+  return Object.entries(specs).map(([name, spec]) => {
+    const kind = spec.kind === "date" ? "date yyyy-mm-dd" : spec.kind === "string_list" ? "list of words" : spec.kind === "integer" ? "whole number" : "text";
+    const options = spec.options ? `, one of: ${spec.options.join(" | ")}` : "";
+    return `    - ${name}${spec.required ? " (required)" : ""} [${kind}${options}]: ${spec.description}`;
+  });
+}
+
 // The tools as the AI reads them in its instructions.
 export function describeTools<Ctx>(offered: readonly OfferedTool<Ctx>[]): string {
   return offered
     .map(({ capability, tool }) => {
-      const args = Object.entries(tool.args).map(([name, spec]) => {
-        const kind = spec.kind === "date" ? "date yyyy-mm-dd" : spec.kind === "string_list" ? "list of words" : spec.kind === "integer" ? "whole number" : "text";
-        const options = spec.options ? `, one of: ${spec.options.join(" | ")}` : "";
-        return `    - ${name}${spec.required ? " (required)" : ""} [${kind}${options}]: ${spec.description}`;
-      });
+      const args = describeArgs(tool.args);
       return [`${tool.name}  (${capability.title}): ${tool.description}`, args.length > 0 ? "  arguments, all optional unless marked:" : "  no arguments.", ...args].join("\n");
     })
+    .join("\n\n");
+}
+
+// The actions as the AI reads them.
+export function describeActions<Ctx>(offered: readonly OfferedAction<Ctx>[]): string {
+  return offered
+    .map(({ capability, action }) => [`${action.name}  (${capability.title}): ${action.description}`, "  arguments, all optional unless marked:", ...describeArgs(action.args)].join("\n"))
     .join("\n\n");
 }
 
@@ -162,8 +212,15 @@ export interface ToolCall {
   argsError: string | null; // the arguments were not valid JSON
 }
 
+export interface ActionProposal {
+  action: string;
+  args: unknown;
+  argsError: string | null;
+}
+
 export type AgentStep =
   | { kind: "call"; calls: ToolCall[] }
+  | { kind: "propose"; proposal: ActionProposal; answer: string }
   | { kind: "answer"; answer: string; proposedCategory: unknown; proposedSubcategory: unknown; proposedDescription: unknown };
 
 export function parseAgentStep(raw: unknown): AgentStep {
@@ -197,7 +254,22 @@ export function parseAgentStep(raw: unknown): AgentStep {
     return { kind: "call", calls };
   }
 
-  throw new ProtocolError(`The AI's action was "${String(r.action)}", not call_tools or answer.`);
+  if (r.action === "propose_action") {
+    const name = typeof r.actionName === "string" ? r.actionName.trim() : "";
+    if (name === "") throw new ProtocolError("The AI proposed an action but named none.");
+    const text = typeof r.actionArgsJson === "string" ? r.actionArgsJson.trim() : "";
+    let proposal: ActionProposal = { action: name, args: {}, argsError: null };
+    if (text !== "") {
+      try {
+        proposal = { action: name, args: JSON.parse(text), argsError: null };
+      } catch {
+        proposal = { action: name, args: {}, argsError: "actionArgsJson was not valid JSON. Write the arguments as one JSON object, for example {\"amount\":\"250\"}." };
+      }
+    }
+    return { kind: "propose", proposal, answer: typeof r.answer === "string" ? r.answer.trim() : "" };
+  }
+
+  throw new ProtocolError(`The AI's action was "${String(r.action)}", not call_tools, propose_action or answer.`);
 }
 
 // A result as text for the AI, cut when it is too long (the tools keep their results short; this is the last guard).

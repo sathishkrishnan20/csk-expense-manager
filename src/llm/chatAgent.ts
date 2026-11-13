@@ -1,11 +1,15 @@
 import {
   clipText,
+  describeActions,
   describeTools,
   MAX_CALLS_PER_ROUND,
   parseAgentStep,
   ProtocolError,
   validateArgs,
+  type ActionProposal,
+  type OfferedAction,
   type OfferedTool,
+  type PreparedAction,
   type ToolCall,
 } from "../domain/chatTools";
 import { acceptProposal, recentTurns, type ChatMessage } from "../domain/expenseChat";
@@ -33,12 +37,14 @@ export interface AgentContext {
   start: string;
   end: string;
   today: string;
+  // What the AI needs to know to add an entry: the names it may use. Sent only with the actions.
+  addTo?: { pageGroup: string; groups: string[]; paymentMethods: string[]; incomeSubcategories: string[] };
 }
 
 export const AGENT_SCHEMA: JsonSchema = {
   type: "object",
   properties: {
-    action: { type: "string", enum: ["call_tools", "answer"] },
+    action: { type: "string", enum: ["call_tools", "propose_action", "answer"] },
     calls: {
       type: "array",
       items: {
@@ -48,19 +54,50 @@ export const AGENT_SCHEMA: JsonSchema = {
         additionalProperties: false,
       },
     },
+    actionName: { type: "string" },
+    actionArgsJson: { type: "string" },
     answer: { type: "string" },
     proposedCategory: { type: "string" },
     proposedSubcategory: { type: "string" },
     proposedDescription: { type: "string" },
   },
-  required: ["action", "calls", "answer", "proposedCategory", "proposedSubcategory", "proposedDescription"],
+  required: ["action", "calls", "actionName", "actionArgsJson", "answer", "proposedCategory", "proposedSubcategory", "proposedDescription"],
   additionalProperties: false,
 };
 
-export function buildAgentSystemPrompt<Ctx>(categories: CategoryDef[], tools: readonly OfferedTool<Ctx>[], ctx: AgentContext): string {
+function addingText<Ctx>(actions: readonly OfferedAction<Ctx>[], ctx: AgentContext): string {
+  if (actions.length === 0) return "";
+  const add = ctx.addTo;
+  const lists = add
+    ? `\nNames to use when adding (write them exactly as here):
+- Groups an entry can go into: ${add.groups.join(", ") || "Main"}. The group open on the page is "${add.pageGroup}"; use it unless they name another.
+- Payment methods: ${add.paymentMethods.join(", ") || "(none set up)"}.
+- Subcategories for income: ${add.incomeSubcategories.join(", ") || "(none)"}.\n`
+    : "";
+  return `
+Adding things for the account holder. Besides looking things up, you can prepare something to add. These are the actions:
+
+${describeActions(actions)}
+${lists}
+Rules for adding:
+- Only when they ask you to add, record or save something. Set action to "propose_action", actionName to one action above, and actionArgsJson to its arguments as a JSON object written as text. In "answer" put one short friendly line to show above the card (for example the category you chose for them). You never save anything: the app checks it and shows a card, and only their tap on Save writes it.
+- Before proposing, every required argument must be known. If one is missing, do not guess it: set action to "answer" and ask for just what is missing, in one short question that also says what you have understood ("Got it, ₹250 for tea. Who did you pay?"). Do not ask about optional things; use the defaults (today's date, the page's group), and they can ask you to change them.
+- Money is written as plain rupees like "250" or "1250.50". For an expense choose the category and subcategory from their lists above, exactly as written; leave them out when none clearly fits, and the entry is filed later.
+- If the app answers that it is not ready, read why: fix the arguments yourself, or ask the account holder when only they know.
+- When a card is waiting and they ask for a change, propose the whole entry again with that change. Once it has been saved, never add it a second time.
+- Never say something was added or saved. Only the tap does that, and the app tells them.
+`;
+}
+
+export function buildAgentSystemPrompt<Ctx>(
+  categories: CategoryDef[],
+  tools: readonly OfferedTool<Ctx>[],
+  ctx: AgentContext,
+  actions: readonly OfferedAction<Ctx>[] = [],
+): string {
   const spendable = allowedCategories(categories, "debit");
   const toolText = tools.length > 0 ? describeTools(tools) : "(none: you can only help with filing a purchase under a category)";
-  return `You are the assistant inside a personal money app. You answer one person's questions about their own data (spending and income, assets, gifts, train journeys, groups) in plain, friendly English and short paragraphs or simple lists (no tables).
+  return `You are the assistant inside a personal money app. You answer one person's questions about their own data (spending and income, assets, savings, gifts, train journeys, groups) in plain, friendly English and short paragraphs or simple lists (no tables).
 
 Today is ${ctx.today}. All money is in Indian rupees; write amounts like ₹1,250 or ₹1,250.50.
 
@@ -72,9 +109,9 @@ ${listDescriptions(spendable)}
 You know nothing about their data except what a tool returns. These are the tools you can use:
 
 ${toolText}
-
+${addingText(actions, ctx)}
 How you work:
-- Every reply of yours is one JSON object. To look something up, set action to "call_tools" and list the calls: each has "tool" (a tool name above) and "argsJson" (the arguments as a JSON object written as text, "{}" for none). You may ask for up to ${MAX_CALLS_PER_ROUND} calls at once; you will get the results and may ask again, up to ${MAX_TOOL_ROUNDS} times. When you can answer, set action to "answer" and write the reply in "answer". Leave "calls" empty when you answer and "answer" empty when you call tools.
+- Every reply of yours is one JSON object. To look something up, set action to "call_tools" and list the calls: each has "tool" (a tool name above) and "argsJson" (the arguments as a JSON object written as text, "{}" for none). You may ask for up to ${MAX_CALLS_PER_ROUND} calls at once; you will get the results and may ask again, up to ${MAX_TOOL_ROUNDS} times. When you can answer, set action to "answer" and write the reply in "answer". Leave "calls" empty when you answer and "answer" empty when you call tools. Leave actionName and actionArgsJson empty unless you are proposing an action.
 - Ask for what the question needs, no more. For anything about how much, how many, which is most or a comparison, use a tool that totals; never add up many numbers yourself. Quote the numbers the tools return, and say which period and groups they cover when it is not obvious.
 - If a tool returns an error, fix the arguments and ask again, or say you could not get it. If no tool can answer the question, say what is not available. Never guess or make up figures.
 - Use the account holder's words: the description or note of an entry says what was bought, and can be short or in a local language (try spelling variants with the words filter).
@@ -132,10 +169,34 @@ async function execute<Ctx>(byName: ReadonlyMap<string, OfferedTool<Ctx>>, call:
   }
 }
 
+// Checks and prepares one action the AI proposed. Nothing is written here: a prepared action only holds what its Save would do.
+async function prepareAction<Ctx>(
+  byName: ReadonlyMap<string, OfferedAction<Ctx>>,
+  proposal: ActionProposal,
+  toolCtx: Ctx,
+): Promise<{ run: ToolRun; prepared: PreparedAction | null }> {
+  const argsText = proposal.argsError ? "(unreadable)" : JSON.stringify(proposal.args) ?? "{}";
+  const failed = (text: string) => ({ run: { name: proposal.action, argsText, ok: false, text } as ToolRun, prepared: null });
+
+  const found = byName.get(proposal.action);
+  if (!found) return failed(`there is no action called "${proposal.action}". The actions are: ${[...byName.keys()].join(", ") || "none"}.`);
+  if (proposal.argsError) return failed(proposal.argsError);
+  const checked = validateArgs(found.action.args, proposal.args);
+  if (!checked.ok) return failed(`not ready: ${checked.error}`);
+  try {
+    const outcome = await found.action.prepare(checked.args, toolCtx);
+    if (!outcome.ok) return failed(`not ready: ${outcome.problem}`);
+    return { run: { name: proposal.action, argsText: JSON.stringify(checked.args), ok: true, text: "prepared; the card is shown to the account holder" }, prepared: outcome.prepared };
+  } catch (err) {
+    return failed(`the action failed: ${message(err)}`);
+  }
+}
+
 export interface AgentDeps<Ctx> {
   call: LlmCall;
   categories: CategoryDef[];
   tools: readonly OfferedTool<Ctx>[];
+  actions?: readonly OfferedAction<Ctx>[]; // what the AI may prepare to add; none when left out
   toolCtx: Ctx;
   ctx: AgentContext;
   history: readonly ChatMessage[]; // ends with the question
@@ -144,8 +205,10 @@ export interface AgentDeps<Ctx> {
 // Answers one question. Throws ProtocolError when the AI does not keep to the format (the caller can fall back to a simpler way of asking);
 // any other error, such as no internet or a quota, is the provider's and goes up as it is.
 export async function runAgent<Ctx>(deps: AgentDeps<Ctx>): Promise<ChatReply> {
-  const system = buildAgentSystemPrompt(deps.categories, deps.tools, deps.ctx);
+  const actions = deps.actions ?? [];
+  const system = buildAgentSystemPrompt(deps.categories, deps.tools, deps.ctx, actions);
   const byName = new Map(deps.tools.map((t) => [t.tool.name, t]));
+  const actionsByName = new Map(actions.map((a) => [a.action.name, a]));
   const runs: ToolRun[] = [];
   let used = 0;
 
@@ -160,6 +223,16 @@ export async function runAgent<Ctx>(deps: AgentDeps<Ctx>): Promise<ChatReply> {
         proposal: acceptProposal(deps.categories, step.proposedCategory, step.proposedSubcategory, step.proposedDescription),
         toolsUsed: titles,
       };
+    }
+    if (step.kind === "propose") {
+      const { run, prepared } = await prepareAction(actionsByName, step.proposal, deps.toolCtx);
+      if (prepared) {
+        const titles = [...new Set(runs.filter((r) => r.ok).map((r) => byName.get(r.name)?.capability.title).filter((t): t is string => !!t))];
+        return { answer: step.answer || "Check the details below, then tap Save.", proposal: null, action: prepared, toolsUsed: titles };
+      }
+      if (mustAnswer) return { answer: `I could not prepare that: ${run.text.replace(/^not ready: /, "")}`, proposal: null };
+      runs.push(run);
+      continue;
     }
     if (mustAnswer) throw new ProtocolError("The AI kept asking for tools after its last round.");
 

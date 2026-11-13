@@ -3,19 +3,15 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { deleteBackup, downloadBackup, uploadBackup } from "../../src/cloud/client";
 import { NONCE_BYTES, SECRET_BYTES, deriveKeys, fromUploadBody, toUploadBody } from "../../src/domain/cloudBackup";
-import { handle, type KvLike } from "../../server/src/worker";
+import { handle } from "../../server/src/worker";
+import { fakeKv } from "../server/fakeKv";
 
 const BASE = "https://backup.example.workers.dev";
 
 // A fetch that goes straight into the Worker code with an in-memory store, so the app side and server side are tested together.
 function serverFetch() {
-  const data = new Map<string, { value: string; metadata: unknown }>();
-  const kv: KvLike = {
-    get: async (k) => data.get(k)?.value ?? null,
-    getWithMetadata: async <M>(k: string) => ({ value: data.get(k)?.value ?? null, metadata: (data.get(k)?.metadata as M | undefined) ?? null }),
-    put: async (k, value, options) => void data.set(k, { value, metadata: options?.metadata }),
-    delete: async (k) => void data.delete(k),
-  };
+  const kv = fakeKv();
+  const data = kv.data;
   const fetchFn = ((url: string, init?: RequestInit) => handle(new Request(url, init), { BACKUPS: kv })) as typeof fetch;
   return { fetchFn, data };
 }

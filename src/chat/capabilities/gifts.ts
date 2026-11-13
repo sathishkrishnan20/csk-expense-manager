@@ -2,6 +2,7 @@ import type { ChatCapability } from "../types";
 import type { ArgSpecs } from "../../domain/chatTools";
 import { describeGift, filterGifts, giftTotals, rupeesText, totalsLines, type GiftDirection, type GiftType } from "../../domain/gifts";
 import type { GiftRecord } from "../../db/gifts";
+import { addGiftAction } from "./giftActions";
 
 // Gifts received and given at occasions (Gifts page). Information only: none of it touches a balance.
 
@@ -26,6 +27,7 @@ export const giftsCapability: ChatCapability = {
   id: "gifts",
   title: "Gifts",
   description: "Gifts received and given at occasions such as marriages: who gave what (cash, gold, silver, other), with totals.",
+  actions: [addGiftAction],
   tools: [
     {
       name: "gifts_list",

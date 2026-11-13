@@ -1,3 +1,4 @@
+import type { PreparedAction } from "./chatTools";
 import { monthRange, toISODate } from "./format";
 import { MAX_SUBCATEGORY_DESCRIPTION, cleanDescription, type CategoryDef } from "./masterData";
 import { acceptSuggestion, suggestionStatus, type SuggestionStatus } from "./suggestions";
@@ -13,11 +14,20 @@ export interface ChatProposal {
   status: Exclude<SuggestionStatus, "existing">; // a new category, or a new subcategory in a category that is there
 }
 
+// A card from an earlier visit to a chat: what it showed and how it ended. It cannot be saved any more (the chat that could save it is gone).
+export interface PastCard {
+  title: string;
+  lines: { label: string; value: string }[];
+  outcome: "saved" | "cancelled" | "not_saved";
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   text: string;
   proposal?: ChatProposal; // an assistant message may carry one
   toolsUsed?: string[]; // what the AI looked at to answer, shown under it
+  pastCard?: PastCard; // a card restored from the chat history
+  action?: PreparedAction; // something the AI prepared to add; it is saved only when the owner taps Save on the card under this message
 }
 
 // What the model sent as a proposal, or null when there is none or it cannot be used (names missing or too long, Income or Others, or
@@ -147,14 +157,22 @@ export const MAX_MESSAGE_CHARS = 1500;
 export const MAX_QUESTION_CHARS = 1000;
 
 export function recentTurns(history: readonly ChatMessage[]): ChatMessage[] {
-  return history.slice(-MAX_CHAT_TURNS).map((m) => ({
-    role: m.role,
-    text: m.text.length > MAX_MESSAGE_CHARS ? `${m.text.slice(0, MAX_MESSAGE_CHARS)}…` : m.text,
-  }));
+  return history.slice(-MAX_CHAT_TURNS).map((m) => {
+    const text = m.text.length > MAX_MESSAGE_CHARS ? `${m.text.slice(0, MAX_MESSAGE_CHARS)}…` : m.text;
+    // The AI is told what the card showed, so when the owner asks for a change it can propose the same thing with that change.
+    const lines = (c: { lines: { label: string; value: string }[] }) => c.lines.map((l) => `${l.label}: ${l.value}`).join("; ");
+    const card = m.action
+      ? `\n[Card shown, waiting for the owner to tap Save: ${m.action.title}. ${lines(m.action)}]`
+      : m.pastCard
+        ? `\n[Card shown earlier (${m.pastCard.outcome === "saved" ? "accepted and saved" : m.pastCard.outcome === "cancelled" ? "rejected by the owner, not saved" : "no decision, not saved"}): ${m.pastCard.title}. ${lines(m.pastCard)}]`
+        : "";
+    return { role: m.role, text: `${text}${card}` };
+  });
 }
 
 // Example questions shown before the first message; tapping one fills the box.
 export const EXAMPLE_QUESTIONS: string[] = [
+  "Add an expense of ₹250 for tea",
   "I bought a phone cover for ₹250. Which category and subcategory should I use?",
   "How much did I spend on snacks last month, and on what?",
   "Where am I spending the most, and what can I cut down on?",

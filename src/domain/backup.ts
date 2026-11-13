@@ -9,6 +9,10 @@
 //   5 empty columns [ Journeys Id | Label | Date | Booking | Alarm Times | Note | Created | Booked | PNR ]
 //   5 empty columns [ Asset For List ] 5 empty columns [ Asset Item List ]
 //   5 empty columns [ Exchanges Id | Date | Shop | Extra | Note | Status | Created | Updated ]
+//   5 empty columns [ Savings Months Kind | Account | Month | Own | Employer | Pension | Source | Credited ]
+//   5 empty columns [ Savings Accounts Kind | Account | Label | Status | As Of | FY | Value | Invested | XIRR | Own | Employer | Pension | Auto Add | Auto From | Est Own | Est Employer | Est Pension ]
+//   5 empty columns [ Savings Holdings Kind | Account | Code | Name | Units E4 | NAV E4 | Value | Invested | As Of | NAV Date | Live NAV E4 | Live NAV Date ]
+// Version 9 added the three Savings blocks at the end (mutual fund, NPS and PF figures; see domain/savings.ts). A file without them restores with no savings.
 // Version 8 added Booked and PNR to each journey (the last two columns of the journeys block; a file without them restores every journey as not
 // booked). Version 7 added For, Item and Exchange to each asset (the Assets block ends with Assets For | Assets Item | Assets Exchange Id), the two
 // lists behind the For and Item dropdowns, and the exchanges with a shop. A file without them (version 6 or older) restores with each asset's
@@ -24,6 +28,8 @@
 
 import Papa from "papaparse";
 import { BOOKINGS, MAX_ALARMS, bookingInfo, normalisePnr, normalizeTimes, validatePnr, type Booking } from "./trainAlarms";
+import { monthFromWords } from "./pdfLines";
+import type { MonthRow, SavingsAccount, SavingsHolding } from "./savings";
 import { ASSET_TYPES, ASSET_UNITS, GOLD_PURITIES, deriveForAndItem, normaliseAsset, type AssetFields, type AssetStatus } from "./assets";
 import { gramsInputText, parseGramsInput, type GiftDirection, type GiftType, type GiftUnit } from "./gifts";
 import { MAIN_GROUP_ID, type GroupStatus } from "./groups";
@@ -39,7 +45,8 @@ const LEGACY_BACKUP_FORMAT = "expense-manager-backup";
 // 7: assets have a For and an Item (and the name is made from them), pieces can belong to an exchange with a shop, and the file carries the
 // For and Item lists and the exchanges.
 // 8: journeys can be booked, with an optional PNR.
-export const BACKUP_VERSION = 8;
+// 9: Savings (mutual fund, NPS and PF figures, the PF accounts and the units of each fund and NPS scheme).
+export const BACKUP_VERSION = 9;
 
 export interface BackupTransaction {
   id: string;
@@ -133,6 +140,15 @@ export interface BackupJourney {
   createdAt: string | null;
 }
 
+// Savings as stored: one figure per kind, account and month, the PF and NPS accounts, and the units of each fund and NPS scheme.
+export interface BackupSavings {
+  months: MonthRow[];
+  accounts: SavingsAccount[];
+  holdings: SavingsHolding[];
+}
+
+export const emptySavings = (): BackupSavings => ({ months: [], accounts: [], holdings: [] });
+
 export interface BackupCategory {
   category: string;
   subcategory: string;
@@ -152,6 +168,7 @@ export interface Backup {
   assetOptions: { for: string[]; item: string[] }; // the lists behind the For and Item dropdowns
   assetExchanges: BackupAssetExchange[];
   journeys: BackupJourney[];
+  savings: BackupSavings;
   transactions: BackupTransaction[];
 }
 
@@ -372,6 +389,95 @@ function readAssetExchange(raw: unknown): BackupAssetExchange | null {
 
 const BOOKING_VALUES = BOOKINGS.map((b) => b.value);
 
+// ---- Savings ---------------------------------------------------------------------------------------------------------------------------------
+
+const nonNegInt = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : null);
+const anyInt = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) ? v : null);
+const monthOrNull = (v: unknown): string | null => (typeof v === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(v) ? v : null);
+
+function readSavingsMonth(raw: unknown): MonthRow | null {
+  if (!isObject(raw)) return null;
+  const kind = raw.kind === "mf" || raw.kind === "nps" || raw.kind === "pf" ? raw.kind : null;
+  const month = monthOrNull(raw.month);
+  const source = raw.source === "estimate" ? "estimate" : raw.source === "statement" ? "statement" : null;
+  const own = nonNegInt(raw.ownPaise ?? 0);
+  const employer = nonNegInt(raw.employerPaise ?? 0);
+  const pension = nonNegInt(raw.pensionPaise ?? 0);
+  if (!kind || !month || !source || own === null || employer === null || pension === null || typeof raw.account !== "string") return null;
+  const credited = isoDateOrNull(raw.creditedDate);
+  if (credited === undefined) return null;
+  return { kind, account: raw.account, month, ownPaise: own, employerPaise: employer, pensionPaise: pension, source, creditedDate: credited };
+}
+
+function readSavingsAccount(raw: unknown): SavingsAccount | null {
+  if (!isObject(raw) || !nonEmpty(raw.account)) return null;
+  const kind = raw.kind === "pf" || raw.kind === "nps" ? raw.kind : null;
+  const asOf = isoDateOrNull(raw.asOf);
+  const autoFrom = raw.autoFrom === null || raw.autoFrom === undefined ? null : monthOrNull(raw.autoFrom);
+  const nullableInt = (v: unknown): number | null | undefined => (v === null || v === undefined ? null : anyInt(v) ?? undefined);
+  const value = nullableInt(raw.valuePaise);
+  const invested = nullableInt(raw.investedPaise);
+  const own = nullableInt(raw.ownPaise);
+  const employer = nullableInt(raw.employerPaise);
+  const pension = nullableInt(raw.pensionPaise);
+  const fy = nullableInt(raw.fy);
+  const estOwn = nonNegInt(raw.estOwnPaise ?? 0);
+  const estEmployer = nonNegInt(raw.estEmployerPaise ?? 0);
+  const estPension = nonNegInt(raw.estPensionPaise ?? 0);
+  if (!kind || asOf === undefined || autoFrom === undefined || [value, invested, own, employer, pension, fy].includes(undefined) || estOwn === null || estEmployer === null || estPension === null) return null;
+  return {
+    kind,
+    account: raw.account,
+    label: optionalString(raw.label) ?? null,
+    status: raw.status === "CLOSED" ? "CLOSED" : "ACTIVE",
+    asOf,
+    fy: fy as number | null,
+    valuePaise: value as number | null,
+    investedPaise: invested as number | null,
+    xirr: optionalString(raw.xirr) ?? null,
+    ownPaise: own as number | null,
+    employerPaise: employer as number | null,
+    pensionPaise: pension as number | null,
+    autoAdd: raw.autoAdd === true && kind === "pf",
+    autoFrom: raw.autoAdd === true && kind === "pf" ? autoFrom : null,
+    estOwnPaise: estOwn,
+    estEmployerPaise: estEmployer,
+    estPensionPaise: estPension,
+  };
+}
+
+function readSavingsHolding(raw: unknown): SavingsHolding | null {
+  if (!isObject(raw) || !nonEmpty(raw.code) || !nonEmpty(raw.name) || typeof raw.account !== "string") return null;
+  const kind = raw.kind === "mf" || raw.kind === "nps" ? raw.kind : null;
+  const units = anyInt(raw.unitsE4);
+  const nav = anyInt(raw.navE4);
+  const value = anyInt(raw.valuePaise);
+  const asOf = isoDateOrNull(raw.asOf);
+  const navDate = isoDateOrNull(raw.navDate);
+  const liveDate = isoDateOrNull(raw.liveNavDate);
+  const invested = raw.investedPaise === null || raw.investedPaise === undefined ? null : anyInt(raw.investedPaise);
+  const live = raw.liveNavE4 === null || raw.liveNavE4 === undefined ? null : anyInt(raw.liveNavE4);
+  if (!kind || units === null || nav === null || value === null || !asOf || navDate === undefined || liveDate === undefined || invested === undefined || live === undefined) return null;
+  return { kind, account: raw.account, code: raw.code, name: raw.name, unitsE4: units, navE4: nav, valuePaise: value, investedPaise: invested, asOf, navDate, liveNavE4: live, liveNavDate: live === null ? null : liveDate };
+}
+
+function readSavings(raw: unknown, onSkip: () => void): BackupSavings {
+  const out = emptySavings();
+  if (!isObject(raw)) return out;
+  for (const [list, read, into] of [
+    [raw.months, readSavingsMonth, out.months],
+    [raw.accounts, readSavingsAccount, out.accounts],
+    [raw.holdings, readSavingsHolding, out.holdings],
+  ] as const) {
+    for (const item of Array.isArray(list) ? list : []) {
+      const value = (read as (v: unknown) => unknown)(item);
+      if (value) (into as unknown[]).push(value);
+      else onSkip();
+    }
+  }
+  return out;
+}
+
 function readJourney(raw: unknown): BackupJourney | null {
   if (!isObject(raw) || !nonEmpty(raw.id) || !nonEmpty(raw.label)) return null;
   const booking = BOOKING_VALUES.find((b) => b === raw.booking);
@@ -496,6 +602,8 @@ function parseJsonBackup(text: string): ParsedBackup {
     else skipped++;
   }
 
+  const savings = readSavings(raw.savings, () => skipped++);
+
   return {
     backup: {
       format: BACKUP_FORMAT,
@@ -510,6 +618,7 @@ function parseJsonBackup(text: string): ParsedBackup {
       assetOptions,
       assetExchanges,
       journeys,
+      savings,
       transactions,
     },
     skipped,
@@ -677,6 +786,55 @@ const EXCHANGE_COLUMNS = [
   { header: "Exchanges Updated", write: (x: BackupAssetExchange) => x.updatedAt ?? "" },
 ];
 
+// The Savings blocks, after the exchanges. A month is written "Oct-2026" and a date "23-Oct-2026" (so Excel cannot turn them into something else);
+// amounts are in rupees; units and NAVs are the whole numbers the app keeps (x 10,000).
+const csvMonth = (m: string): string => `${MONTH_NAMES[Number(m.slice(5)) - 1]}-${m.slice(0, 4)}`;
+const paiseOrBlank = (v: number | null): string => (v === null ? "" : rupees(v));
+const intOrBlank = (v: number | null): string => (v === null ? "" : String(v));
+const SAVINGS_MONTH_COLUMNS = [
+  { header: "Savings Months Kind", write: (m: MonthRow) => m.kind },
+  { header: "Savings Months Account", write: (m: MonthRow) => guard(m.account) },
+  { header: "Savings Months Month", write: (m: MonthRow) => csvMonth(m.month) },
+  { header: "Savings Months Own", write: (m: MonthRow) => rupees(m.ownPaise) },
+  { header: "Savings Months Employer", write: (m: MonthRow) => rupees(m.employerPaise) },
+  { header: "Savings Months Pension", write: (m: MonthRow) => rupees(m.pensionPaise) },
+  { header: "Savings Months Source", write: (m: MonthRow) => m.source },
+  { header: "Savings Months Credited", write: (m: MonthRow) => (m.creditedDate ? csvDate(m.creditedDate) : "") },
+];
+const SAVINGS_ACCOUNT_COLUMNS = [
+  { header: "Savings Accounts Kind", write: (a: SavingsAccount) => a.kind },
+  { header: "Savings Accounts Account", write: (a: SavingsAccount) => guard(a.account) },
+  { header: "Savings Accounts Label", write: (a: SavingsAccount) => guard(a.label) },
+  { header: "Savings Accounts Status", write: (a: SavingsAccount) => cap(a.status) },
+  { header: "Savings Accounts As Of", write: (a: SavingsAccount) => (a.asOf ? csvDate(a.asOf) : "") },
+  { header: "Savings Accounts FY", write: (a: SavingsAccount) => intOrBlank(a.fy) },
+  { header: "Savings Accounts Value", write: (a: SavingsAccount) => paiseOrBlank(a.valuePaise) },
+  { header: "Savings Accounts Invested", write: (a: SavingsAccount) => paiseOrBlank(a.investedPaise) },
+  { header: "Savings Accounts XIRR", write: (a: SavingsAccount) => guard(a.xirr) },
+  { header: "Savings Accounts Own", write: (a: SavingsAccount) => paiseOrBlank(a.ownPaise) },
+  { header: "Savings Accounts Employer", write: (a: SavingsAccount) => paiseOrBlank(a.employerPaise) },
+  { header: "Savings Accounts Pension", write: (a: SavingsAccount) => paiseOrBlank(a.pensionPaise) },
+  { header: "Savings Accounts Auto Add", write: (a: SavingsAccount) => (a.autoAdd ? "Yes" : "") },
+  { header: "Savings Accounts Auto From", write: (a: SavingsAccount) => (a.autoFrom ? csvMonth(a.autoFrom) : "") },
+  { header: "Savings Accounts Est Own", write: (a: SavingsAccount) => rupees(a.estOwnPaise) },
+  { header: "Savings Accounts Est Employer", write: (a: SavingsAccount) => rupees(a.estEmployerPaise) },
+  { header: "Savings Accounts Est Pension", write: (a: SavingsAccount) => rupees(a.estPensionPaise) },
+];
+const SAVINGS_HOLDING_COLUMNS = [
+  { header: "Savings Holdings Kind", write: (h: SavingsHolding) => h.kind },
+  { header: "Savings Holdings Account", write: (h: SavingsHolding) => guard(h.account) },
+  { header: "Savings Holdings Code", write: (h: SavingsHolding) => guard(h.code) },
+  { header: "Savings Holdings Name", write: (h: SavingsHolding) => guard(h.name) },
+  { header: "Savings Holdings Units E4", write: (h: SavingsHolding) => String(h.unitsE4) },
+  { header: "Savings Holdings NAV E4", write: (h: SavingsHolding) => String(h.navE4) },
+  { header: "Savings Holdings Value", write: (h: SavingsHolding) => rupees(h.valuePaise) },
+  { header: "Savings Holdings Invested", write: (h: SavingsHolding) => paiseOrBlank(h.investedPaise) },
+  { header: "Savings Holdings As Of", write: (h: SavingsHolding) => csvDate(h.asOf) },
+  { header: "Savings Holdings NAV Date", write: (h: SavingsHolding) => (h.navDate ? csvDate(h.navDate) : "") },
+  { header: "Savings Holdings Live NAV E4", write: (h: SavingsHolding) => intOrBlank(h.liveNavE4) },
+  { header: "Savings Holdings Live NAV Date", write: (h: SavingsHolding) => (h.liveNavDate ? csvDate(h.liveNavDate) : "") },
+];
+
 export function serializeBackup(backup: Backup): string {
   const blanks = (n: number) => Array<string>(n).fill("");
   const header = [
@@ -703,6 +861,12 @@ export function serializeBackup(backup: Backup): string {
     ASSET_ITEM_LIST,
     ...blanks(GAP_COLUMNS),
     ...EXCHANGE_COLUMNS.map((c) => c.header),
+    ...blanks(GAP_COLUMNS),
+    ...SAVINGS_MONTH_COLUMNS.map((c) => c.header),
+    ...blanks(GAP_COLUMNS),
+    ...SAVINGS_ACCOUNT_COLUMNS.map((c) => c.header),
+    ...blanks(GAP_COLUMNS),
+    ...SAVINGS_HOLDING_COLUMNS.map((c) => c.header),
   ];
 
   const titles = new Map(backup.giftOccasions.map((o) => [o.id, o.title]));
@@ -718,6 +882,9 @@ export function serializeBackup(backup: Backup): string {
     backup.assetOptions.for.length,
     backup.assetOptions.item.length,
     backup.assetExchanges.length,
+    backup.savings.months.length,
+    backup.savings.accounts.length,
+    backup.savings.holdings.length,
   );
   const rows: string[][] = [header];
   for (let i = 0; i < count; i++) {
@@ -729,6 +896,9 @@ export function serializeBackup(backup: Backup): string {
     const asset = backup.assets[i];
     const journey = backup.journeys[i];
     const exchange = backup.assetExchanges[i];
+    const savingsMonth = backup.savings.months[i];
+    const savingsAccount = backup.savings.accounts[i];
+    const savingsHolding = backup.savings.holdings[i];
     rows.push([
       ...(t ? COLUMNS.map((col) => col.write(t)) : blanks(COLUMNS.length)),
       ...blanks(GAP_COLUMNS),
@@ -753,6 +923,12 @@ export function serializeBackup(backup: Backup): string {
       guard(backup.assetOptions.item[i] ?? null),
       ...blanks(GAP_COLUMNS),
       ...(exchange ? EXCHANGE_COLUMNS.map((col) => col.write(exchange)) : blanks(EXCHANGE_COLUMNS.length)),
+      ...blanks(GAP_COLUMNS),
+      ...(savingsMonth ? SAVINGS_MONTH_COLUMNS.map((col) => col.write(savingsMonth)) : blanks(SAVINGS_MONTH_COLUMNS.length)),
+      ...blanks(GAP_COLUMNS),
+      ...(savingsAccount ? SAVINGS_ACCOUNT_COLUMNS.map((col) => col.write(savingsAccount)) : blanks(SAVINGS_ACCOUNT_COLUMNS.length)),
+      ...blanks(GAP_COLUMNS),
+      ...(savingsHolding ? SAVINGS_HOLDING_COLUMNS.map((col) => col.write(savingsHolding)) : blanks(SAVINGS_HOLDING_COLUMNS.length)),
     ]);
   }
   // The BOM makes Excel read the file as UTF-8 (names and notes in other scripts).
@@ -801,6 +977,9 @@ function parseCsvBackup(text: string): ParsedBackup {
   const forListCol = at(ASSET_FOR_LIST);
   const itemListCol = at(ASSET_ITEM_LIST);
   const exchangeCols = EXCHANGE_COLUMNS.map((c) => at(c.header));
+  const savingsMonthCols = SAVINGS_MONTH_COLUMNS.map((c) => at(c.header));
+  const savingsAccountCols = SAVINGS_ACCOUNT_COLUMNS.map((c) => at(c.header));
+  const savingsHoldingCols = SAVINGS_HOLDING_COLUMNS.map((c) => at(c.header));
   const cell = (row: string[], i: number) => (i < 0 ? "" : unguard((row[i] ?? "").trim()));
 
   let skipped = 0;
@@ -813,6 +992,7 @@ function parseCsvBackup(text: string): ParsedBackup {
   const assets: BackupAsset[] = [];
   const journeys: BackupJourney[] = [];
   const assetExchanges: BackupAssetExchange[] = [];
+  const savings = emptySavings();
   const listedFor: string[] = [];
   const listedItem: string[] = [];
   const seen = new Map<string, number>();
@@ -975,6 +1155,65 @@ function parseCsvBackup(text: string): ParsedBackup {
       if (journey) journeys.push(journey);
       else skipped++;
     }
+
+    const [smKind, smAccount, smMonth, smOwn, smEmployer, smPension, smSource, smCredited] = savingsMonthCols.map((i) => cell(row, i));
+    if (smKind || smMonth) {
+      const month = monthFromWords(smMonth) ?? (monthOrNull(smMonth) ? smMonth : null);
+      const own = parseAmountPaise(smOwn === "" ? "0" : smOwn);
+      const employer = parseAmountPaise(smEmployer === "" ? "0" : smEmployer);
+      const pension = parseAmountPaise(smPension === "" ? "0" : smPension);
+      const credited = smCredited === "" ? null : parseDate(smCredited);
+      const m = readSavingsMonth({ kind: smKind.toLowerCase(), account: smAccount, month, ownPaise: own, employerPaise: employer, pensionPaise: pension, source: smSource.toLowerCase(), creditedDate: credited });
+      if (m) savings.months.push(m);
+      else skipped++;
+    }
+
+    const [saKind, saAccount, saLabel, saStatus, saAsOf, saFy, saValue, saInvested, saXirr, saOwn, saEmployer, saPension, saAuto, saAutoFrom, saEstOwn, saEstEmployer, saEstPension] = savingsAccountCols.map((i) => cell(row, i));
+    if (saKind || saAccount) {
+      const money = (t: string): number | null | undefined => (t === "" ? null : (parseAmountPaise(t) ?? undefined));
+      const autoFrom = saAutoFrom === "" ? null : (monthFromWords(saAutoFrom) ?? (monthOrNull(saAutoFrom) ? saAutoFrom : undefined));
+      const a = readSavingsAccount({
+        kind: saKind.toLowerCase(),
+        account: saAccount,
+        label: saLabel === "" ? null : saLabel,
+        status: /^closed$/i.test(saStatus) ? "CLOSED" : "ACTIVE",
+        asOf: saAsOf === "" ? null : parseDate(saAsOf),
+        fy: saFy === "" ? null : Number(saFy),
+        valuePaise: money(saValue),
+        investedPaise: money(saInvested),
+        xirr: saXirr === "" ? null : saXirr,
+        ownPaise: money(saOwn),
+        employerPaise: money(saEmployer),
+        pensionPaise: money(saPension),
+        autoAdd: /^(yes|true|y)$/i.test(saAuto),
+        autoFrom,
+        estOwnPaise: money(saEstOwn) ?? 0,
+        estEmployerPaise: money(saEstEmployer) ?? 0,
+        estPensionPaise: money(saEstPension) ?? 0,
+      });
+      if (a) savings.accounts.push(a);
+      else skipped++;
+    }
+
+    const [shKind, shAccount, shCode, shName, shUnits, shNav, shValue, shInvested, shAsOf, shNavDate, shLiveNav, shLiveDate] = savingsHoldingCols.map((i) => cell(row, i));
+    if (shKind || shCode) {
+      const h = readSavingsHolding({
+        kind: shKind.toLowerCase(),
+        account: shAccount,
+        code: shCode,
+        name: shName,
+        unitsE4: shUnits === "" ? null : Number(shUnits),
+        navE4: shNav === "" ? null : Number(shNav),
+        valuePaise: parseAmountPaise(shValue),
+        investedPaise: shInvested === "" ? null : parseAmountPaise(shInvested),
+        asOf: shAsOf === "" ? null : parseDate(shAsOf),
+        navDate: shNavDate === "" ? null : parseDate(shNavDate),
+        liveNavE4: shLiveNav === "" ? null : Number(shLiveNav),
+        liveNavDate: shLiveDate === "" ? null : parseDate(shLiveDate),
+      });
+      if (h) savings.holdings.push(h);
+      else skipped++;
+    }
   }
 
   const filledAssets = fillLegacyNames(assets);
@@ -993,6 +1232,7 @@ function parseCsvBackup(text: string): ParsedBackup {
       assetOptions: { for: [...new Set([...listedFor, ...fromAssets.for])], item: [...new Set([...listedItem, ...fromAssets.item])] },
       assetExchanges,
       journeys,
+      savings,
       transactions,
     },
     skipped,

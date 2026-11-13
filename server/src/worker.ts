@@ -1,22 +1,27 @@
-// Cloudflare Worker that stores the app's encrypted backups. It never sees anything it can read: the app compresses and
+// Cloudflare Worker that stores the app's encrypted backups, and (see mail.ts) keeps statement PDFs that arrive by email until the app collects them. It never sees anything it can read: the app compresses and
 // encrypts the backup on the phone and names it with a hash, so the Worker only keeps one opaque text blob per hash.
 //
 //   PUT    /backup/<id>   save (replace) the blob      <id> = 64 lowercase hex characters
 //   GET    /backup/<id>   return the blob, or 404
 //   DELETE /backup/<id>   remove the blob
+//   GET /mail/<token>, GET and DELETE /mail/<token>/<id>   the savings inbox (mail.ts)
 //
 // Deploy with `npx wrangler deploy` from this folder (see README.md).
+import { handleMail, receiveEmail, type EmailLike } from "./mail";
 
 // The part of Cloudflare KV that is used, so the handler can be tested without Cloudflare.
 export interface KvLike {
   get(key: string): Promise<string | null>;
   getWithMetadata<M>(key: string): Promise<{ value: string | null; metadata: M | null }>;
-  put(key: string, value: string, options?: { metadata?: unknown }): Promise<void>;
+  put(key: string, value: string, options?: { metadata?: unknown; expirationTtl?: number }): Promise<void>;
   delete(key: string): Promise<void>;
+  list(options: { prefix: string }): Promise<{ keys: { name: string; metadata?: unknown }[] }>;
 }
 
 export interface Env {
   BACKUPS: KvLike;
+  FORWARD_TO?: string; // a secret: the owner's own address, where mail that is not a statement is passed on (see mail.ts)
+  ALLOWED_SENDERS?: string; // optional: the sender domains whose PDFs are kept
 }
 
 interface BackupMetadata {
@@ -38,7 +43,7 @@ const CORS = {
   "cache-control": "no-store",
 };
 
-const reply = (status: number, body: string | null = null, extra: Record<string, string> = {}): Response =>
+const reply = (status: number, body: BodyInit | null = null, extra: Record<string, string> = {}): Response =>
   new Response(body, { status, headers: { ...CORS, ...extra } });
 
 export async function handle(request: Request, env: Env): Promise<Response> {
@@ -46,6 +51,9 @@ export async function handle(request: Request, env: Env): Promise<Response> {
 
   const { pathname } = new URL(request.url);
   if (pathname === "/") return reply(200, "CSK Manager backup server", { "content-type": "text/plain" });
+
+  const mail = await handleMail(request.method, pathname, env, reply);
+  if (mail) return mail;
 
   const match = /^\/backup\/([^/]+)$/.exec(pathname);
   if (!match || !ID.test(match[1])) return reply(404, "Not found");
@@ -76,4 +84,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
 
 export default {
   fetch: (request: Request, env: Env): Promise<Response> => handle(request, env),
+  email: async (message: EmailLike, env: Env): Promise<void> => {
+    await receiveEmail(message, env);
+  },
 };

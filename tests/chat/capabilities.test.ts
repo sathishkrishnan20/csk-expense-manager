@@ -9,6 +9,7 @@ import type { JourneyRecord } from "../../src/db/trainJourneys";
 import type { EntriesResult, ExpenseFilter, TotalsResult } from "../../src/domain/chatQuery";
 import { registryProblems, validateArgs, type ToolArgs } from "../../src/domain/chatTools";
 import type { GroupWithBalance } from "../../src/domain/groups";
+import type { CachedRates } from "../../src/domain/metalRates";
 
 const tool = (name: string) => {
   const found = CAPABILITIES.flatMap((c) => c.tools).find((t) => t.name === name);
@@ -47,15 +48,21 @@ function context(over: Partial<ChatData> = {}): { ctx: ChatToolContext; seen: { 
     expenseTotals: async (f) => (seen.filters.push(f), totals),
     expenseEntries: async (f) => (seen.filters.push(f), entries),
     assets: async () => [],
+    savings: async () => ({ months: [], accounts: [], holdings: [] }),
     exchanges: async () => [],
     gifts: async () => [],
     journeys: async () => [],
     groups: async () => [],
+    occasions: async () => [],
+    categories: async () => [],
+    paymentMethods: async () => [],
+    metalRates: async () => null,
+    nagercoilRates: async () => null,
     ...over,
   };
   return {
     seen,
-    ctx: { data, scopeLabel: "Main", range: { start: "2026-10-01", end: "2026-10-31" }, now: new Date(2026, 10, 3, 12, 0), groupNames: new Map([["main", "Main"]]), spansGroups: false },
+    ctx: { data, writes: { addTransaction: async () => undefined, addJourney: async () => "", addGift: async () => undefined, addAsset: async () => undefined }, pageGroupId: "main", scopeLabel: "Main", range: { start: "2026-10-01", end: "2026-10-31" }, now: new Date(2026, 10, 3, 12, 0), groupNames: new Map([["main", "Main"]]), spansGroups: false },
   };
 }
 
@@ -68,7 +75,7 @@ const run = async (name: string, raw: object, ctx: ChatToolContext) => {
 
 test("every feature in the list keeps the rules: unique names, described tools and arguments", () => {
   assert.deepEqual(registryProblems(CAPABILITIES), []);
-  assert.deepEqual(CAPABILITIES.map((c) => c.id), ["expenses", "assets", "gifts", "trains", "groups"]);
+  assert.deepEqual(CAPABILITIES.map((c) => c.id), ["expenses", "assets", "savings", "gifts", "trains", "groups", "rates"]);
   assert.deepEqual(CAPABILITIES.find((c) => c.id === "assets")!.tools.map((t) => t.name), ["assets_list", "assets_totals", "asset_exchanges"]);
 });
 
@@ -260,4 +267,127 @@ test("train_journeys says which are booked, with the PNR, and can filter by it",
   assert.ok(toBook.alarms);
   assert.deepEqual((await run("train_journeys", { booked: "yes" }, ctx)).journeys.map((j: { label: string }) => j.label), ["Booked trip"]);
   assert.deepEqual((await run("train_journeys", { booked: "no" }, ctx)).journeys.map((j: { label: string }) => j.label), ["To book"]);
+});
+
+// ---- gold and silver rates
+
+const session = (am: number | null, pm: number | null) => ({ am, pm });
+const goldRates = (am: number, pm: number | null) => ({ "999": session(am, pm), "995": session(am - 600, pm === null ? null : pm - 600), "916": session(am - 10000, pm === null ? null : pm - 10000) });
+const ibja = (): CachedRates => ({
+  fetchedAt: new Date(2026, 10, 3, 11, 30).getTime(),
+  snapshot: {
+    gold: { date: "2026-11-03", rates: goldRates(138000, 139000) },
+    silver: { date: "2026-11-03", rate: session(170000, null) },
+    history: [
+      { date: "2026-11-03", gold: goldRates(138000, 139000), silver: session(170000, null) },
+      { date: "2026-11-02", gold: goldRates(136000, 137000), silver: session(168000, 169000) },
+    ],
+  },
+});
+
+test("ibja_rates gives gold and silver per gram with the session and date, and the amounts are worked out for the AI", async () => {
+  const { ctx } = context({ metalRates: async () => ibja() });
+  const r = await run("ibja_rates", {}, ctx);
+  assert.equal(r.gold.date, "2026-11-03");
+  assert.equal(r.gold.is_today, true);
+  assert.deepEqual(r.gold.gold_24k_999, { session: "PM", per_gram: "₹13,900", per_8_grams: "₹1,11,200", per_10_grams: "₹1,39,000" });
+  assert.equal(r.gold.gold_22k_916.per_gram, "₹12,900");
+  assert.deepEqual(r.silver, { date: "2026-11-03", is_today: true, session: "AM", per_gram: "₹170", per_kg: "₹1,70,000" });
+  assert.equal(r.earlier_days, undefined);
+  assert.match(r.checked, /today at 11:30 AM/);
+});
+
+test("ibja_rates shows earlier days with the move from the day before when asked", async () => {
+  const { ctx } = context({ metalRates: async () => ibja() });
+  const r = await run("ibja_rates", { days: 2 }, ctx);
+  assert.equal(r.earlier_days.length, 2);
+  assert.equal(r.earlier_days[0].date, "2026-11-03");
+  assert.equal(r.earlier_days[0].gold_24k_999.per_gram, "₹13,900");
+  assert.match(r.earlier_days[0].gold_24k_999.change_from_day_before, /^▲ ₹200 \(1\.46%\)$/);
+  assert.equal(r.earlier_days[1].gold_24k_999.change_from_day_before, undefined, "the oldest day has nothing to compare with");
+});
+
+test("ibja_rates says plainly when the rates could not be loaded", async () => {
+  const { ctx } = context();
+  const r = await run("ibja_rates", {}, ctx);
+  assert.equal(r.available, false);
+  assert.match(r.note, /could not be loaded/);
+});
+
+test("nagercoil_gold_rates gives the local 22K and 24K price with its move, newest first", async () => {
+  const { ctx } = context({
+    nagercoilRates: async () => [
+      { date: "2026-11-03", price22k: 12650, price24k: 13800 },
+      { date: "2026-11-02", price22k: 12600, price24k: 13750 },
+      { date: "2026-11-01", price22k: 12600, price24k: 13750 },
+    ],
+  });
+  const latest = await run("nagercoil_gold_rates", {}, ctx);
+  assert.equal(latest.latest_date, "2026-11-03");
+  assert.equal(latest.is_today, true);
+  assert.deepEqual(latest.days, [{ date: "2026-11-03", gold_22k_per_gram: "₹12,650", gold_24k_per_gram: "₹13,800", change_22k_from_day_before: "▲ ₹50 (0.40%)", change_24k_from_day_before: "▲ ₹50 (0.36%)" }]);
+  const three = await run("nagercoil_gold_rates", { days: 3 }, ctx);
+  assert.equal(three.days.length, 3);
+  assert.equal(three.days[1].change_22k_from_day_before, "No change");
+  assert.equal(three.days[2].change_22k_from_day_before, undefined);
+});
+
+test("nagercoil_gold_rates says plainly when the backend is not set up or cannot be reached", async () => {
+  const { ctx } = context();
+  const r = await run("nagercoil_gold_rates", {}, ctx);
+  assert.equal(r.available, false);
+  assert.match(r.note, /not available/);
+});
+
+// ---- Savings
+
+const savingsData = () => ({
+  months: [
+    { kind: "mf" as const, account: "", month: "2026-10", ownPaise: 4100000, employerPaise: 0, pensionPaise: 0, source: "statement" as const, creditedDate: null },
+    { kind: "nps" as const, account: "123456789012", month: "2026-10", ownPaise: 0, employerPaise: 1886000, pensionPaise: 0, source: "statement" as const, creditedDate: "2026-11-02" },
+    { kind: "pf" as const, account: "ABCDE12345670000012345", month: "2026-10", ownPaise: 2263200, employerPaise: 2263200, pensionPaise: 0, source: "estimate" as const, creditedDate: null },
+    { kind: "nps" as const, account: "123456789012", month: "2026-09", ownPaise: 0, employerPaise: 1886000, pensionPaise: 0, source: "statement" as const, creditedDate: "2026-10-05" },
+  ],
+  accounts: [
+    { kind: "pf" as const, account: "ABCDE12345670000012345", label: null, status: "ACTIVE" as const, asOf: "2026-11-13", fy: 2026, valuePaise: null, investedPaise: null, xirr: null, ownPaise: 23544200, employerPaise: 23544200, pensionPaise: 0, autoAdd: true, autoFrom: "2026-10", estOwnPaise: 2263200, estEmployerPaise: 2263200, estPensionPaise: 0 },
+    { kind: "nps" as const, account: "123456789012", label: "NPS Tier I", status: "ACTIVE" as const, asOf: "2026-11-13", fy: null, valuePaise: 41241429, investedPaise: 39117839, xirr: "5.24", ownPaise: null, employerPaise: null, pensionPaise: null, autoAdd: false, autoFrom: null, estOwnPaise: 0, estEmployerPaise: 0, estPensionPaise: 0 },
+  ],
+  holdings: [
+    { kind: "mf" as const, account: "111/1", code: "INF000A01001", name: "Alpha Fund", unitsE4: 2000000, navE4: 500000, valuePaise: 1000000, investedPaise: 800000, asOf: "2026-10-31", navDate: "2026-10-31", liveNavE4: 600000, liveNavDate: "2026-11-12" },
+  ],
+});
+
+test("savings_summary gives the total, each part with its date, and only the last digits of an account", async () => {
+  const { ctx } = context({ savings: async () => savingsData() });
+  const r = await run("savings_summary", {}, ctx);
+  assert.equal(r.total_value, "₹8,95,298.29", "12,000 (funds at the newer NAV) + 4,12,414.29 (NPS) + 4,70,884 (PF employee + employer)");
+  assert.equal(r.mutual_funds.value, "₹12,000.00", "units x the newer NAV");
+  assert.equal(r.mutual_funds.invested, "₹8,000.00");
+  assert.equal(r.mutual_funds.gain, "₹4,000.00");
+  assert.equal(r.mutual_funds.value_uses_todays_nav, true);
+  assert.equal(r.nps.value, "₹4,12,414.29");
+  assert.equal(r.nps.statement_return_percent, "5.24");
+  assert.equal(r.pf[0].account, "…2345");
+  assert.equal(r.pf[0].balance_employee_plus_employer, "₹4,70,884.00");
+  assert.equal(r.pf[0].estimated_since_passbook, "₹45,264.00");
+  const text = JSON.stringify(r);
+  assert.ok(!text.includes("ABCDE12345670000012345") && !text.includes("123456789012"), "no whole PRAN or member ID");
+});
+
+test("savings_summary says so when nothing has been imported", async () => {
+  const r = await run("savings_summary", {}, context().ctx);
+  assert.equal(r.imported, false);
+});
+
+test("savings_months lists the months newest first with totals by kind, and filters by kind and dates", async () => {
+  const { ctx } = context({ savings: async () => savingsData() });
+  const all = await run("savings_months", {}, ctx);
+  assert.deepEqual(all.months.map((m: { month: string }) => m.month), ["Oct 2026", "Sep 2026"]);
+  assert.deepEqual(all.months[0], { month: "Oct 2026", mutual_funds: "₹41,000.00", nps: "₹18,860.00", pf: "₹45,264.00", pf_includes_estimate: true, total: "₹1,05,124.00" });
+  assert.equal(all.totals_for_these_months.NPS, "₹37,720.00");
+  const nps = await run("savings_months", { kind: "nps", from: "2026-10-01" }, ctx);
+  assert.equal(nps.months_with_figures, 1);
+  assert.equal(nps.totals_for_these_months.all, "₹18,860.00");
+  const none = await run("savings_months", { from: "2030-01-01" }, ctx);
+  assert.equal(none.months, 0);
 });

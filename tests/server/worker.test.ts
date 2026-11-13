@@ -1,21 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { handle, MAX_BODY_CHARS, type Env, type KvLike } from "../../server/src/worker";
+import { handle, MAX_BODY_CHARS, type Env } from "../../server/src/worker";
+import { fakeKv } from "./fakeKv";
 import { MAX_UPLOAD_CHARS } from "../../src/domain/cloudBackup";
-
-function fakeKv(): KvLike & { data: Map<string, { value: string; metadata: unknown }> } {
-  const data = new Map<string, { value: string; metadata: unknown }>();
-  return {
-    data,
-    get: async (key) => data.get(key)?.value ?? null,
-    getWithMetadata: async <M>(key: string) => {
-      const entry = data.get(key);
-      return { value: entry?.value ?? null, metadata: (entry?.metadata as M | undefined) ?? null };
-    },
-    put: async (key, value, options) => void data.set(key, { value, metadata: options?.metadata }),
-    delete: async (key) => void data.delete(key),
-  };
-}
 
 const ID = "a".repeat(64);
 const BODY = "RU1CA" + "QUJD".repeat(20); // looks like a sealed backup

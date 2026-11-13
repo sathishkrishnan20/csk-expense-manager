@@ -1,5 +1,6 @@
 import type { SpendingSummary } from "../db/transactions";
 import { formatRupees } from "../domain/format";
+import type { PreparedAction } from "../domain/chatTools";
 import { acceptProposal, recentTurns, type ChatEntries, type ChatEntry, type ChatMessage, type ChatProposal } from "../domain/expenseChat";
 import type { CategoryDef } from "../domain/masterData";
 import { allowedCategories } from "../domain/taxonomy";
@@ -8,7 +9,7 @@ import type { JsonSchema, LlmCall } from "./providers";
 
 // The "Ask AI" chat. It uses the same one-shot call as the categoriser, with a one-field JSON answer, so it works with every provider
 // without any new code in providers.ts. Each question is sent with the account holder's categories, a summary of their spending for the
-// chosen groups and period, and the last few turns of the conversation. Nothing is stored by the app; the chat lives in memory.
+// chosen groups and period, and the last few turns of the conversation. The chat itself is kept in the history by the page (db/chatHistory.ts); nothing here stores it.
 
 export interface ChatContext {
   scopeLabel: string; // "Main", "Goa trip", "3 groups", "All groups"
@@ -117,6 +118,7 @@ export interface ChatReply {
   answer: string;
   proposal: ChatProposal | null;
   toolsUsed?: string[]; // the kinds of data the AI looked at to answer (Expenses, Gifts, ...), when it used tools
+  action?: PreparedAction; // something to add, waiting for the owner's Save
 }
 
 // The conversation so far as one message, because the call takes a single user message. The last message is the question to answer.

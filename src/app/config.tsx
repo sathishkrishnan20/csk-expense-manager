@@ -26,6 +26,7 @@ import { CloudBackupSection } from "../ui/CloudBackupSection";
 import { DataBackupSection } from "../ui/DataBackupSection";
 import { DevToolsSection } from "../ui/DevToolsSection";
 import { StatementPasswordsSection } from "../ui/StatementPasswordsSection";
+import { SavingsMailSection } from "../ui/SavingsMailSection";
 import { SmsCaptureSection } from "../ui/SmsCaptureSection";
 import { TrainAlarmSection } from "../ui/TrainAlarmSection";
 import { AppUpdateSection } from "../ui/AppUpdateSection";
@@ -38,7 +39,7 @@ import { UnlockGate } from "../ui/UnlockGate";
 import { useTabBack } from "../ui/useGoBack";
 import { colors } from "../ui/theme";
 
-type Section = "payments" | "category" | "ai" | "passwords" | "backup" | "cloud" | "reclassify" | "sms" | "train" | "updates" | "dev" | "";
+type Section = "payments" | "category" | "ai" | "passwords" | "backup" | "cloud" | "reclassify" | "sms" | "savingsMail" | "train" | "updates" | "dev" | "";
 
 export default function Config() {
   const router = useRouter();
@@ -84,6 +85,9 @@ export default function Config() {
           </Accordion>
           <Accordion title="Bank SMS (automatic)" open={expanded === "sms"} onToggle={() => toggle("sms")}>
             <SmsCaptureSection />
+          </Accordion>
+          <Accordion title="Savings by email" open={expanded === "savingsMail"} onToggle={() => toggle("savingsMail")}>
+            <SavingsMailSection />
           </Accordion>
           <Accordion title="Train alarms" open={expanded === "train"} onToggle={() => toggle("train")}>
             <TrainAlarmSection />

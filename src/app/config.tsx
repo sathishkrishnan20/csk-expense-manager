@@ -39,7 +39,7 @@ import { UnlockGate } from "../ui/UnlockGate";
 import { useTabBack } from "../ui/useGoBack";
 import { colors } from "../ui/theme";
 
-type Section = "payments" | "category" | "ai" | "passwords" | "backup" | "cloud" | "reclassify" | "sms" | "savingsMail" | "train" | "updates" | "dev" | "";
+type Section = "payments" | "category" | "ai" | "passwords" | "backup" | "cloud" | "reclassify" | "sms" | "savingsMail" | "template" | "train" | "updates" | "dev" | "";
 
 export default function Config() {
   const router = useRouter();
@@ -88,6 +88,14 @@ export default function Config() {
           </Accordion>
           <Accordion title="Savings by email" open={expanded === "savingsMail"} onToggle={() => toggle("savingsMail")}>
             <SavingsMailSection />
+          </Accordion>
+          <Accordion title="Monthly template" open={expanded === "template"} onToggle={() => toggle("template")}>
+            <View style={{ gap: 12 }}>
+              <T style={{ color: colors.textSecondary, fontSize: 13, lineHeight: 19 }}>
+                The groups and entries you want in every month, each entry on its own day. At the start of a month Home offers "Set up December?" and creates them once you confirm.
+              </T>
+              <Button label="Open monthly template" onPress={() => router.push("/template")} />
+            </View>
           </Accordion>
           <Accordion title="Train alarms" open={expanded === "train"} onToggle={() => toggle("train")}>
             <TrainAlarmSection />

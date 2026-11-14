@@ -12,6 +12,10 @@
 //   5 empty columns [ Savings Months Kind | Account | Month | Own | Employer | Pension | Source | Credited ]
 //   5 empty columns [ Savings Accounts Kind | Account | Label | Status | As Of | FY | Value | Invested | XIRR | Own | Employer | Pension | Auto Add | Auto From | Est Own | Est Employer | Est Pension ]
 //   5 empty columns [ Savings Holdings Kind | Account | Code | Name | Units E4 | NAV E4 | Value | Invested | As Of | NAV Date | Live NAV E4 | Live NAV Date ]
+//   5 empty columns [ Template Groups Id | Parent Id | Name | Sort | Opening Income | Funds Here | Home ]
+//   5 empty columns [ Template Lines Id | Group Id | Sort | Direction | Category | Subcategory | Payee | Payment Method | Description | Amount | Day | Creates Group Id ]
+//   5 empty columns [ Template Setups Month | Template Group Id | Group Id | Funds Here ]
+// Version 10 added the three monthly-template blocks (domain/monthTemplate.ts). A file without them restores with no template.
 // Version 9 added the three Savings blocks at the end (mutual fund, NPS and PF figures; see domain/savings.ts). A file without them restores with no savings.
 // Version 8 added Booked and PNR to each journey (the last two columns of the journeys block; a file without them restores every journey as not
 // booked). Version 7 added For, Item and Exchange to each asset (the Assets block ends with Assets For | Assets Item | Assets Exchange Id), the two
@@ -30,6 +34,7 @@ import Papa from "papaparse";
 import { BOOKINGS, MAX_ALARMS, bookingInfo, normalisePnr, normalizeTimes, validatePnr, type Booking } from "./trainAlarms";
 import { monthFromWords } from "./pdfLines";
 import type { MonthRow, SavingsAccount, SavingsHolding } from "./savings";
+import type { MonthSetup, TemplateGroup, TemplateLine } from "./monthTemplate";
 import { ASSET_TYPES, ASSET_UNITS, GOLD_PURITIES, deriveForAndItem, normaliseAsset, type AssetFields, type AssetStatus } from "./assets";
 import { gramsInputText, parseGramsInput, type GiftDirection, type GiftType, type GiftUnit } from "./gifts";
 import { MAIN_GROUP_ID, type GroupStatus } from "./groups";
@@ -46,7 +51,8 @@ const LEGACY_BACKUP_FORMAT = "expense-manager-backup";
 // For and Item lists and the exchanges.
 // 8: journeys can be booked, with an optional PNR.
 // 9: Savings (mutual fund, NPS and PF figures, the PF accounts and the units of each fund and NPS scheme).
-export const BACKUP_VERSION = 9;
+// 10: the monthly template (its groups, their entries, and which month each group was set up for).
+export const BACKUP_VERSION = 10;
 
 export interface BackupTransaction {
   id: string;
@@ -149,6 +155,15 @@ export interface BackupSavings {
 
 export const emptySavings = (): BackupSavings => ({ months: [], accounts: [], holdings: [] });
 
+// The monthly template as stored: its groups, their entries, and the groups each month's set-up made.
+export interface BackupMonthTemplate {
+  groups: TemplateGroup[];
+  lines: TemplateLine[];
+  setups: MonthSetup[];
+}
+
+export const emptyMonthTemplate = (): BackupMonthTemplate => ({ groups: [], lines: [], setups: [] });
+
 export interface BackupCategory {
   category: string;
   subcategory: string;
@@ -169,6 +184,7 @@ export interface Backup {
   assetExchanges: BackupAssetExchange[];
   journeys: BackupJourney[];
   savings: BackupSavings;
+  monthTemplate: BackupMonthTemplate;
   transactions: BackupTransaction[];
 }
 
@@ -461,6 +477,44 @@ function readSavingsHolding(raw: unknown): SavingsHolding | null {
   return { kind, account: raw.account, code: raw.code, name: raw.name, unitsE4: units, navE4: nav, valuePaise: value, investedPaise: invested, asOf, navDate, liveNavE4: live, liveNavDate: live === null ? null : liveDate };
 }
 
+// ---- Monthly template ------------------------------------------------------------------------------------------------------------------------
+
+const isDirection = (v: unknown): v is "credit" | "debit" => v === "credit" || v === "debit";
+const dayOrNull = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 31 ? v : null);
+
+function readTemplateGroup(raw: Record<string, unknown>): TemplateGroup | null {
+  const sort = anyInt(raw.sort);
+  if (!nonEmpty(raw.id) || !nonEmpty(raw.name) || sort === null) return null;
+  return { id: raw.id, parentId: nonEmpty(raw.parentId) ? raw.parentId : null, name: raw.name, sort, openingIncome: raw.openingIncome === true, fundsHere: raw.fundsHere === true, home: raw.home === true };
+}
+
+function readTemplateLine(raw: Record<string, unknown>): TemplateLine | null {
+  const day = dayOrNull(raw.day);
+  const sort = anyInt(raw.sort);
+  const amount = raw.amountPaise === null ? null : typeof raw.amountPaise === "number" && raw.amountPaise > 0 ? raw.amountPaise : undefined;
+  if (!nonEmpty(raw.id) || !nonEmpty(raw.groupId) || !nonEmpty(raw.category) || !nonEmpty(raw.subcategory) || !nonEmpty(raw.payee) || !isDirection(raw.direction) || day === null || sort === null || amount === undefined) return null;
+  return {
+    id: raw.id,
+    groupId: raw.groupId,
+    sort,
+    direction: raw.direction,
+    category: raw.category,
+    subcategory: raw.subcategory,
+    payee: raw.payee,
+    paymentMethod: nonEmpty(raw.paymentMethod) ? raw.paymentMethod : null,
+    description: nonEmpty(raw.description) ? raw.description : null,
+    amountPaise: amount,
+    day,
+    createsGroupId: nonEmpty(raw.createsGroupId) ? raw.createsGroupId : null,
+  };
+}
+
+function readMonthSetup(raw: Record<string, unknown>): MonthSetup | null {
+  const month = monthOrNull(raw.month);
+  if (!month || !nonEmpty(raw.templateGroupId) || !nonEmpty(raw.groupId)) return null;
+  return { month, templateGroupId: raw.templateGroupId, groupId: raw.groupId, fundsHere: raw.fundsHere === true };
+}
+
 function readSavings(raw: unknown, onSkip: () => void): BackupSavings {
   const out = emptySavings();
   if (!isObject(raw)) return out;
@@ -603,7 +657,6 @@ function parseJsonBackup(text: string): ParsedBackup {
   }
 
   const savings = readSavings(raw.savings, () => skipped++);
-
   return {
     backup: {
       format: BACKUP_FORMAT,
@@ -619,6 +672,7 @@ function parseJsonBackup(text: string): ParsedBackup {
       assetExchanges,
       journeys,
       savings,
+      monthTemplate: emptyMonthTemplate(),
       transactions,
     },
     skipped,
@@ -835,6 +889,38 @@ const SAVINGS_HOLDING_COLUMNS = [
   { header: "Savings Holdings Live NAV Date", write: (h: SavingsHolding) => (h.liveNavDate ? csvDate(h.liveNavDate) : "") },
 ];
 
+// The monthly-template blocks, after Savings. Amounts are in rupees; an empty group amount means "asked each month"; Yes marks a switch that is on.
+const yes = (v: boolean): string => (v ? "Yes" : "");
+const TEMPLATE_GROUP_COLUMNS = [
+  { header: "Template Groups Id", write: (g: TemplateGroup) => g.id },
+  { header: "Template Groups Parent Id", write: (g: TemplateGroup) => g.parentId ?? "" },
+  { header: "Template Groups Name", write: (g: TemplateGroup) => guard(g.name) },
+  { header: "Template Groups Sort", write: (g: TemplateGroup) => String(g.sort) },
+  { header: "Template Groups Opening Income", write: (g: TemplateGroup) => yes(g.openingIncome) },
+  { header: "Template Groups Funds Here", write: (g: TemplateGroup) => yes(g.fundsHere) },
+  { header: "Template Groups Home", write: (g: TemplateGroup) => yes(g.home) },
+];
+const TEMPLATE_LINE_COLUMNS = [
+  { header: "Template Lines Id", write: (l: TemplateLine) => l.id },
+  { header: "Template Lines Group Id", write: (l: TemplateLine) => l.groupId },
+  { header: "Template Lines Sort", write: (l: TemplateLine) => String(l.sort) },
+  { header: "Template Lines Direction", write: (l: TemplateLine) => cap(l.direction) },
+  { header: "Template Lines Category", write: (l: TemplateLine) => guard(l.category) },
+  { header: "Template Lines Subcategory", write: (l: TemplateLine) => guard(l.subcategory) },
+  { header: "Template Lines Payee", write: (l: TemplateLine) => guard(l.payee) },
+  { header: "Template Lines Payment Method", write: (l: TemplateLine) => guard(l.paymentMethod) },
+  { header: "Template Lines Description", write: (l: TemplateLine) => guard(l.description) },
+  { header: "Template Lines Amount", write: (l: TemplateLine) => paiseOrBlank(l.amountPaise) },
+  { header: "Template Lines Day", write: (l: TemplateLine) => String(l.day) },
+  { header: "Template Lines Creates Group Id", write: (l: TemplateLine) => l.createsGroupId ?? "" },
+];
+const TEMPLATE_SETUP_COLUMNS = [
+  { header: "Template Setups Month", write: (m: MonthSetup) => csvMonth(m.month) },
+  { header: "Template Setups Template Group Id", write: (m: MonthSetup) => m.templateGroupId },
+  { header: "Template Setups Group Id", write: (m: MonthSetup) => m.groupId },
+  { header: "Template Setups Funds Here", write: (m: MonthSetup) => yes(m.fundsHere) },
+];
+
 export function serializeBackup(backup: Backup): string {
   const blanks = (n: number) => Array<string>(n).fill("");
   const header = [
@@ -867,6 +953,12 @@ export function serializeBackup(backup: Backup): string {
     ...SAVINGS_ACCOUNT_COLUMNS.map((c) => c.header),
     ...blanks(GAP_COLUMNS),
     ...SAVINGS_HOLDING_COLUMNS.map((c) => c.header),
+    ...blanks(GAP_COLUMNS),
+    ...TEMPLATE_GROUP_COLUMNS.map((c) => c.header),
+    ...blanks(GAP_COLUMNS),
+    ...TEMPLATE_LINE_COLUMNS.map((c) => c.header),
+    ...blanks(GAP_COLUMNS),
+    ...TEMPLATE_SETUP_COLUMNS.map((c) => c.header),
   ];
 
   const titles = new Map(backup.giftOccasions.map((o) => [o.id, o.title]));
@@ -885,6 +977,9 @@ export function serializeBackup(backup: Backup): string {
     backup.savings.months.length,
     backup.savings.accounts.length,
     backup.savings.holdings.length,
+    backup.monthTemplate.groups.length,
+    backup.monthTemplate.lines.length,
+    backup.monthTemplate.setups.length,
   );
   const rows: string[][] = [header];
   for (let i = 0; i < count; i++) {
@@ -899,6 +994,9 @@ export function serializeBackup(backup: Backup): string {
     const savingsMonth = backup.savings.months[i];
     const savingsAccount = backup.savings.accounts[i];
     const savingsHolding = backup.savings.holdings[i];
+    const templateGroup = backup.monthTemplate.groups[i];
+    const templateLine = backup.monthTemplate.lines[i];
+    const templateSetup = backup.monthTemplate.setups[i];
     rows.push([
       ...(t ? COLUMNS.map((col) => col.write(t)) : blanks(COLUMNS.length)),
       ...blanks(GAP_COLUMNS),
@@ -929,6 +1027,12 @@ export function serializeBackup(backup: Backup): string {
       ...(savingsAccount ? SAVINGS_ACCOUNT_COLUMNS.map((col) => col.write(savingsAccount)) : blanks(SAVINGS_ACCOUNT_COLUMNS.length)),
       ...blanks(GAP_COLUMNS),
       ...(savingsHolding ? SAVINGS_HOLDING_COLUMNS.map((col) => col.write(savingsHolding)) : blanks(SAVINGS_HOLDING_COLUMNS.length)),
+      ...blanks(GAP_COLUMNS),
+      ...(templateGroup ? TEMPLATE_GROUP_COLUMNS.map((col) => col.write(templateGroup)) : blanks(TEMPLATE_GROUP_COLUMNS.length)),
+      ...blanks(GAP_COLUMNS),
+      ...(templateLine ? TEMPLATE_LINE_COLUMNS.map((col) => col.write(templateLine)) : blanks(TEMPLATE_LINE_COLUMNS.length)),
+      ...blanks(GAP_COLUMNS),
+      ...(templateSetup ? TEMPLATE_SETUP_COLUMNS.map((col) => col.write(templateSetup)) : blanks(TEMPLATE_SETUP_COLUMNS.length)),
     ]);
   }
   // The BOM makes Excel read the file as UTF-8 (names and notes in other scripts).
@@ -980,6 +1084,9 @@ function parseCsvBackup(text: string): ParsedBackup {
   const savingsMonthCols = SAVINGS_MONTH_COLUMNS.map((c) => at(c.header));
   const savingsAccountCols = SAVINGS_ACCOUNT_COLUMNS.map((c) => at(c.header));
   const savingsHoldingCols = SAVINGS_HOLDING_COLUMNS.map((c) => at(c.header));
+  const templateGroupCols = TEMPLATE_GROUP_COLUMNS.map((c) => at(c.header));
+  const templateLineCols = TEMPLATE_LINE_COLUMNS.map((c) => at(c.header));
+  const templateSetupCols = TEMPLATE_SETUP_COLUMNS.map((c) => at(c.header));
   const cell = (row: string[], i: number) => (i < 0 ? "" : unguard((row[i] ?? "").trim()));
 
   let skipped = 0;
@@ -993,6 +1100,7 @@ function parseCsvBackup(text: string): ParsedBackup {
   const journeys: BackupJourney[] = [];
   const assetExchanges: BackupAssetExchange[] = [];
   const savings = emptySavings();
+  const monthTemplate = emptyMonthTemplate();
   const listedFor: string[] = [];
   const listedItem: string[] = [];
   const seen = new Map<string, number>();
@@ -1214,6 +1322,31 @@ function parseCsvBackup(text: string): ParsedBackup {
       if (h) savings.holdings.push(h);
       else skipped++;
     }
+
+    const [tgId, tgParent, tgName, tgSort, tgOpening, tgFunds, tgHome] = templateGroupCols.map((i) => cell(row, i));
+    if (tgId || tgName) {
+      const g = readTemplateGroup({ id: tgId, parentId: tgParent, name: tgName, sort: tgSort === "" ? 0 : Number(tgSort), openingIncome: /^yes$/i.test(tgOpening), fundsHere: /^yes$/i.test(tgFunds), home: /^yes$/i.test(tgHome) });
+      if (g) monthTemplate.groups.push(g);
+      else skipped++;
+    }
+
+    const [tlId, tlGroup, tlSort, tlDirection, tlCategory, tlSubcategory, tlPayee, tlMethod, tlDescription, tlAmount, tlDay, tlCreates] = templateLineCols.map((i) => cell(row, i));
+    if (tlId || tlPayee) {
+      const l = readTemplateLine({
+        id: tlId, groupId: tlGroup, sort: tlSort === "" ? 0 : Number(tlSort), direction: tlDirection.toLowerCase(), category: tlCategory, subcategory: tlSubcategory, payee: tlPayee,
+        paymentMethod: tlMethod, description: tlDescription, amountPaise: tlAmount === "" ? null : parseAmountPaise(tlAmount) ?? 0, day: Number(tlDay), createsGroupId: tlCreates,
+      });
+      if (l) monthTemplate.lines.push(l);
+      else skipped++;
+    }
+
+    const [tsMonth, tsTemplateGroup, tsGroup, tsFunds] = templateSetupCols.map((i) => cell(row, i));
+    if (tsMonth || tsGroup) {
+      const month = monthFromWords(tsMonth) ?? (monthOrNull(tsMonth) ? tsMonth : null);
+      const m = readMonthSetup({ month, templateGroupId: tsTemplateGroup, groupId: tsGroup, fundsHere: /^yes$/i.test(tsFunds) });
+      if (m) monthTemplate.setups.push(m);
+      else skipped++;
+    }
   }
 
   const filledAssets = fillLegacyNames(assets);
@@ -1233,6 +1366,7 @@ function parseCsvBackup(text: string): ParsedBackup {
       assetExchanges,
       journeys,
       savings,
+      monthTemplate,
       transactions,
     },
     skipped,

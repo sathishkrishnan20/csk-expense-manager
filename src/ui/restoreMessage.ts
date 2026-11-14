@@ -15,6 +15,7 @@ export function describeRestore(r: RestoreSummary): string {
   if (r.assetExchangesAdded > 0) parts.push(`${count(r.assetExchangesAdded, "exchange")} added`);
   if (r.journeysAdded > 0) parts.push(`${count(r.journeysAdded, "train journey")} added`);
   if (r.savingsAdded > 0) parts.push(`${count(r.savingsAdded, "savings figure")} added`);
+  if (r.templateAdded > 0) parts.push(`${count(r.templateAdded, "monthly template item")} added`);
   if (r.skipped > 0) parts.push(`${count(r.skipped, "damaged entry", "damaged entries")} skipped`);
   return `${parts.join(", ")}.`;
 }

@@ -10,6 +10,7 @@ import type { GoldHistoryRow } from "../domain/goldHistory";
 import type { CachedRates } from "../domain/metalRates";
 import type { GroupWithBalance } from "../domain/groups";
 import type { SavingsOverview } from "../domain/savings";
+import type { MonthTemplate } from "../domain/monthTemplate";
 import type { CategoryDef } from "../domain/masterData";
 
 // How the tools reach the phone's data. The real one is in data.ts (the database); the tests give the tools a fake, so a capability can be
@@ -19,6 +20,7 @@ export interface ChatData {
   expenseEntries(filter: ExpenseFilter, sort: EntrySort, limit: number): Promise<EntriesResult>;
   assets(): Promise<AssetRecord[]>;
   savings(): Promise<SavingsOverview>; // mutual fund, NPS and PF figures from the statements imported on the Savings page
+  monthTemplate(): Promise<MonthTemplate>; // the groups and entries described on the Monthly template page
   exchanges(): Promise<ExchangeRecord[]>;
   gifts(): Promise<GiftRecord[]>;
   journeys(): Promise<JourneyRecord[]>;

@@ -20,6 +20,7 @@ import { cleanDescription } from "../domain/masterData";
 import { fromSqlite } from "./assetSql";
 import { getDb, inTransaction } from "./database";
 import { loadOverview } from "./savingsSql";
+import { loadSetups, loadTemplate } from "./monthTemplateSql";
 import { listJourneys } from "./trainJourneys";
 
 interface TransactionRow {
@@ -265,6 +266,7 @@ export async function exportBackup(): Promise<Backup> {
     })),
     journeys: upcoming,
     savings: await loadOverview(fromSqlite(db)),
+    monthTemplate: { ...(await loadTemplate(fromSqlite(db))), setups: await loadSetups(fromSqlite(db)) },
     transactions: transactions.map(toBackupTransaction),
   };
 }
@@ -280,6 +282,7 @@ export interface RestoreSummary {
   assetExchangesAdded: number;
   journeysAdded: number;
   savingsAdded: number; // months, accounts and holdings of Savings
+  templateAdded: number; // groups, entries and set-up records of the monthly template
   skipped: number;
 }
 
@@ -298,6 +301,7 @@ export async function restoreBackup(backup: Backup, skipped: number): Promise<Re
     assetExchangesAdded: 0,
     journeysAdded: 0,
     savingsAdded: 0,
+    templateAdded: 0,
     skipped,
   };
 
@@ -455,6 +459,23 @@ export async function restoreBackup(backup: Backup, skipped: number): Promise<Re
         [h.kind, h.account, h.code, h.name, h.unitsE4, h.navE4, h.valuePaise, h.investedPaise, h.asOf, h.navDate, h.liveNavE4, h.liveNavDate],
       );
       summary.savingsAdded += r.changes;
+    }
+
+    for (const g of backup.monthTemplate.groups) {
+      const r = await txn.runAsync("INSERT OR IGNORE INTO month_template_groups (id, parent_id, name, sort, opening_income, funds_here, home) VALUES (?, ?, ?, ?, ?, ?, ?)", [g.id, g.parentId, g.name, g.sort, g.openingIncome ? 1 : 0, g.fundsHere ? 1 : 0, g.home ? 1 : 0]);
+      summary.templateAdded += r.changes;
+    }
+    for (const l of backup.monthTemplate.lines) {
+      const r = await txn.runAsync(
+        `INSERT OR IGNORE INTO month_template_lines (id, group_id, sort, direction, category, subcategory, payee, payment_method, description, amount_paise, day, creates_group_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [l.id, l.groupId, l.sort, l.direction, l.category, l.subcategory, l.payee, l.paymentMethod, l.description, l.amountPaise, l.day, l.createsGroupId],
+      );
+      summary.templateAdded += r.changes;
+    }
+    for (const m of backup.monthTemplate.setups) {
+      const r = await txn.runAsync("INSERT OR IGNORE INTO month_setups (month, template_group_id, group_id, funds_here) VALUES (?, ?, ?, ?)", [m.month, m.templateGroupId, m.groupId, m.fundsHere ? 1 : 0]);
+      summary.templateAdded += r.changes;
     }
 
     for (const t of backup.transactions) {

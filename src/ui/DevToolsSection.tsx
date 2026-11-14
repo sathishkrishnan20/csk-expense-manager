@@ -13,8 +13,8 @@ export function DevToolsSection() {
 
   const clear = async () => {
     const yes = await confirmAction({
-      title: "Delete all transactions, groups, gifts and assets?",
-      message: "Every transaction, every group (except Main), every gift and every asset is removed for good. Categories, payment modes and settings stay. This cannot be undone.",
+      title: "Delete all transactions, groups, gifts, assets and the monthly template?",
+      message: "Every transaction, every group (except Main), every gift, every asset and the monthly template (with its set-up records) is removed for good, and Home goes back to Main. Categories, payment modes and settings stay. This cannot be undone.",
       confirmLabel: "Delete everything",
     });
     if (!yes) return;
@@ -36,10 +36,10 @@ export function DevToolsSection() {
   return (
     <View style={styles.box}>
       <T style={styles.note}>
-        For testing only; this section is not in release builds. It removes every transaction, every group (Main stays), every gift and every asset, so you can start
+        For testing only; this section is not in release builds. It removes every transaction, every group (Main stays), every gift, every asset and the monthly template, so you can start
         again from an empty app. Categories, payment modes and settings are kept. Export a backup first if you might want the data.
       </T>
-      <Button label="Delete all transactions, groups, gifts and assets" onPress={clear} disabled={busy} color={colors.error} />
+      <Button label="Delete all transactions, groups, gifts, assets and the monthly template" onPress={clear} disabled={busy} color={colors.error} />
       {message ? <T style={message.isError ? styles.error : styles.note}>{message.text}</T> : null}
     </View>
   );

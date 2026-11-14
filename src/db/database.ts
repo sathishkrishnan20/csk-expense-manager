@@ -2,9 +2,9 @@ import { Platform } from "react-native";
 import * as SQLite from "expo-sqlite";
 import { DEFAULT_CATEGORIES, DEFAULT_PAYMENT_METHODS, FALLBACK } from "../domain/masterData";
 import { fromSqlite, migrateAssetsV18 } from "./assetSql";
-import { ASSET_EXCHANGES_SQL, ASSET_OPTIONS_SQL, CHAT_HISTORY_SQL, REBUILD_TRANSACTIONS, SAVINGS_SQL, TRAIN_COLUMNS_V19, needsTransactionsRebuild, transactionsTableSql } from "./schemaSql";
+import { ASSET_EXCHANGES_SQL, ASSET_OPTIONS_SQL, CHAT_HISTORY_SQL, DROP_TEMPLATE_V23_SQL, MONTH_TEMPLATE_SQL, REBUILD_TRANSACTIONS, SAVINGS_SQL, TRAIN_COLUMNS_V19, needsTemplateRebuild, needsTransactionsRebuild, transactionsTableSql } from "./schemaSql";
 
-export const SCHEMA_VERSION = 22;
+export const SCHEMA_VERSION = 24;
 
 const SCHEMA = `
 -- A group is a separate ledger (see domain/groups.ts). 'main' holds everything entered before groups existed.
@@ -108,6 +108,7 @@ ${ASSET_OPTIONS_SQL}
 ${ASSET_EXCHANGES_SQL}
 ${CHAT_HISTORY_SQL}
 ${SAVINGS_SQL}
+${MONTH_TEMPLATE_SQL}
 
 -- Train journeys (schema version 13, reshaped in 14 and 15, cleaned up in 16; see domain/trainAlarms.ts). Information only, like gifts and assets: each row
 -- is a journey date the owner wants alarms for. The booking is advance = 1 (60 days before, 8:00 AM) or tatkal = ac / non_ac (the day
@@ -176,6 +177,9 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
     const isV1 = columns.length > 0 && !columns.some((c) => c.name === "id");
     if (isV1) await txn.execAsync("ALTER TABLE transactions RENAME TO transactions_v1");
 
+    // Version 24 reshaped the monthly template tables; the first shape (version 23) is dropped so SCHEMA makes them again.
+    const templateColumns = await txn.getAllAsync<{ name: string }>("SELECT name FROM pragma_table_info('month_template_groups')");
+    if (needsTemplateRebuild(templateColumns.map((c) => c.name))) await txn.execAsync(DROP_TEMPLATE_V23_SQL);
     await txn.execAsync(SCHEMA);
 
     // Version 3 added ai_attempts; a table created by an older version does not have it yet.

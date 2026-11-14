@@ -168,6 +168,55 @@ CREATE TABLE IF NOT EXISTS savings_purchases (
 CREATE INDEX IF NOT EXISTS savings_purchases_fund_idx ON savings_purchases (isin, folio, purchased_on);
 `;
 
+// Schema version 23 added the monthly template (domain/monthTemplate.ts) and version 24 reshaped it: entries create groups, as when adding a transaction. Every CHECK is named (see AGENTS.md).
+//  - month_template_groups: a group the template makes. It exists through the entry that creates it (month_template_lines.creates_group_id), and parent_id is the template group that
+//    entry is in (empty: Main). opening_income: it starts with that entry's amount as income. funds_here: mutual fund purchases go into it. home: the app opens on it.
+//  - month_template_lines: an entry made each month in Main (group_id 'main') or in a template group, on a fixed day of the month. An empty amount is asked at set-up.
+//  - month_setups: which real group each template group made for a month, and whether it was the one mutual fund purchases go into then. It is how a month is known to be set up, and
+//    how the mutual fund entries (domain/savingsEntries.ts) find their group.
+export const MONTH_TEMPLATE_SQL = `
+CREATE TABLE IF NOT EXISTS month_template_groups (
+  id             TEXT PRIMARY KEY NOT NULL,
+  parent_id      TEXT,
+  name           TEXT NOT NULL,
+  sort           INTEGER NOT NULL,
+  opening_income INTEGER NOT NULL DEFAULT 1 CONSTRAINT month_template_groups_opening_check CHECK (opening_income IN (0, 1)),
+  funds_here     INTEGER NOT NULL DEFAULT 0 CONSTRAINT month_template_groups_funds_check CHECK (funds_here IN (0, 1)),
+  home           INTEGER NOT NULL DEFAULT 0 CONSTRAINT month_template_groups_home_check CHECK (home IN (0, 1))
+);
+CREATE TABLE IF NOT EXISTS month_template_lines (
+  id               TEXT PRIMARY KEY NOT NULL,
+  group_id         TEXT NOT NULL,
+  sort             INTEGER NOT NULL,
+  direction        TEXT NOT NULL CONSTRAINT month_template_lines_direction_check CHECK (direction IN ('credit', 'debit')),
+  category         TEXT NOT NULL,
+  subcategory      TEXT NOT NULL,
+  payee            TEXT NOT NULL,
+  payment_method   TEXT,
+  description      TEXT,
+  amount_paise     INTEGER,
+  day              INTEGER NOT NULL CONSTRAINT month_template_lines_day_check CHECK (day BETWEEN 1 AND 31),
+  creates_group_id TEXT
+);
+CREATE INDEX IF NOT EXISTS month_template_lines_group_idx ON month_template_lines (group_id, sort);
+CREATE TABLE IF NOT EXISTS month_setups (
+  month             TEXT NOT NULL,
+  template_group_id TEXT NOT NULL,
+  group_id          TEXT NOT NULL,
+  funds_here        INTEGER NOT NULL DEFAULT 0 CONSTRAINT month_setups_funds_check CHECK (funds_here IN (0, 1)),
+  PRIMARY KEY (month, template_group_id)
+);
+`;
+
+// A database made at schema version 23 has the template tables in their first shape (a group carried its own funding entry). That shape was only ever a test, so both tables are
+// dropped and made again in the new shape (month_setups did not change and is kept). A table with no such column is left alone.
+export const needsTemplateRebuild = (groupColumns: readonly string[]): boolean => groupColumns.includes("fund_direction");
+export const DROP_TEMPLATE_V23_SQL = `
+DROP TABLE IF EXISTS month_template_lines;
+DROP TABLE IF EXISTS month_template_groups;
+DROP INDEX IF EXISTS month_template_lines_group_idx;
+`;
+
 export const ASSET_EXCHANGES_SQL = `
 CREATE TABLE IF NOT EXISTS asset_exchanges (
   id            TEXT PRIMARY KEY NOT NULL,

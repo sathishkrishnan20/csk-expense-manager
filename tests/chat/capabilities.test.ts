@@ -49,6 +49,7 @@ function context(over: Partial<ChatData> = {}): { ctx: ChatToolContext; seen: { 
     expenseEntries: async (f) => (seen.filters.push(f), entries),
     assets: async () => [],
     savings: async () => ({ months: [], accounts: [], holdings: [] }),
+    monthTemplate: async () => ({ groups: [], lines: [] }),
     exchanges: async () => [],
     gifts: async () => [],
     journeys: async () => [],
@@ -75,7 +76,7 @@ const run = async (name: string, raw: object, ctx: ChatToolContext) => {
 
 test("every feature in the list keeps the rules: unique names, described tools and arguments", () => {
   assert.deepEqual(registryProblems(CAPABILITIES), []);
-  assert.deepEqual(CAPABILITIES.map((c) => c.id), ["expenses", "assets", "savings", "gifts", "trains", "groups", "rates"]);
+  assert.deepEqual(CAPABILITIES.map((c) => c.id), ["expenses", "assets", "savings", "gifts", "trains", "groups", "month_template", "rates"]);
   assert.deepEqual(CAPABILITIES.find((c) => c.id === "assets")!.tools.map((t) => t.name), ["assets_list", "assets_totals", "asset_exchanges"]);
 });
 
@@ -390,4 +391,30 @@ test("savings_months lists the months newest first with totals by kind, and filt
   assert.equal(nps.totals_for_these_months.all, "₹18,860.00");
   const none = await run("savings_months", { from: "2030-01-01" }, ctx);
   assert.equal(none.months, 0);
+});
+
+// ---- Monthly template
+
+test("month_template lists Main and each group with its switches and entries, and says so when there is no template", async () => {
+  const none = await run("month_template", {}, context().ctx);
+  assert.equal(none.set_up, false);
+
+  const { ctx } = context({
+    monthTemplate: async () => ({
+      groups: [
+        { id: "a", parentId: null, name: "{Month} {Year} - Savings", sort: 1, openingIncome: true, fundsHere: true, home: false },
+        { id: "b", parentId: "a", name: "Day to day", sort: 2, openingIncome: true, fundsHere: false, home: true },
+      ],
+      lines: [
+        { id: "s", groupId: "main", sort: 1, direction: "credit" as const, category: "Income", subcategory: "Salary", payee: "Blend", paymentMethod: null, description: null, amountPaise: null, day: 1, createsGroupId: "a" },
+        { id: "r", groupId: "a", sort: 1, direction: "debit" as const, category: "Households", subcategory: "Rent", payee: "Rent", paymentMethod: null, description: null, amountPaise: 2400000, day: 1, createsGroupId: null },
+        { id: "m", groupId: "a", sort: 2, direction: "debit" as const, category: "Expenses", subcategory: "Monthly Expenses", payee: "Monthly Expenses", paymentMethod: null, description: null, amountPaise: 2500000, day: 3, createsGroupId: "b" },
+      ],
+    }),
+  });
+  const r = await run("month_template", {}, ctx);
+  assert.deepEqual(r.containers.map((c: { name: string }) => c.name), ["Main", "{Month} {Year} - Savings", "Day to day"]);
+  assert.deepEqual(r.containers[0].entries, [{ payee: "Blend", kind: "income", category: "Income / Salary", amount: "asked each month", day_of_month: 1, creates_group: "{Month} {Year} - Savings" }]);
+  assert.deepEqual([r.containers[1].mutual_fund_purchases_go_here, r.containers[2].home_opens_on_it], [true, true]);
+  assert.deepEqual(r.containers[1].entries.map((e: { payee: string; amount: string }) => [e.payee, e.amount]), [["Rent", "₹24,000.00"], ["Monthly Expenses", "₹25,000.00"]]);
 });

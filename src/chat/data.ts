@@ -1,6 +1,7 @@
 import { listExchanges } from "../db/assetExchanges";
 import { loadCategories, loadPaymentMethods } from "../db/config";
 import { listAssets } from "../db/assets";
+import { loadMonthTemplate } from "../db/monthTemplate";
 import { loadSavings } from "../db/savings";
 import { queryExpenseEntries, queryExpenseTotals } from "../db/chatQueries";
 import { listGifts } from "../db/gifts";
@@ -25,6 +26,7 @@ export function createChatData(scope: GroupScope): ChatData {
     expenseEntries: (filter, sort, limit) => queryExpenseEntries(scope, filter, sort, limit),
     assets: listAssets,
     savings: loadSavings,
+    monthTemplate: loadMonthTemplate,
     exchanges: listExchanges,
     gifts: listGifts,
     journeys: listJourneys,

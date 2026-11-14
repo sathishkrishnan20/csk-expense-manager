@@ -54,6 +54,7 @@ const backup = (over: Partial<Backup> = {}): Backup => ({
   assetExchanges: [],
   journeys: [],
   savings: { months: [], accounts: [], holdings: [] },
+  monthTemplate: { groups: [], lines: [], setups: [] },
   transactions: [tx()],
   ...over,
 });
@@ -171,13 +172,17 @@ test("CSV layout: transactions, 5 empty columns, category list, 5 empty columns,
   assert.equal(header[list + 115 + 5], "Savings Months Kind");
   assert.equal(header[list + 115 + 5 + 8 + 5], "Savings Accounts Kind");
   assert.equal(header[list + 115 + 5 + 8 + 5 + 17 + 5], "Savings Holdings Kind");
-  assert.equal(header.length, list + 115 + 52);
+  // Version 10: 5 empty columns, then Template Groups (7), 5 empty, Template Lines (12), 5 empty, Template Setups (4).
+  assert.equal(header[list + 115 + 52 + 5], "Template Groups Id");
+  assert.equal(header[list + 115 + 52 + 5 + 7 + 5], "Template Lines Id");
+  assert.equal(header[list + 115 + 52 + 5 + 7 + 5 + 12 + 5], "Template Setups Month");
+  assert.equal(header.length, list + 115 + 52 + 38);
   assert.deepEqual(header.slice(0, 5), ["Date", "Type", "Amount", "Category", "Subcategory"]);
 
   // 1 transaction but 3 payment modes: later rows have empty transaction cells.
   assert.equal(lines.length, 1 + 3); // header + one row per payment mode
   assert.match(lines[1], /^23-Oct-2026,Debit,1355\.00,Personal,Clothing,SATHISH KR,UPI,for dresse,2553\.65,Active,/);
-  assert.match(lines[3], new RegExp(`^,{${list + 8}}Card,{158}$`));
+  assert.match(lines[3], new RegExp(`^,{${list + 8}}Card,{196}$`));
 });
 
 test("CSV: text that Excel would run as a formula is protected and restored", () => {
@@ -394,7 +399,7 @@ test("gifts: occasions and gifts survive CSV and JSON, in rupees and grams, with
 test("gifts: a file from before gifts existed restores with none, and damaged gift rows are skipped", () => {
   const old = serializeBackup(backup())
     .split("\r\n")
-    .map((line) => line.split(",").slice(0, -98).join(","))
+    .map((line) => line.split(",").slice(0, -136).join(","))
     .join("\r\n");
   const read = parseBackup(old);
   assert.deepEqual(read.backup.gifts, []);
@@ -465,7 +470,7 @@ test("assets: gold, land, funds and a pledged piece survive CSV and JSON", () =>
 test("assets: a file from before assets existed restores with none, and damaged asset rows are skipped", () => {
   const old = serializeBackup(backup({ assets: [goldAsset()] }))
     .split("\r\n")
-    .map((line) => line.split(",").slice(0, -116).join(","))
+    .map((line) => line.split(",").slice(0, -154).join(","))
     .join("\r\n");
   const read = parseBackup(old);
   assert.deepEqual(read.backup.assets, []);
@@ -518,7 +523,7 @@ test("train journeys: every booking, the times and a note survive CSV and JSON",
 test("train journeys: a file from before they were included restores with none, and damaged rows are skipped", () => {
   const old = serializeBackup(backup({ journeys: [journey()] }))
     .split("\r\n")
-    .map((line) => line.split(",").slice(0, -91).join(","))
+    .map((line) => line.split(",").slice(0, -129).join(","))
     .join("\r\n");
   const read = parseBackup(old);
   assert.deepEqual(read.backup.journeys, []);
@@ -561,7 +566,7 @@ test("the source of an entry survives a backup, and a Source in a file is read a
   // A file edited by hand: an unknown word is read as manual, never as a source the app does not have.
   const edited = text.replace(",Sms,", ",Whatever,");
   assert.equal(parseBackup(edited).backup.transactions[0].source, "manual");
-  assert.equal(BACKUP_VERSION, 9);
+  assert.equal(BACKUP_VERSION, 10);
 });
 
 // ---- For, Item, the two lists and exchanges (version 7)
@@ -703,4 +708,37 @@ test("savings: the PF switch is only kept on a PF account", () => {
   const odd = { ...sample, accounts: [{ ...sample.accounts[1], autoAdd: true, autoFrom: "2026-10" }] };
   const { backup: read } = parseBackup(JSON.stringify({ ...backup(), savings: odd }));
   assert.deepEqual([read.savings.accounts[0].autoAdd, read.savings.accounts[0].autoFrom], [false, null]);
+});
+
+// ---- the monthly template ---------------------------------------------------------------------------------------------------------------------
+
+const templateSample = (): Backup["monthTemplate"] => ({
+  groups: [
+    { id: "tg-1", parentId: null, name: "{Month} {Year} - Savings", sort: 1, openingIncome: true, fundsHere: true, home: false },
+    { id: "tg-2", parentId: "tg-1", name: "Day to day", sort: 2, openingIncome: false, fundsHere: false, home: true },
+  ],
+  lines: [
+    { id: "tl-0", groupId: "main", sort: 1, direction: "credit", category: "Income", subcategory: "Salary", payee: "Blend", paymentMethod: null, description: null, amountPaise: null, day: 1, createsGroupId: "tg-1" },
+    { id: "tl-1", groupId: "tg-1", sort: 1, direction: "debit", category: "Households", subcategory: "Rent", payee: "Rent", paymentMethod: "Net banking", description: null, amountPaise: 2400000, day: 1, createsGroupId: null },
+    { id: "tl-2", groupId: "tg-1", sort: 2, direction: "debit", category: "Insurance", subcategory: "Life", payee: "Insurance, LIC", paymentMethod: null, description: "=SUM(1)", amountPaise: 869600, day: 27, createsGroupId: "tg-2" },
+  ],
+  setups: [{ month: "2026-11", templateGroupId: "tg-1", groupId: "g-nov", fundsHere: true }],
+});
+
+test("template: groups, entries and set-up records survive a CSV round trip, with an empty amount, the switches, the group an entry creates and formula-looking text intact", () => {
+  const original = backup({ monthTemplate: templateSample() });
+  const csv = parseBackup(serializeBackup(original));
+  assert.deepEqual(csv.backup.monthTemplate, original.monthTemplate);
+  assert.equal(csv.skipped, 0);
+});
+
+test("template: a file without the template blocks restores with no template, and a damaged row is skipped and counted", () => {
+  const plain = parseBackup(serializeBackup(backup()));
+  assert.deepEqual(plain.backup.monthTemplate, { groups: [], lines: [], setups: [] });
+
+  const sample = templateSample();
+  sample.lines[1] = { ...sample.lines[1], day: 40 };
+  sample.groups[0] = { ...sample.groups[0], name: "" };
+  const read = parseBackup(serializeBackup(backup({ monthTemplate: sample })));
+  assert.deepEqual([read.backup.monthTemplate.groups.length, read.backup.monthTemplate.lines.length, read.skipped], [1, 2, 2]);
 });
